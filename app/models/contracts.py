@@ -47,7 +47,7 @@ class TaskType(StrEnum):
     FETCH_DISCUSSION = "fetch_discussion"
     GENERATE_IMAGE = "generate_image"
     DISCOVER_FEEDS = "discover_feeds"
-    GENERATE_NEWS_DIGEST = "generate_news_digest"
+    GENERATE_AGENT_DIGEST = "generate_agent_digest"
     ONBOARDING_DISCOVER = "onboarding_discover"
     DIG_DEEPER = "dig_deeper"
     SYNC_INTEGRATION = "sync_integration"
@@ -80,7 +80,7 @@ class SummaryKind(StrEnum):
     LONG_INTERLEAVED = "long_interleaved"
     LONG_BULLETS = "long_bullets"
     LONG_EDITORIAL_NARRATIVE = "long_editorial_narrative"
-    SHORT_NEWS_DIGEST = "short_news_digest"
+    SHORT_NEWS = "short_news"
 
 
 class SummaryVersion(IntEnum):

@@ -102,6 +102,17 @@ def _coerce_config_id(value: Any) -> int | None:
     return None
 
 
+def _require_config_id(config: UserScraperConfig) -> int:
+    config_id = config.id
+    if config_id is None:
+        raise ValueError("Scraper config is missing an id")
+    return int(config_id)
+
+
+def _config_data(config: UserScraperConfig) -> dict[str, Any]:
+    return config.config if isinstance(config.config, dict) else {}
+
+
 def _coerce_publication_date(content: Content) -> datetime:
     if content.publication_date is not None:
         return content.publication_date
@@ -111,7 +122,9 @@ def _coerce_publication_date(content: Content) -> datetime:
     if parsed is not None:
         return parsed.replace(tzinfo=None)
 
-    return content.created_at
+    if content.created_at is not None:
+        return content.created_at
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _estimate_next_expected_at(
@@ -187,20 +200,23 @@ def get_scraper_config_stats(
         minutes=settings.checkout_timeout_minutes
     )
 
-    configs_by_id: dict[int, UserScraperConfig] = {config.id: config for config in config_list}
+    configs_by_id: dict[int, UserScraperConfig] = {
+        _require_config_id(config): config for config in config_list
+    }
     configs_by_feed_url: dict[str, list[UserScraperConfig]] = defaultdict(list)
     configs_by_source: dict[str, list[UserScraperConfig]] = defaultdict(list)
 
     for config in config_list:
-        config_feed_url = config.feed_url or config.config.get("feed_url")
+        config_data = _config_data(config)
+        config_feed_url = config.feed_url or config_data.get("feed_url")
         normalized_feed_url = _normalize_feed_url_for_stats(config_feed_url)
         if normalized_feed_url is not None:
             configs_by_feed_url[normalized_feed_url].append(config)
 
         candidate_labels = [
             config.display_name,
-            config.config.get("name") if isinstance(config.config, dict) else None,
-            _extract_feed_domain(config.feed_url or config.config.get("feed_url")),
+            config_data.get("name"),
+            _extract_feed_domain(config.feed_url or config_data.get("feed_url")),
         ]
         for label in candidate_labels:
             if isinstance(label, str):
@@ -215,10 +231,7 @@ def get_scraper_config_stats(
         .filter(ContentStatusEntry.status == CONTENT_STATUS_INBOX)
         .filter(
             (Content.content_type.in_(long_form_types))
-            | (
-                (Content.platform == "youtube")
-                & (Content.content_type != ContentType.NEWS.value)
-            )
+            | ((Content.platform == "youtube") & (Content.content_type != ContentType.NEWS.value))
         )
         .all()
     )
@@ -228,9 +241,7 @@ def get_scraper_config_stats(
         for (content_id,) in db.query(ProcessingTask.content_id)
         .filter(ProcessingTask.content_id.is_not(None))
         .filter(
-            ProcessingTask.status.in_(
-                [ContentStatus.PENDING.value, ContentStatus.PROCESSING.value]
-            )
+            ProcessingTask.status.in_([ContentStatus.PENDING.value, ContentStatus.PROCESSING.value])
         )
         .all()
         if content_id is not None
@@ -243,7 +254,7 @@ def get_scraper_config_stats(
     }
 
     stats_by_config: dict[int, dict[str, Any]] = {
-        config.id: {
+        _require_config_id(config): {
             "total_count": 0,
             "completed_count": 0,
             "unread_count": 0,
@@ -268,7 +279,8 @@ def get_scraper_config_stats(
         if matched_config is None:
             continue
 
-        stats = stats_by_config[matched_config.id]
+        matched_config_id = _require_config_id(matched_config)
+        stats = stats_by_config[matched_config_id]
         stats["total_count"] += 1
 
         publication_date = _coerce_publication_date(content)
@@ -285,24 +297,20 @@ def get_scraper_config_stats(
         ):
             stats["latest_processed_at"] = content.processed_at
 
-        is_completed_visible = (
-            content.status == completed_status
-            and (content.classification is None or content.classification != "skip")
+        is_completed_visible = content.status == completed_status and (
+            content.classification is None or content.classification != "skip"
         )
         if is_completed_visible:
             stats["completed_count"] += 1
             if content.id not in read_content_ids:
                 stats["unread_count"] += 1
 
-        is_active_processing = (
-            content.status in processing_statuses
-            and (
-                content.id in active_task_content_ids
-                or (
-                    content.checked_out_by is not None
-                    and content.checked_out_at is not None
-                    and content.checked_out_at >= processing_cutoff
-                )
+        is_active_processing = content.status in processing_statuses and (
+            content.id in active_task_content_ids
+            or (
+                content.checked_out_by is not None
+                and content.checked_out_at is not None
+                and content.checked_out_at >= processing_cutoff
             )
         )
         if is_active_processing:
@@ -424,13 +432,14 @@ def build_feed_payloads(
     """Convert UserScraperConfig rows into scraper feed payloads."""
     feeds: list[dict[str, Any]] = []
     for config in configs:
-        feed_url = _normalize_feed_url(config.config)
+        config_data = _config_data(config)
+        feed_url = _normalize_feed_url(config_data)
         if not feed_url:
             logger.warning("Skipping config without feed_url. id=%s", config.id)
             continue
-        limit = _extract_limit(config.config, default_limit)
+        limit = _extract_limit(config_data, default_limit)
         display_name = config.display_name
-        config_name = config.config.get("name")
+        config_name = config_data.get("name")
         feeds.append(
             {
                 "url": feed_url,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -44,9 +46,12 @@ def execute(
             continue
         if not suggestion.feed_url:
             continue
+        suggestion_type = suggestion.suggestion_type
+        if suggestion_type not in {"substack", "atom", "podcast_rss"}:
+            continue
         selected_sources.append(
             OnboardingSelectedSource(
-                suggestion_type=suggestion.suggestion_type,
+                suggestion_type=cast(Literal["substack", "atom", "podcast_rss"], suggestion_type),
                 title=suggestion.title,
                 feed_url=suggestion.feed_url,
                 config={},

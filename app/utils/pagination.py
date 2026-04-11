@@ -56,6 +56,8 @@ class PaginationCursor:
             # Decode base64 then JSON
             json_str = base64.urlsafe_b64decode(cursor.encode()).decode()
             cursor_data = json.loads(json_str)
+            if not isinstance(cursor_data, dict):
+                raise ValueError("Cursor payload must be a JSON object")
 
             # Parse datetime
             cursor_data["last_created_at"] = datetime.fromisoformat(cursor_data["last_created_at"])
@@ -76,7 +78,7 @@ class PaginationCursor:
             True if filters match or no filter hash in cursor, False otherwise
         """
         cursor_hash = cursor_data.get("filters_hash")
-        if not cursor_hash:
+        if not isinstance(cursor_hash, str) or not cursor_hash:
             # No filter hash in cursor, assume valid for backwards compatibility
             return True
 
@@ -94,7 +96,7 @@ class PaginationCursor:
             SHA256 hash of normalized filter params
         """
         # Normalize filters (remove None values, sort keys)
-        normalized = {}
+        normalized: dict[str, Any] = {}
         for k, v in sorted(filters.items()):
             if v is not None:
                 # Sort lists to ensure consistent hashing

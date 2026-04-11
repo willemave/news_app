@@ -20,7 +20,14 @@ from sqlalchemy.orm import validates
 from app.core.db import Base
 from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
-from app.models.metadata import ContentStatus, StructuredSummary, validate_content_metadata
+from app.models.metadata import (
+    ArticleMetadata,
+    ContentStatus,
+    NewsMetadata,
+    PodcastMetadata,
+    StructuredSummary,
+    validate_content_metadata,
+)
 from app.models.summary_contracts import is_structured_summary_payload
 from app.models.user import User  # noqa: F401
 from app.utils.summary_utils import extract_short_summary
@@ -82,35 +89,39 @@ class Content(Base):
     )
 
     @validates("content_metadata")
-    def validate_metadata(self, key, value):
+    def validate_metadata(self, key: str, value: dict[str, Any]) -> dict[str, Any]:
         """Validate metadata using Pydantic models."""
         if not value or value == {}:
             return value
 
-        # Skip validation during initial load or if content_type not set
-        if not hasattr(self, "content_type") or not self.content_type:
+        content_type = self.content_type
+        if not isinstance(content_type, str) or not content_type:
             return value
 
         try:
             # Validate using appropriate schema
-            validated = validate_content_metadata(self.content_type, value)
+            validated = validate_content_metadata(content_type, value)
             # Convert back to dict for storage, excluding None values to preserve original data
             return validated.model_dump(mode="json", exclude_none=True)
         except ValidationError as e:
-            logger.warning(f"Metadata validation failed for {self.content_type}: {e}")
+            logger.warning(f"Metadata validation failed for {content_type}: {e}")
             # For backward compatibility, store as-is but log warning
             return value
         except Exception as e:
             logger.error(f"Unexpected error validating metadata: {e}")
             return value
 
-    def get_validated_metadata(self) -> dict[str, Any] | None:
+    def get_validated_metadata(self) -> ArticleMetadata | PodcastMetadata | NewsMetadata | None:
         """Get metadata as validated Pydantic model."""
         if not self.content_metadata:
             return None
 
+        content_type = self.content_type
+        if not isinstance(content_type, str) or not content_type:
+            return None
+
         try:
-            return validate_content_metadata(self.content_type, self.content_metadata)
+            return validate_content_metadata(content_type, self.content_metadata)
         except Exception as e:
             logger.error(f"Error validating metadata for content {self.id}: {e}")
             return None
@@ -330,99 +341,6 @@ class NewsItemReadStatus(Base):
 
     __table_args__ = (
         Index("idx_news_item_read_status_user_item", "user_id", "news_item_id", unique=True),
-    )
-
-
-class NewsDigest(Base):
-    """Generated digest run for one user over an uncovered-item window."""
-
-    __tablename__ = "news_digests"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    timezone = Column(String(100), nullable=False, default="UTC")
-    window_start_at = Column(DateTime, nullable=False, index=True)
-    window_end_at = Column(DateTime, nullable=False, index=True)
-    title = Column(String(240), nullable=False)
-    summary = Column(Text, nullable=False)
-    source_count = Column(Integer, nullable=False, default=0)
-    group_count = Column(Integer, nullable=False, default=0)
-    embedding_model = Column(String(255), nullable=False)
-    llm_model = Column(String(255), nullable=False)
-    pipeline_version = Column(String(64), nullable=False)
-    trigger_reason = Column(String(64), nullable=False)
-    generated_at = Column(DateTime, nullable=False, default=_utcnow, index=True)
-    read_at = Column(DateTime, nullable=True, index=True)
-    build_metadata = Column(JSON, default=dict, nullable=False)
-    created_at = Column(DateTime, default=_utcnow, nullable=False)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-    __table_args__ = (
-        Index("idx_news_digests_user_generated", "user_id", "generated_at"),
-        Index("idx_news_digests_user_read", "user_id", "read_at"),
-    )
-
-
-class NewsDigestBullet(Base):
-    """Persisted grouped bullet for one digest run."""
-
-    __tablename__ = "news_digest_bullets"
-
-    id = Column(Integer, primary_key=True)
-    digest_id = Column(Integer, nullable=False, index=True)
-    position = Column(Integer, nullable=False)
-    topic = Column(String(240), nullable=False)
-    details = Column(Text, nullable=False)
-    source_count = Column(Integer, nullable=False, default=0)
-    created_at = Column(DateTime, default=_utcnow, nullable=False)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
-
-    __table_args__ = (
-        UniqueConstraint("digest_id", "position", name="uq_news_digest_bullets_digest_position"),
-        Index("idx_news_digest_bullets_digest", "digest_id", "position"),
-    )
-
-
-class NewsDigestBulletSource(Base):
-    """Ordered evidence mapping for one digest bullet."""
-
-    __tablename__ = "news_digest_bullet_sources"
-
-    id = Column(Integer, primary_key=True)
-    bullet_id = Column(Integer, nullable=False, index=True)
-    news_item_id = Column(Integer, nullable=False, index=True)
-    position = Column(Integer, nullable=False)
-    created_at = Column(DateTime, default=_utcnow, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint(
-            "bullet_id",
-            "news_item_id",
-            name="uq_news_digest_bullet_sources_bullet_item",
-        ),
-        UniqueConstraint(
-            "bullet_id",
-            "position",
-            name="uq_news_digest_bullet_sources_bullet_position",
-        ),
-        Index("idx_news_digest_bullet_sources_item", "news_item_id"),
-    )
-
-
-class NewsItemDigestCoverage(Base):
-    """Track first digest coverage for a news item per audience user."""
-
-    __tablename__ = "news_item_digest_coverage"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, nullable=False, index=True)
-    news_item_id = Column(Integer, nullable=False, index=True)
-    digest_id = Column(Integer, nullable=False, index=True)
-    created_at = Column(DateTime, default=_utcnow, nullable=False)
-
-    __table_args__ = (
-        UniqueConstraint("user_id", "news_item_id", name="uq_news_item_digest_coverage_user_item"),
-        Index("idx_news_item_digest_coverage_digest", "digest_id"),
     )
 
 
@@ -761,9 +679,7 @@ class CliLinkSession(Base):
     claimed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_utcnow, nullable=False)
 
-    __table_args__ = (
-        Index("idx_cli_link_sessions_status_expires", "status", "expires_at"),
-    )
+    __table_args__ = (Index("idx_cli_link_sessions_status_expires", "status", "expires_at"),)
 
 
 class ChatSession(Base):

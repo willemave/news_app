@@ -101,6 +101,20 @@ def _clean_text(value: Any) -> str | None:
     return normalized or None
 
 
+def _require_content_id(content: Content) -> int:
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content row is missing an id")
+    return int(content_id)
+
+
+def _require_content_type(content: Content) -> str:
+    content_type = content.content_type
+    if not isinstance(content_type, str) or not content_type:
+        raise ValueError("Content row is missing a content_type")
+    return content_type
+
+
 def build_content_body_storage_key(
     *,
     content_id: int,
@@ -302,11 +316,13 @@ def sync_content_body_storage(
 ) -> dict[str, Any]:
     """Persist canonical bodies, update search text, and strip raw metadata fields."""
     metadata = dict(content.content_metadata or {})
-    source_text = extract_source_body_text(content.content_type, metadata)
+    content_id = _require_content_id(content)
+    content_type = _require_content_type(content)
+    source_text = extract_source_body_text(content_type, metadata)
     if source_text:
         persist_content_body(
             db,
-            content_id=int(content.id),
+            content_id=content_id,
             variant=ContentBodyVariant.SOURCE,
             text=source_text,
             content_format=ContentBodyFormat.TEXT,
@@ -317,7 +333,7 @@ def sync_content_body_storage(
     if rendered_text:
         persist_content_body(
             db,
-            content_id=int(content.id),
+            content_id=content_id,
             variant=ContentBodyVariant.RENDERED,
             text=rendered_text,
             content_format=ContentBodyFormat.MARKDOWN,
@@ -330,7 +346,7 @@ def sync_content_body_storage(
     elif "excerpt" in metadata:
         metadata.pop("excerpt", None)
 
-    if content.content_type == "podcast" and source_text:
+    if content_type == "podcast" and source_text:
         metadata["has_transcript"] = True
 
     content.search_text = build_search_text(content=content, metadata=metadata, excerpt=excerpt)
@@ -352,24 +368,30 @@ class ContentBodyResolver:
         variant: ContentBodyVariant = ContentBodyVariant.SOURCE,
     ) -> ResolvedContentBody | None:
         """Return the resolved body text for one content row."""
+        content_id = _require_content_id(content)
+        content_type = _require_content_type(content)
         row = (
             db.query(ContentBody)
             .filter(ContentBody.content_id == content.id, ContentBody.variant == variant.value)
             .first()
         )
         fallback_body = self._build_fallback_body(content=content, variant=variant)
-        if row is None or not getattr(row, "storage_key", None):
+        if row is None:
+            return fallback_body
+
+        storage_key = getattr(row, "storage_key", None)
+        if not storage_key:
             return fallback_body
 
         try:
-            text = self._gateway.get_text(key=row.storage_key)
+            text = self._gateway.get_text(key=storage_key)
         except FileNotFoundError:
             logger.warning(
                 "Canonical content body missing from local storage; falling back to metadata",
                 extra={
-                    "content_id": int(content.id),
+                    "content_id": content_id,
                     "variant": variant.value,
-                    "storage_key": row.storage_key,
+                    "storage_key": storage_key,
                 },
             )
             return fallback_body
@@ -380,21 +402,25 @@ class ContentBodyResolver:
             logger.warning(
                 "Canonical content body missing from object storage; falling back to metadata",
                 extra={
-                    "content_id": int(content.id),
+                    "content_id": content_id,
                     "variant": variant.value,
-                    "storage_key": row.storage_key,
+                    "storage_key": storage_key,
                     "error_code": error_code,
                 },
             )
             return fallback_body
 
+        content_format_value = getattr(row, "content_format", None)
+        if not isinstance(content_format_value, str):
+            return fallback_body
+
         return ResolvedContentBody(
-            content_id=int(content.id),
+            content_id=content_id,
             variant=variant,
-            kind=_body_kind_for_content_type(content.content_type),
-            format=ContentBodyFormat(row.content_format),
+            kind=_body_kind_for_content_type(content_type),
+            format=ContentBodyFormat(content_format_value),
             text=text,
-            updated_at=row.updated_at,
+            updated_at=getattr(row, "updated_at", None),
         )
 
     def _build_fallback_body(
@@ -404,10 +430,12 @@ class ContentBodyResolver:
         variant: ContentBodyVariant,
     ) -> ResolvedContentBody | None:
         metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
+        content_id = _require_content_id(content)
+        content_type = _require_content_type(content)
         fallback_text = (
             extract_rendered_body_text(metadata)
             if variant == ContentBodyVariant.RENDERED
-            else extract_source_body_text(content.content_type, metadata)
+            else extract_source_body_text(content_type, metadata)
         )
         if not fallback_text:
             return None
@@ -418,9 +446,9 @@ class ContentBodyResolver:
             else ContentBodyFormat.TEXT
         )
         return ResolvedContentBody(
-            content_id=int(content.id),
+            content_id=content_id,
             variant=variant,
-            kind=_body_kind_for_content_type(content.content_type),
+            kind=_body_kind_for_content_type(content_type),
             format=fallback_format,
             text=fallback_text,
             updated_at=getattr(content, "updated_at", None),
@@ -439,7 +467,10 @@ class ContentBodyResolver:
             return body.text
 
         metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
-        return extract_source_body_text(content.content_type, metadata)
+        content_type = content.content_type
+        if not isinstance(content_type, str):
+            return None
+        return extract_source_body_text(content_type, metadata)
 
 
 def _body_kind_for_content_type(content_type: str) -> str:

@@ -48,6 +48,48 @@ class PolledCliLinkSession:
     key_prefix: str | None = None
 
 
+def _require_session_value(session: CliLinkSession, *, field: str) -> str:
+    value = getattr(session, field)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"CLI link session missing {field}")
+    return value
+
+
+def _require_session_expires_at(session: CliLinkSession) -> datetime:
+    expires_at = session.expires_at
+    if expires_at is None:
+        raise ValueError("CLI link session missing expires_at")
+    return expires_at
+
+
+def _require_user_id(user: User) -> int:
+    user_id = user.id
+    if user_id is None:
+        raise ValueError("User must be persisted before use")
+    return user_id
+
+
+def _require_api_key_id(record: UserApiKey) -> int:
+    api_key_id = record.id
+    if api_key_id is None:
+        raise ValueError("User API key must be persisted before use")
+    return api_key_id
+
+
+def _require_key_prefix(record: UserApiKey) -> str:
+    key_prefix = record.key_prefix
+    if not isinstance(key_prefix, str) or not key_prefix:
+        raise ValueError("User API key missing key prefix")
+    return key_prefix
+
+
+def _verify_session_token(raw_token: str, token_hash: str | None, *, error_message: str) -> None:
+    if not isinstance(token_hash, str) or not token_hash:
+        raise ValueError(error_message)
+    if not verify_api_key_hash(raw_token, token_hash):
+        raise ValueError(error_message)
+
+
 def start_cli_link_session(
     db: Session,
     *,
@@ -95,38 +137,41 @@ def approve_cli_link_session(
         session.status = "expired"
         db.commit()
         raise ValueError("CLI link session expired")
-    if not verify_api_key_hash(approve_token, session.approve_token_hash):
-        raise ValueError("Invalid CLI link approval token")
+    _verify_session_token(
+        approve_token,
+        session.approve_token_hash,
+        error_message="Invalid CLI link approval token",
+    )
 
     if session.status == "approved" and session.user_api_key_id is not None:
         record = _get_user_api_key(db, api_key_id=session.user_api_key_id)
         if record is None:
             raise ValueError("CLI link API key missing")
         return ApprovedCliLinkSession(
-            session_id=session.session_id,
-            key_prefix=record.key_prefix,
-            expires_at=_as_utc(session.expires_at),
+            session_id=_require_session_value(session, field="session_id"),
+            key_prefix=_require_key_prefix(record),
+            expires_at=_as_utc(_require_session_expires_at(session)),
         )
     if session.status == "claimed":
         raise ValueError("CLI link session already claimed")
 
     record, raw_key = create_api_key(
         db,
-        user_id=user.id,
+        user_id=_require_user_id(user),
         created_by_admin_user_id=None,
     )
     session.status = "approved"
     session.approved_by_user_id = user.id
-    session.user_api_key_id = int(record.id)
+    session.user_api_key_id = _require_api_key_id(record)
     session.issued_api_key_plaintext = raw_key
     session.requested_device_name = (device_name or "").strip() or session.requested_device_name
     session.approved_at = _utcnow().replace(tzinfo=None)
     db.commit()
 
     return ApprovedCliLinkSession(
-        session_id=session.session_id,
-        key_prefix=record.key_prefix,
-        expires_at=_as_utc(session.expires_at),
+        session_id=_require_session_value(session, field="session_id"),
+        key_prefix=_require_key_prefix(record),
+        expires_at=_as_utc(_require_session_expires_at(session)),
     )
 
 
@@ -140,8 +185,11 @@ def poll_cli_link_session(
     session = _get_cli_link_session(db, session_id=session_id)
     if session is None:
         raise ValueError("CLI link session not found")
-    if not verify_api_key_hash(poll_token, session.poll_token_hash):
-        raise ValueError("Invalid CLI link polling token")
+    _verify_session_token(
+        poll_token,
+        session.poll_token_hash,
+        error_message="Invalid CLI link polling token",
+    )
 
     if _is_expired(session) and session.status == "pending":
         session.status = "expired"
@@ -159,17 +207,17 @@ def poll_cli_link_session(
         session.claimed_at = _utcnow().replace(tzinfo=None)
         db.commit()
         return PolledCliLinkSession(
-            session_id=session.session_id,
+            session_id=_require_session_value(session, field="session_id"),
             status="approved",
-            expires_at=_as_utc(session.expires_at),
+            expires_at=_as_utc(_require_session_expires_at(session)),
             api_key=raw_key,
             key_prefix=key_prefix,
         )
 
     return PolledCliLinkSession(
-        session_id=session.session_id,
+        session_id=_require_session_value(session, field="session_id"),
         status=_status_for_poll(session),
-        expires_at=_as_utc(session.expires_at),
+        expires_at=_as_utc(_require_session_expires_at(session)),
         api_key=None,
         key_prefix=key_prefix,
     )
@@ -194,7 +242,7 @@ def _as_utc(value: datetime) -> datetime:
 
 
 def _is_expired(session: CliLinkSession) -> bool:
-    return _as_utc(session.expires_at) <= _utcnow()
+    return _as_utc(_require_session_expires_at(session)) <= _utcnow()
 
 
 def _status_for_poll(session: CliLinkSession) -> CliLinkStatus:

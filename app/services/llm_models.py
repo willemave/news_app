@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum, StrEnum
+from typing import Any, cast
 
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -188,31 +189,34 @@ def build_pydantic_model(
             if provider_prefix
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
-        provider_kwargs: dict[str, str | bool] = {"vertexai": True}
         if api_key_override:
-            provider_kwargs = {"api_key": api_key_override}
+            provider = GoogleProvider(api_key=api_key_override, vertexai=True)
         elif settings.google_cloud_project:
-            provider_kwargs["project"] = settings.google_cloud_project
-            provider_kwargs["location"] = settings.google_cloud_location
+            provider = GoogleProvider(
+                project=settings.google_cloud_project,
+                location=settings.google_cloud_location,
+            )
         else:
-            provider_kwargs["api_key"] = resolved_api_key
+            if resolved_api_key is None:
+                raise ValueError("GOOGLE_API_KEY not configured in settings.")
+            provider = GoogleProvider(api_key=resolved_api_key, vertexai=True)
 
-        model = GoogleModel(model_to_use, provider=GoogleProvider(**provider_kwargs))
+        model = GoogleModel(model_to_use, provider=provider)
         # Configure thinking for Google models – suppress thought traces and
         # explicitly lower thinking depth on Gemini 3 to reduce latency.
         thinking_config: dict[str, object] = {"include_thoughts": False}
         if model_to_use.startswith("gemini-3"):
             thinking_config["thinking_level"] = "low"
-        model_settings = GoogleModelSettings(google_thinking_config=thinking_config)
+        model_settings = GoogleModelSettings(google_thinking_config=cast(Any, thinking_config))
         return model, model_settings
 
     if provider_prefix == "anthropic" or model_spec.startswith("claude-"):
         resolved_api_key = api_key_override or settings.anthropic_api_key
         if not resolved_api_key:
             raise ValueError("ANTHROPIC_API_KEY not configured in settings.")
-        provider = AnthropicProvider(api_key=resolved_api_key)
+        anthropic_provider = AnthropicProvider(api_key=resolved_api_key)
         model_to_use = model_name if provider_prefix == "anthropic" else model_spec
-        return AnthropicModel(model_to_use, provider=provider), None
+        return AnthropicModel(model_to_use, provider=anthropic_provider), None
 
     if provider_prefix == "cerebras" or model_spec.startswith("cerebras:"):
         resolved_api_key = api_key_override or settings.cerebras_api_key
@@ -223,8 +227,8 @@ def build_pydantic_model(
             if provider_prefix
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
-        provider = CerebrasProvider(api_key=resolved_api_key)
-        return OpenAIChatModel(model_to_use, provider=provider), None
+        cerebras_provider = CerebrasProvider(api_key=resolved_api_key)
+        return OpenAIChatModel(model_to_use, provider=cerebras_provider), None
 
     if (
         provider_prefix == "openai"

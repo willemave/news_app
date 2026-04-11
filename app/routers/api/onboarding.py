@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
-from app.models.user import User
 from app.models.api.common import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioDiscoverResponse,
@@ -23,6 +22,7 @@ from app.models.api.common import (
     OnboardingVoiceParseRequest,
     OnboardingVoiceParseResponse,
 )
+from app.models.user import User
 from app.services.onboarding import (
     build_onboarding_profile,
     complete_onboarding,
@@ -34,6 +34,13 @@ from app.services.onboarding import (
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
 
 
 @router.post(
@@ -90,7 +97,7 @@ async def start_audio_discovery_flow(
 ) -> OnboardingAudioDiscoverResponse:
     """Start onboarding discovery from an audio transcript."""
     try:
-        return await start_audio_discovery(db, current_user.id, payload)
+        return await start_audio_discovery(db, _require_user_id(current_user), payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -107,7 +114,7 @@ async def onboarding_discovery_status(
 ) -> OnboardingDiscoveryStatusResponse:
     """Poll onboarding discovery status for a run."""
     try:
-        return get_onboarding_discovery_status(db, current_user.id, run_id)
+        return get_onboarding_discovery_status(db, _require_user_id(current_user), run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -124,7 +131,7 @@ async def complete_onboarding_flow(
 ) -> OnboardingCompleteResponse:
     """Persist onboarding selections and queue crawlers."""
     try:
-        return complete_onboarding(db, current_user.id, payload)
+        return complete_onboarding(db, _require_user_id(current_user), payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -139,6 +146,6 @@ async def tutorial_complete(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> OnboardingTutorialResponse:
     """Mark tutorial completion flag for current user."""
-    if not mark_tutorial_complete(db, current_user.id):
+    if not mark_tutorial_complete(db, _require_user_id(current_user)):
         raise HTTPException(status_code=404, detail="User not found")
     return OnboardingTutorialResponse(has_completed_new_user_tutorial=True)

@@ -52,7 +52,10 @@ def mark_content_as_read(db: Session, content_id: int, user_id: int) -> ContentR
             )
             .returning(ContentReadStatus.id)
         )
-        read_status_id = int(db.execute(stmt).scalar_one())
+        raw_read_status_id = db.execute(stmt).scalar_one()
+        if raw_read_status_id is None:
+            raise RuntimeError("Read status insert returned no id")
+        read_status_id = int(raw_read_status_id)
         db.commit()
         return db.execute(
             select(ContentReadStatus).where(ContentReadStatus.id == read_status_id)
@@ -139,7 +142,7 @@ def mark_contents_as_read(
 
 def get_read_content_ids(db: Session, user_id: int) -> list[int]:
     """Return read content ids for a user."""
-    return list(
+    content_ids = (
         db.execute(
             select(ContentReadStatus.content_id)
             .where(ContentReadStatus.user_id == user_id)
@@ -148,6 +151,7 @@ def get_read_content_ids(db: Session, user_id: int) -> list[int]:
         .scalars()
         .all()
     )
+    return [content_id for content_id in content_ids if content_id is not None]
 
 
 def is_content_read(db: Session, content_id: int, user_id: int) -> bool:
@@ -173,7 +177,8 @@ def mark_content_as_unread(db: Session, content_id: int, user_id: int) -> bool:
             )
         )
         db.commit()
-        return bool(result.rowcount)
+        rowcount = getattr(result, "rowcount", 0)
+        return bool(rowcount)
     except Exception as exc:  # noqa: BLE001
         logger.exception(
             "[READ_STATUS] Unexpected error while marking unread",
@@ -192,4 +197,5 @@ def clear_read_status(db: Session, user_id: int) -> int:
     """Clear all read status rows for a user."""
     result = db.execute(delete(ContentReadStatus).where(ContentReadStatus.user_id == user_id))
     db.commit()
-    return int(result.rowcount or 0)
+    rowcount = getattr(result, "rowcount", 0)
+    return int(rowcount or 0)

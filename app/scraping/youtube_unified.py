@@ -8,16 +8,16 @@ from pathlib import Path
 from typing import Any, ClassVar, Final
 
 import yaml
-from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
+from pydantic import BaseModel, Field, HttpUrl, ValidationError, ValidationInfo, field_validator
 
 from app.core.logging import get_logger
 from app.models.metadata import ContentType
 from app.scraping.base import BaseScraper
 
 try:  # pragma: no cover - import guard for optional dependency in tests
-    import yt_dlp  # type: ignore
+    import yt_dlp
 except ImportError:  # pragma: no cover
-    yt_dlp = None  # type: ignore
+    yt_dlp = None
 
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
@@ -72,8 +72,8 @@ class YouTubeChannelConfig(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def ensure_path_components(cls, value: str | None, values: dict[str, Any]) -> str | None:
-        if not value and not values.get("channel_id") and not values.get("playlist_id"):
+    def ensure_path_components(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if not value and not info.data.get("channel_id") and not info.data.get("playlist_id"):
             raise ValueError("Provide either url, channel_id, or playlist_id")
         return value
 
@@ -109,7 +109,7 @@ class YouTubeClientConfig(BaseModel):
     @field_validator("po_token_provider")
     @classmethod
     def normalize_provider(cls, value: str | None) -> str | None:
-        if value in (None, ""):
+        if value is None or value == "":
             return None
         normalized = value.strip().lower()
         if normalized in {"none", "null"}:
@@ -189,6 +189,7 @@ class YouTubeUnifiedScraper(BaseScraper):
 
         self.channels = channels or discovered_channels
         self.client_config = client_config or discovered_client
+        self._cookiefile: str | None
 
         cookies_path = self.client_config.resolved_cookies_path()
         if cookies_path and cookies_path.exists():
@@ -392,14 +393,14 @@ class YouTubeUnifiedScraper(BaseScraper):
             raise
 
     def _passes_filters(self, video_info: dict[str, Any], max_age_days: int | None) -> bool:
-        if max_age_days in (None, 0):
+        if max_age_days is None or max_age_days == 0:
             return True
 
         publication_date = self._extract_publication_datetime(video_info)
         if not publication_date:
             return True
 
-        cutoff = datetime.now(tz=self._utc()) - timedelta(days=max_age_days)
+        cutoff = datetime.now(tz=self._utc()) - timedelta(days=float(max_age_days))
         return publication_date >= cutoff
 
     def _build_scraped_item(
@@ -445,12 +446,15 @@ class YouTubeUnifiedScraper(BaseScraper):
 
     @staticmethod
     def _resolve_video_url(entry: dict[str, Any]) -> str | None:
-        if "webpage_url" in entry:
-            return entry["webpage_url"]
-        if "url" in entry and entry.get("url").startswith("http"):
-            return entry["url"]
-        if entry.get("id"):
-            return f"https://www.youtube.com/watch?v={entry['id']}"
+        webpage_url = entry.get("webpage_url")
+        if isinstance(webpage_url, str) and webpage_url:
+            return webpage_url
+        raw_url = entry.get("url")
+        if isinstance(raw_url, str) and raw_url.startswith("http"):
+            return raw_url
+        entry_id = entry.get("id")
+        if isinstance(entry_id, str) and entry_id:
+            return f"https://www.youtube.com/watch?v={entry_id}"
         return None
 
     @staticmethod

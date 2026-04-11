@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from pydantic import HttpUrl, TypeAdapter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -67,6 +68,7 @@ UNRECOVERABLE_X_REFRESH_ERROR_MARKERS = (
     "X API 400: invalid_client",
     "X API 400: unauthorized_client",
 )
+URL_ADAPTER = TypeAdapter(HttpUrl)
 
 
 @dataclass(frozen=True)
@@ -115,6 +117,20 @@ class XSyncSummary:
 
 class XReauthRequiredError(ValueError):
     """Raised when a stored X connection can no longer be refreshed."""
+
+
+def _require_user_id(user: User) -> int:
+    user_id = user.id
+    if user_id is None:
+        raise ValueError("User is missing an id")
+    return int(user_id)
+
+
+def _require_connection_id(connection: UserIntegrationConnection) -> int:
+    connection_id = connection.id
+    if connection_id is None:
+        raise ValueError("User integration connection is missing an id")
+    return int(connection_id)
 
 
 def normalize_twitter_username(username: str | None) -> str | None:
@@ -182,8 +198,13 @@ def get_x_user_access_token(db: Session, *, user_id: int) -> str | None:
 
 def get_x_connection_view(db: Session, user: User) -> XConnectionView:
     """Build a normalized X connection view for API responses."""
-    connection = _get_connection(db, user_id=user.id)
-    sync_state = _get_sync_state(db, connection_id=connection.id) if connection else None
+    user_id = _require_user_id(user)
+    connection = _get_connection(db, user_id=user_id)
+    sync_state = (
+        _get_sync_state(db, connection_id=_require_connection_id(connection))
+        if connection
+        else None
+    )
     connected = bool(connection and connection.is_active and connection.access_token_encrypted)
 
     return XConnectionView(
@@ -217,7 +238,7 @@ def start_x_oauth(
     if normalized_username is not None:
         user.twitter_username = normalized_username
 
-    connection = _get_or_create_connection(db, user_id=user.id)
+    connection = _get_or_create_connection(db, user_id=_require_user_id(user))
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = _build_pkce_code_challenge(code_verifier)
@@ -250,7 +271,8 @@ def exchange_x_oauth(
     state: str,
 ) -> XConnectionView:
     """Finalize X OAuth code exchange and persist encrypted tokens."""
-    connection = _get_connection(db, user_id=user.id)
+    user_id = _require_user_id(user)
+    connection = _get_connection(db, user_id=user_id)
     if not connection:
         raise ValueError("OAuth flow not initialized. Start OAuth first.")
 
@@ -289,7 +311,7 @@ def exchange_x_oauth(
     if me.username:
         user.twitter_username = normalize_twitter_username(me.username)
 
-    sync_state = _get_or_create_sync_state(db, connection_id=connection.id)
+    sync_state = _get_or_create_sync_state(db, connection_id=_require_connection_id(connection))
     if not sync_state.last_status:
         sync_state.last_status = "connected"
     sync_state.last_error = None
@@ -315,7 +337,7 @@ def exchange_x_oauth(
 
 def disconnect_x_connection(db: Session, *, user: User) -> XConnectionView:
     """Disable an X connection and clear stored tokens."""
-    connection = _get_connection(db, user_id=user.id)
+    connection = _get_connection(db, user_id=_require_user_id(user))
     if connection:
         metadata = dict(connection.connection_metadata or {})
         metadata.pop(OAUTH_PENDING_KEY, None)
@@ -327,7 +349,7 @@ def disconnect_x_connection(db: Session, *, user: User) -> XConnectionView:
         connection.token_expires_at = None
         connection.connection_metadata = metadata
 
-        sync_state = _get_or_create_sync_state(db, connection_id=connection.id)
+        sync_state = _get_or_create_sync_state(db, connection_id=_require_connection_id(connection))
         sync_state.last_status = "disconnected"
         sync_state.last_error = None
         sync_state.last_synced_at = _now_naive_utc()
@@ -342,7 +364,7 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
     if not user:
         raise ValueError(f"User {user_id} not found")
 
-    connection = _get_connection(db, user_id=user.id)
+    connection = _get_connection(db, user_id=_require_user_id(user))
     if not connection or not connection.is_active:
         return XSyncSummary(
             status="not_connected",
@@ -355,7 +377,7 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
             channels={},
         )
 
-    sync_state = _get_or_create_sync_state(db, connection_id=connection.id)
+    sync_state = _get_or_create_sync_state(db, connection_id=_require_connection_id(connection))
     if not force and _should_skip_scheduled_sync(sync_state):
         return XSyncSummary(
             status="skipped_recently",
@@ -529,8 +551,15 @@ def _sync_bookmark_channel(
         result = submit_user_content(
             db,
             SubmitContentRequest(
-                url=canonical_tweet_url(tweet_id),
+                url=URL_ADAPTER.validate_python(canonical_tweet_url(tweet_id)),
+                content_type=None,
+                title=None,
                 platform="twitter",
+                instruction=None,
+                crawl_links=False,
+                subscribe_to_feed=False,
+                share_and_chat=False,
+                save_to_knowledge_and_mark_read=False,
             ),
             user,
             submitted_via="x_bookmarks",
@@ -678,13 +707,14 @@ def _upsert_x_digest_tweet_content(
     filter_decision: XDigestFilterDecision,
     aggregator_metadata: dict[str, Any] | None = None,
 ) -> bool:
+    user_id = _require_user_id(user)
     tweet_url = canonical_tweet_url(tweet.id)
     metadata = _build_digest_tweet_metadata(
         tweet=tweet,
         source_type=source_type,
         source_label=source_label,
         submitted_via=submitted_via,
-        submitted_by_user_id=user.id,
+        submitted_by_user_id=user_id,
         filter_decision=filter_decision,
         aggregator_metadata=aggregator_metadata or {},
     )

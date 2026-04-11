@@ -146,17 +146,14 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
             summary = summary_data.get("hook") or summary_data.get("takeaway", "")
         elif summary_kind == SummaryKind.LONG_EDITORIAL_NARRATIVE:
             summary = summary_data.get("editorial_narrative", "")
-        elif summary_kind == SummaryKind.SHORT_NEWS_DIGEST:
+        elif summary_kind == SummaryKind.SHORT_NEWS:
             summary = summary_data.get("summary", "")
         elif "summary" in summary_data:
             # Legacy fallback when `summary_kind` was not persisted.
             summary = summary_data.get("summary", "")
 
         # Get bullet points / key points
-        if (
-            summary_kind == SummaryKind.LONG_INTERLEAVED
-            and summary_version == SummaryVersion.V2
-        ):
+        if summary_kind == SummaryKind.LONG_INTERLEAVED and summary_version == SummaryVersion.V2:
             bullet_points = summary_data.get("key_points", [])
         else:
             bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])

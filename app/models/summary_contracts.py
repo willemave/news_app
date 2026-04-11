@@ -50,7 +50,7 @@ def infer_summary_kind(summary: Mapping[str, Any] | None) -> SummaryKind | None:
     if "bullet_points" in summary:
         return SummaryKind.LONG_BULLETS
     if "summary" in summary:
-        return SummaryKind.SHORT_NEWS_DIGEST
+        return SummaryKind.SHORT_NEWS
     return None
 
 

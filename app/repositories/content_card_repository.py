@@ -41,9 +41,7 @@ def list_contents(
         )
         available_dates_query = available_dates_query.filter(sort_expr >= lookback_start)
         available_dates_query = (
-            available_dates_query.distinct()
-            .order_by(func.date(sort_expr).desc())
-            .limit(90)
+            available_dates_query.distinct().order_by(func.date(sort_expr).desc()).limit(90)
         )
         for row in available_dates_query.all():
             if not row.date:
@@ -81,7 +79,7 @@ def search_contents(
     query_text: str,
     content_type: str,
     search_backend,
-    cursor: tuple[int | None, object | None, float | None],
+    cursor: tuple[int | None, datetime | None, float | None],
     limit: int,
     offset: int,
 ):
@@ -151,7 +149,7 @@ def get_recently_read(
     *,
     user_id: int,
     last_id: int | None,
-    last_read_at,
+    last_read_at: datetime | None,
     limit: int,
 ):
     """Return recently-read card rows ordered by read timestamp."""
@@ -166,9 +164,7 @@ def get_recently_read(
             )
         )
     return (
-        query.order_by(ContentReadStatus.read_at.desc(), Content.id.desc())
-        .limit(limit + 1)
-        .all()
+        query.order_by(ContentReadStatus.read_at.desc(), Content.id.desc()).limit(limit + 1).all()
     )
 
 

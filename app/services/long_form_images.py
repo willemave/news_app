@@ -22,6 +22,20 @@ LONG_FORM_IMAGE_CONTENT_TYPES = {
 }
 
 
+def _require_content_id(content: Content) -> int:
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return content_id
+
+
+def _require_task_id(task: ProcessingTask) -> int:
+    task_id = task.id
+    if task_id is None:
+        raise ValueError("Processing task must be persisted before use")
+    return task_id
+
+
 class QueueEnqueuer(Protocol):
     """Protocol for queue services used in tests and production."""
 
@@ -85,7 +99,7 @@ def is_visible_long_form_image_candidate(db: Session, content: Content) -> bool:
         return False
     if content.classification == "skip":
         return False
-    if not is_visible_in_any_long_form_inbox(db, content.id):
+    if not is_visible_in_any_long_form_inbox(db, _require_content_id(content)):
         return False
     if not has_summary_for_generated_image(content):
         return False
@@ -110,13 +124,13 @@ def enqueue_visible_long_form_image_if_needed(
         return None
     if has_generated_long_form_image(content):
         return None
-    if has_active_generate_image_task(db, content.id):
+    if has_active_generate_image_task(db, _require_content_id(content)):
         return None
 
     effective_queue_service = queue_service or QueueService()
     return effective_queue_service.enqueue(
         task_type=TaskType.GENERATE_IMAGE,
-        content_id=content.id,
+        content_id=_require_content_id(content),
     )
 
 
@@ -186,13 +200,13 @@ def list_ineligible_pending_generate_image_task_ids(
 
     for task in tasks:
         if task.content_id is None:
-            canceled_ids.append(task.id)
+            canceled_ids.append(_require_task_id(task))
             continue
 
         content = db.query(Content).filter(Content.id == task.content_id).first()
         if content and is_visible_long_form_image_candidate(db, content):
             continue
 
-        canceled_ids.append(task.id)
+        canceled_ids.append(_require_task_id(task))
 
     return canceled_ids

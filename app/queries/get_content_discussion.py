@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -17,10 +19,12 @@ from app.repositories.content_detail_repository import (
     get_content_discussion as get_content_discussion_repository,
 )
 
+DiscussionMode = Literal["none", "comments", "discussion_list"]
+
 
 def _discussion_mode_has_renderable_content(
     *,
-    mode: str,
+    mode: DiscussionMode,
     comments: list[DiscussionCommentResponse],
     discussion_groups: list[DiscussionGroupResponse],
     links: list[DiscussionLinkResponse],
@@ -34,7 +38,7 @@ def _discussion_mode_has_renderable_content(
 
 def _infer_discussion_status(
     *,
-    mode: str,
+    mode: DiscussionMode,
     comments: list[DiscussionCommentResponse],
     discussion_groups: list[DiscussionGroupResponse],
     links: list[DiscussionLinkResponse],
@@ -62,7 +66,7 @@ def build_discussion_response(
     discussion_url: str | None,
     platform: str | None,
     discussion_row: ContentDiscussion | None,
-    discussion_data: dict | None = None,
+    discussion_data: dict[str, Any] | None = None,
     status: str | None = None,
     error_message: str | None = None,
     fetched_at: str | None = None,
@@ -89,8 +93,9 @@ def build_discussion_response(
         data = row_data if isinstance(row_data, dict) else {}
     if data is None:
         data = {}
-    mode = (
-        data.get("mode") if data.get("mode") in {"none", "comments", "discussion_list"} else "none"
+    raw_mode = data.get("mode")
+    mode: DiscussionMode = (
+        raw_mode if raw_mode in {"none", "comments", "discussion_list"} else "none"
     )
 
     comments: list[DiscussionCommentResponse] = []
@@ -173,11 +178,15 @@ def build_discussion_response(
             )
         )
     )
+    if resolved_status is None:
+        resolved_status = "not_ready"
     resolved_fetched_at = (
         discussion_row.fetched_at.isoformat()
         if discussion_row and discussion_row.fetched_at
         else fetched_at
     )
+    raw_stats = data.get("stats")
+    stats: dict[str, Any] = raw_stats if isinstance(raw_stats, dict) else {}
     return ContentDiscussionResponse(
         content_id=content_id,
         status=resolved_status,
@@ -190,7 +199,7 @@ def build_discussion_response(
         comments=comments,
         discussion_groups=groups,
         links=links,
-        stats=data.get("stats") if isinstance(data.get("stats"), dict) else {},
+        stats=stats,
     )
 
 

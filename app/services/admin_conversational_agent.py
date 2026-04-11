@@ -162,6 +162,14 @@ def build_health_flags() -> dict[str, Any]:
     }
 
 
+def _require_content_id(content: Content) -> int:
+    """Return a persisted content ID or raise."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return content_id
+
+
 def create_or_get_session_state(session_id: str | None, user_id: int) -> SessionState:
     """Create or load a session state entry from the in-memory store.
 
@@ -284,8 +292,7 @@ def search_knowledge(
         .filter(ContentKnowledgeSave.user_id == user_id)
     )
     rows = (
-        base_query
-        .filter(
+        base_query.filter(
             or_(
                 Content.title.ilike(pattern),
                 Content.source.ilike(pattern),
@@ -298,12 +305,7 @@ def search_knowledge(
         .all()
     )
     if not rows:
-        rows = (
-            base_query
-            .order_by(ContentKnowledgeSave.saved_at.desc())
-            .limit(max_hits)
-            .all()
-        )
+        rows = base_query.order_by(ContentKnowledgeSave.saved_at.desc()).limit(max_hits).all()
 
     hits: list[KnowledgeHit] = []
     for content in rows:
@@ -312,7 +314,7 @@ def search_knowledge(
         transcript_excerpt = _extract_transcript_excerpt(metadata)
         hits.append(
             KnowledgeHit(
-                content_id=int(content.id),
+                content_id=_require_content_id(content),
                 title=str(content.title or "Untitled"),
                 url=str(content.url or ""),
                 source=str(content.source) if content.source else None,
@@ -758,13 +760,13 @@ def _build_turn_context(
     if not web_hits:
         lines.append("- none")
     else:
-        for idx, hit in enumerate(web_hits, start=1):
-            lines.append(f"- [{idx}] {hit.title}")
-            lines.append(f"  url={hit.url}")
-            if hit.published_date:
-                lines.append(f"  published_date={hit.published_date}")
-            if hit.snippet:
-                lines.append(f"  snippet={hit.snippet}")
+        for idx, web_hit in enumerate(web_hits, start=1):
+            lines.append(f"- [{idx}] {web_hit.title}")
+            lines.append(f"  url={web_hit.url}")
+            if web_hit.published_date:
+                lines.append(f"  published_date={web_hit.published_date}")
+            if web_hit.snippet:
+                lines.append(f"  snippet={web_hit.snippet}")
 
     context = "\n".join(lines).strip()
     if len(context) > MAX_CONTEXT_CHARS:
@@ -820,7 +822,7 @@ def _build_local_knowledge_response(
         summary = f" Summary: {hit.summary}" if hit.summary else ""
         return (
             "Your most recent saved knowledge item in this result set is "
-            f"\"{hit.title}\" ({hit.url})."
+            f'"{hit.title}" ({hit.url}).'
             f"{summary}"
         )
 

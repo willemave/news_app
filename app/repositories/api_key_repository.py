@@ -65,7 +65,7 @@ def find_active_api_key_by_token(db: Session, *, raw_key: str) -> UserApiKey | N
         .all()
     )
     for candidate in candidates:
-        if verify_api_key_hash(raw_key, candidate.key_hash):
+        if candidate.key_hash is not None and verify_api_key_hash(raw_key, candidate.key_hash):
             return candidate
     return None
 

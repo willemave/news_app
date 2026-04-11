@@ -109,7 +109,7 @@ class HttpService:
             "Connection": "keep-alive",
         }
 
-    def get_client(self, url: str = None) -> httpx.Client:
+    def get_client(self, url: str | None = None) -> httpx.Client:
         """Get an HTTP client with appropriate SSL settings."""
         # Determine SSL verification settings
         verify_ssl = True
@@ -370,6 +370,7 @@ class HttpService:
 
                 # Try to decode as text
                 content_type = response.headers.get("Content-Type", "")
+                content: str | bytes
                 if "text" in content_type or "html" in content_type or "xml" in content_type:
                     content = response.text
                 else:

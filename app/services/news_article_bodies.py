@@ -78,7 +78,10 @@ def persist_news_item_article_body(
     storage_gateway = gateway or get_object_storage_gateway()
     encoded = cleaned.encode("utf-8")
     digest = hashlib.sha256(encoded).hexdigest()
-    storage_key = _build_news_item_storage_key(news_item_id=int(news_item.id), sha256=digest)
+    news_item_id = news_item.id
+    if news_item_id is None:
+        raise ValueError("News item must have an id before persisting article body")
+    storage_key = _build_news_item_storage_key(news_item_id=int(news_item_id), sha256=digest)
     stored = storage_gateway.put_text(
         key=storage_key,
         text=cleaned,

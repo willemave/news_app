@@ -13,16 +13,13 @@ def extract_short_summary(summary: dict[str, Any] | str | None) -> str | None:
         return None
 
     overview = summary.get("overview")
-    if overview:
+    if isinstance(overview, str) and overview:
         return overview
 
     if summary.get("summary_type") == "interleaved":
         hook = summary.get("hook") or summary.get("takeaway")
-        if hook:
+        if isinstance(hook, str) and hook:
             return hook
-
-    if summary.get("summary_type") == "news_digest":
-        return summary.get("summary") or summary.get("overview")
 
     if summary.get("editorial_narrative"):
         narrative = summary.get("editorial_narrative")
@@ -33,14 +30,17 @@ def extract_short_summary(summary: dict[str, Any] | str | None) -> str | None:
     points = summary.get("points")
     if isinstance(points, list) and points:
         first_point = points[0] if isinstance(points[0], dict) else None
-        if first_point and first_point.get("text"):
-            return first_point.get("text")
+        if first_point:
+            point_text = first_point.get("text")
+            if isinstance(point_text, str) and point_text:
+                return point_text
 
-    if summary.get("summary"):
-        return summary.get("summary")
+    summary_text = summary.get("summary")
+    if isinstance(summary_text, str) and summary_text:
+        return summary_text
 
     hook = summary.get("hook") or summary.get("takeaway")
-    if hook:
+    if isinstance(hook, str) and hook:
         return hook
 
     return None

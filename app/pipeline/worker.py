@@ -1,8 +1,9 @@
 import asyncio
+import inspect
 import re
 from datetime import UTC, datetime
 from html import unescape
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.exc import IntegrityError
 
@@ -793,7 +794,7 @@ class ContentWorker:
             )
             return
 
-        content.url = canonical_url
+        content.url = cast(Any, canonical_url)
 
     def _handle_canonical_integrity_conflict(
         self,
@@ -945,20 +946,26 @@ class ContentWorker:
         processed_url = strategy.preprocess_url(target_url)
 
         try:
-            if asyncio.iscoroutinefunction(strategy.download_content):
-                raw_content = asyncio.run(strategy.download_content(processed_url))
+            download_result = strategy.download_content(processed_url)
+            raw_content: Any
+            if inspect.isawaitable(download_result):
+                raw_content = asyncio.run(download_result)
             else:
-                raw_content = strategy.download_content(processed_url)
+                raw_content = download_result
 
-            if asyncio.iscoroutinefunction(strategy.extract_data):
-                extracted_data = asyncio.run(strategy.extract_data(raw_content, processed_url))
+            extract_result = strategy.extract_data(raw_content, processed_url)
+            extracted_data: dict[str, Any]
+            if inspect.isawaitable(extract_result):
+                extracted_data = asyncio.run(extract_result)
             else:
-                extracted_data = strategy.extract_data(raw_content, processed_url)
+                extracted_data = cast(dict[str, Any], extract_result)
 
-            if asyncio.iscoroutinefunction(strategy.prepare_for_llm):
-                llm_data = asyncio.run(strategy.prepare_for_llm(extracted_data)) or {}
+            llm_result = strategy.prepare_for_llm(extracted_data)
+            llm_data: dict[str, Any]
+            if inspect.isawaitable(llm_result):
+                llm_data = asyncio.run(llm_result) or {}
             else:
-                llm_data = strategy.prepare_for_llm(extracted_data) or {}
+                llm_data = cast(dict[str, Any], llm_result) or {}
         except NonRetryableError as exc:
             logger.warning("Non-retryable YouTube extraction error for %s: %s", processed_url, exc)
             self._mark_non_retryable_failure(content, str(exc))

@@ -20,6 +20,13 @@ def execute(
         user_id=user_id,
         created_by_admin_user_id=created_by_admin_user_id,
     )
+    if (
+        record.id is None
+        or record.user_id is None
+        or record.key_prefix is None
+        or record.created_at is None
+    ):
+        raise ValueError("Created API key record is missing required fields")
     summary = ApiKeySummaryResponse(
         id=record.id,
         user_id=record.user_id,

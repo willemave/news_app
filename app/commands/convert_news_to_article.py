@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -121,13 +123,18 @@ def execute(db: Session, *, content_id: int, user_id: int) -> ConvertNewsRespons
         article_url = normalize_http_url(article_meta.get("url"))
     if not is_http_url(article_url):
         raise HTTPException(status_code=400, detail="No article URL found in news metadata")
+    canonical_article_url = cast(str, article_url)
 
+    title = article_meta.get("title") if isinstance(article_meta, dict) else None
+    source = article_meta.get("source_domain") if isinstance(article_meta, dict) else None
     article, already_exists = convert_article_url_to_content(
         db,
-        article_url=article_url,
-        title=article_meta.get("title"),
-        source=article_meta.get("source_domain"),
+        article_url=canonical_article_url,
+        title=title if isinstance(title, str) else None,
+        source=source if isinstance(source, str) else None,
     )
+    if article.id is None:
+        raise HTTPException(status_code=500, detail="Article record missing id")
     ensure_article_saved_to_knowledge(db, user_id=user_id, content_id=article.id)
 
     return ConvertNewsResponse(

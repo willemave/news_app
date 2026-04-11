@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import traceback
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from datetime import UTC, datetime
@@ -133,14 +134,14 @@ def _record_has_structured_fields(record: logging.LogRecord) -> bool:
     return bool(_extract_extra_fields(record))
 
 
-def bind_log_context(**context: Any) -> Token:
+def bind_log_context(**context: Any) -> Token[dict[str, Any] | None]:
     """Bind structured log context for the current execution scope."""
     current = dict(_LOG_CONTEXT.get() or {})
     current.update({key: value for key, value in context.items() if value is not None})
     return _LOG_CONTEXT.set(current)
 
 
-def reset_log_context(token: Token) -> None:
+def reset_log_context(token: Token[dict[str, Any] | None]) -> None:
     """Restore the previous structured log context."""
     _LOG_CONTEXT.reset(token)
 
@@ -156,7 +157,7 @@ def get_log_context() -> dict[str, Any]:
 
 
 @contextmanager
-def scoped_log_context(**context: Any):
+def scoped_log_context(**context: Any) -> Iterator[None]:
     """Temporarily bind structured logging context for the current scope."""
     token = bind_log_context(**context)
     try:

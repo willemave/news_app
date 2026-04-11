@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 class ScraperRunner:
     """Manages and runs all scrapers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.scrapers: list[BaseScraper] = [
             HackerNewsUnifiedScraper(),
             RedditUnifiedScraper(),

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from sqlalchemy.orm import Session
 
 from app.models.schema import Content, ContentBody, ContentDiscussion
@@ -11,11 +13,14 @@ from app.repositories.content_repository import build_visibility_context
 def get_content_detail(db: Session, *, user_id: int, content_id: int):
     """Return detail row with read and knowledge-save flags."""
     context = build_visibility_context(user_id)
+    is_read_expr = cast(Any, context.is_read).label("is_read")
+    is_saved_expr = cast(Any, context.is_saved_to_knowledge).label("is_saved_to_knowledge")
+    inbox_expr = cast(Any, context.is_in_inbox)
     return (
         db.query(
             Content,
-            context.is_read.label("is_read"),
-            context.is_saved_to_knowledge.label("is_saved_to_knowledge"),
+            is_read_expr,
+            is_saved_expr,
             ContentBody.content_id.is_not(None).label("body_available"),
             ContentBody.content_format.label("body_format"),
         )
@@ -26,7 +31,7 @@ def get_content_detail(db: Session, *, user_id: int, content_id: int):
         .filter(
             Content.id == content_id,
             Content.status == "completed",
-            context.is_in_inbox,
+            inbox_expr,
             (Content.classification != "skip") | (Content.classification.is_(None)),
         )
         .first()
@@ -36,12 +41,13 @@ def get_content_detail(db: Session, *, user_id: int, content_id: int):
 def get_visible_content(db: Session, *, user_id: int, content_id: int):
     """Return one visible content row for the given user."""
     context = build_visibility_context(user_id)
+    inbox_expr = cast(Any, context.is_in_inbox)
     return (
         db.query(Content)
         .filter(
             Content.id == content_id,
             Content.status == "completed",
-            context.is_in_inbox,
+            inbox_expr,
             (Content.classification != "skip") | (Content.classification.is_(None)),
         )
         .first()

@@ -1,5 +1,5 @@
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import uuid4
@@ -78,7 +78,9 @@ app = FastAPI(
 
 
 # Exception handlers
-def _serialize_validation_errors(errors: list) -> list:
+def _serialize_validation_errors(
+    errors: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
     """Convert validation errors to JSON-serializable format."""
     serialized = []
     for error in errors:

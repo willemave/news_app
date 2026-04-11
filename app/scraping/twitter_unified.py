@@ -38,7 +38,7 @@ RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
 class TwitterUnifiedScraper(BaseScraper):
     """Playwright-based Twitter scraper for lists and searches."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Twitter")
         self.config = self._load_config()
         self.settings = self.config.get("settings", {})
@@ -388,12 +388,12 @@ class TwitterUnifiedScraper(BaseScraper):
 
         logger.info(f"Scraping Twitter list with Playwright: {list_name} ({list_id})")
 
-        tweets = []
+        tweets: list[dict[str, Any]] = []
         cutoff_time = datetime.now(UTC) - timedelta(hours=hours_back)
 
         try:
             with sync_playwright() as pw:
-                browser_args = {"headless": True}
+                browser_args: dict[str, Any] = {"headless": True}
                 if self.proxy:
                     browser_args["proxy"] = {"server": self.proxy}
 

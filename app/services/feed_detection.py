@@ -213,7 +213,7 @@ def extract_feed_links(html_content: str, page_url: str) -> list[dict[str, str]]
             {
                 "feed_url": feed_url,
                 "feed_format": feed_format,
-                "title": title,
+                "title": title or "",
             }
         )
 
@@ -245,7 +245,7 @@ def extract_feed_links_from_anchors(html_content: str, page_url: str) -> list[di
             {
                 "feed_url": feed_url,
                 "feed_format": feed_format,
-                "title": anchor_text_raw or None,
+                "title": anchor_text_raw or "",
             }
         )
 
@@ -655,7 +655,7 @@ class FeedDetector:
         return {
             "feed_url": normalized_feed_url,
             "feed_format": feed_format,
-            "title": title,
+            "title": title or "",
         }
 
     def validate_feed_url(self, feed_url: str) -> dict[str, str] | None:
@@ -684,7 +684,7 @@ class FeedDetector:
                 {
                     "feed_url": result["feed_url"],
                     "feed_format": feed_link.get("feed_format") or result["feed_format"],
-                    "title": feed_link.get("title") or result.get("title"),
+                    "title": feed_link.get("title") or result.get("title") or "",
                 }
             )
             break

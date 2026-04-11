@@ -16,6 +16,13 @@ from app.queries import get_knowledge_library as get_knowledge_library_query
 router = APIRouter()
 
 
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
+
+
 @router.post(
     "/{content_id}/knowledge",
     summary="Save content to knowledge",
@@ -32,7 +39,11 @@ async def save_to_knowledge(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict:
     """Save content to the authenticated user's knowledge library."""
-    return save_to_knowledge_command.execute(db, user_id=current_user.id, content_id=content_id)
+    return save_to_knowledge_command.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        content_id=content_id,
+    )
 
 
 @router.delete(
@@ -53,7 +64,7 @@ async def remove_from_knowledge(
     """Remove content from the authenticated user's knowledge library."""
     return remove_from_knowledge_command.execute(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         content_id=content_id,
     )
 
@@ -79,7 +90,7 @@ async def get_knowledge_library(
     """Get all knowledge-saved content with cursor-based pagination."""
     return get_knowledge_library_query.execute(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         cursor=cursor,
         limit=limit,
     )

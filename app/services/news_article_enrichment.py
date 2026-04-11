@@ -50,6 +50,14 @@ def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _require_content_id(content: Content) -> int:
+    """Return a persisted content ID or raise."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return content_id
+
+
 def _clean_string(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -207,7 +215,7 @@ def enrich_news_item_article(
         if text:
             raw_metadata[NEWS_ARTICLE_BODY_REF_KEY] = {
                 "kind": "content",
-                "content_id": int(existing_article.id),
+                "content_id": _require_content_id(existing_article),
                 "variant": "source",
                 "source_url": article_url,
                 "updated_at": _utcnow_naive().isoformat(),
@@ -291,9 +299,10 @@ def enrich_news_item_article(
         if source_text is None:
             raise ValueError("Article extraction did not yield content_to_summarize")
 
-        final_url = normalize_http_url(
-            extracted_data.get("final_url_after_redirects") or processed_url
-        ) or article_url
+        final_url = (
+            normalize_http_url(extracted_data.get("final_url_after_redirects") or processed_url)
+            or article_url
+        )
         raw_metadata[NEWS_ARTICLE_BODY_REF_KEY] = persist_news_item_article_body(
             db,
             news_item=item,

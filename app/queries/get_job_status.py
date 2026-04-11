@@ -14,6 +14,8 @@ def execute(db: Session, *, job_id: int) -> JobStatusResponse:
     task = db.query(ProcessingTask).filter(ProcessingTask.id == job_id).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    if task.id is None or task.task_type is None or task.status is None or task.queue_name is None:
+        raise HTTPException(status_code=500, detail="Job row is missing required fields")
     return JobStatusResponse(
         id=task.id,
         task_type=task.task_type,

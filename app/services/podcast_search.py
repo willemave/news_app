@@ -6,6 +6,7 @@ import hashlib
 import re
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -77,6 +78,8 @@ PROVIDER_ORDER = (
     "podcast_index",
     "exa",
 )
+RequestParamScalar = str | int | float | bool | None
+RequestParams = Mapping[str, RequestParamScalar | Sequence[RequestParamScalar]]
 
 
 @dataclass(frozen=True)
@@ -174,9 +177,7 @@ def _write_cached_results(query: str, limit: int, hits: list[PodcastEpisodeSearc
         _SEARCH_CACHE[cache_key] = (time.time(), list(hits))
 
 
-def _run_provider(
-    provider_name: str, query: str, limit: int
-) -> list[PodcastEpisodeSearchHit]:
+def _run_provider(provider_name: str, query: str, limit: int) -> list[PodcastEpisodeSearchHit]:
     if _is_provider_open(provider_name):
         logger.debug(
             "Skipping provider due to open circuit",
@@ -360,7 +361,8 @@ def _search_listen_notes(query: str, limit: int) -> list[PodcastEpisodeSearchHit
         if not episode_url:
             continue
 
-        podcast = item.get("podcast") if isinstance(item.get("podcast"), dict) else {}
+        podcast_value = item.get("podcast")
+        podcast = podcast_value if isinstance(podcast_value, dict) else {}
         podcast_title = _string_or_none(podcast.get("title_original"))
         source = _string_or_none(podcast.get("publisher")) or _source_from_url(episode_url)
         feed_url = _normalize_http_url(
@@ -409,7 +411,8 @@ def _search_spotify(query: str, limit: int) -> list[PodcastEpisodeSearchHit]:
         episode_url = _normalize_http_url(_nested_string(item, "external_urls", "spotify"))
         if not episode_url:
             continue
-        show = item.get("show") if isinstance(item.get("show"), dict) else {}
+        show_value = item.get("show")
+        show = show_value if isinstance(show_value, dict) else {}
         release_date = _string_or_none(item.get("release_date"))
         release_precision = _string_or_none(item.get("release_date_precision"))
         published_at = _spotify_release_to_iso(release_date, release_precision)
@@ -433,7 +436,7 @@ def _search_spotify(query: str, limit: int) -> list[PodcastEpisodeSearchHit]:
 
 def _spotify_search(token: str, query: str, limit: int) -> dict[str, object] | None:
     settings = get_settings()
-    params: dict[str, object] = {"q": query, "type": "episode", "limit": limit}
+    params: dict[str, RequestParamScalar] = {"q": query, "type": "episode", "limit": limit}
     if settings.spotify_market:
         params["market"] = settings.spotify_market
 
@@ -504,7 +507,7 @@ def _clear_spotify_token() -> None:
 
 def _search_apple_itunes(query: str, limit: int) -> list[PodcastEpisodeSearchHit]:
     settings = get_settings()
-    params: dict[str, object] = {
+    params: dict[str, RequestParamScalar] = {
         "term": query,
         "media": "podcast",
         "entity": "podcastEpisode",
@@ -605,7 +608,7 @@ def _search_podcast_index(query: str, limit: int) -> list[PodcastEpisodeSearchHi
     return hits
 
 
-def _podcast_index_request(path: str, params: dict[str, object]) -> dict[str, object]:
+def _podcast_index_request(path: str, params: RequestParams) -> dict[str, object]:
     settings = get_settings()
     timestamp = str(int(time.time()))
     auth = hashlib.sha1(
@@ -656,7 +659,7 @@ def _search_exa(query: str, limit: int) -> list[PodcastEpisodeSearchHit]:
 
 
 def _http_get_json(
-    url: str, params: dict[str, object] | None = None, headers: dict[str, str] | None = None
+    url: str, params: RequestParams | None = None, headers: dict[str, str] | None = None
 ) -> dict[str, object]:
     settings = get_settings()
     timeout = settings.podcast_search_provider_timeout_seconds
@@ -769,6 +772,8 @@ def _nested_string(payload: dict[str, object], *keys: str) -> str | None:
 
 
 def _iso_from_millis(value: object) -> str | None:
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
+        return None
     try:
         millis = int(value)
     except (TypeError, ValueError):
@@ -777,6 +782,8 @@ def _iso_from_millis(value: object) -> str | None:
 
 
 def _iso_from_epoch_seconds(value: object) -> str | None:
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
+        return None
     try:
         seconds = int(value)
     except (TypeError, ValueError):

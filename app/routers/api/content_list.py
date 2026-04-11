@@ -7,8 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
-from app.models.user import User
-from app.queries import list_content_cards, search_content_cards
 from app.models.api.common import (
     ContentListResponse,
     MixedSearchFeedResultResponse,
@@ -16,10 +14,19 @@ from app.models.api.common import (
     PodcastEpisodeSearchResponse,
     PodcastEpisodeSearchResultResponse,
 )
+from app.models.user import User
+from app.queries import list_content_cards, search_content_cards
 from app.services.assistant_feed_finder import find_feed_options
 from app.services.podcast_search import search_podcast_episodes
 
 router = APIRouter()
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
 
 
 @router.get(
@@ -76,10 +83,11 @@ def list_contents(
     ] = True,
 ) -> ContentListResponse:
     """List content with optional filters and cursor-based pagination."""
+    user_id = _require_user_id(current_user)
     try:
         return list_content_cards.execute(
             db,
-            user_id=current_user.id,
+            user_id=user_id,
             content_type=content_type,
             date=date,
             read_filter=read_filter,
@@ -122,9 +130,10 @@ def search_contents(
     ),
 ) -> ContentListResponse:
     """Search content with portable SQL patterns and cursor-based pagination."""
+    user_id = _require_user_id(current_user)
     return search_content_cards.execute(
         db,
-        user_id=current_user.id,
+        user_id=user_id,
         q=q,
         content_type=type,
         limit=limit,
@@ -151,9 +160,10 @@ def search_mixed_contents(
     limit: int = Query(10, ge=1, le=25, description="Max results per section"),
 ) -> MixedSearchResponse:
     """Search local content plus external feed/source and podcast sections."""
+    user_id = _require_user_id(current_user)
     local_results = search_content_cards.execute(
         db,
-        user_id=current_user.id,
+        user_id=user_id,
         q=q,
         content_type="all",
         limit=limit,

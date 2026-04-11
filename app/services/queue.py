@@ -27,7 +27,7 @@ TASK_QUEUE_BY_TYPE: dict[TaskType, TaskQueue] = {
     TaskType.FETCH_DISCUSSION: TaskQueue.CONTENT,
     TaskType.GENERATE_IMAGE: TaskQueue.IMAGE,
     TaskType.DISCOVER_FEEDS: TaskQueue.CONTENT,
-    TaskType.GENERATE_NEWS_DIGEST: TaskQueue.CONTENT,
+    TaskType.GENERATE_AGENT_DIGEST: TaskQueue.CONTENT,
     TaskType.ONBOARDING_DISCOVER: TaskQueue.ONBOARDING,
     TaskType.DIG_DEEPER: TaskQueue.CHAT,
     TaskType.SYNC_INTEGRATION: TaskQueue.TWITTER,
@@ -223,6 +223,9 @@ class QueueService:
                     .first()
                 )
                 if existing_task:
+                    existing_task_id = existing_task.id
+                    if existing_task_id is None:
+                        raise ValueError("Existing processing task is missing an id")
                     logger.info(
                         "Reusing existing task",
                         extra=build_log_extra(
@@ -230,13 +233,13 @@ class QueueService:
                             operation="enqueue",
                             event_name="task.reused",
                             status="completed",
-                            task_id=int(existing_task.id),
+                            task_id=int(existing_task_id),
                             task_type=task_type.value,
                             queue_name=target_queue,
                             content_id=content_id,
                         ),
                     )
-                    return existing_task.id
+                    return int(existing_task_id)
 
             task = ProcessingTask(
                 task_type=task_type.value,
@@ -249,7 +252,10 @@ class QueueService:
             )
             db.add(task)
             db.flush()
-            task_id = int(task.id)
+            task_row_id = task.id
+            if task_row_id is None:
+                raise ValueError("Processing task insert did not produce an id")
+            task_id = int(task_row_id)
 
             notification_payload = json.dumps(
                 {
@@ -717,8 +723,8 @@ class QueueService:
         pending_process_news_item = int(
             content_pending_by_type.get(TaskType.PROCESS_NEWS_ITEM.value, 0)
         )
-        pending_generate_news_digest = int(
-            content_pending_by_type.get(TaskType.GENERATE_NEWS_DIGEST.value, 0)
+        pending_generate_agent_digest = int(
+            content_pending_by_type.get(TaskType.GENERATE_AGENT_DIGEST.value, 0)
         )
         reasons: list[str] = []
         if content_pending >= settings.queue_backpressure_max_pending_content:
@@ -726,25 +732,25 @@ class QueueService:
         if pending_process_news_item >= settings.queue_backpressure_max_pending_process_news_item:
             reasons.append("process_news_item_backlog")
         if (
-            pending_generate_news_digest
-            >= settings.queue_backpressure_max_pending_generate_news_digest
+            pending_generate_agent_digest
+            >= settings.queue_backpressure_max_pending_generate_agent_digest
         ):
-            reasons.append("generate_news_digest_backlog")
+            reasons.append("generate_agent_digest_backlog")
         return {
             "should_throttle": bool(reasons),
             "reasons": reasons,
             "counts": {
                 "pending_content": content_pending,
                 "pending_process_news_item": pending_process_news_item,
-                "pending_generate_news_digest": pending_generate_news_digest,
+                "pending_generate_agent_digest": pending_generate_agent_digest,
             },
             "thresholds": {
                 "pending_content": settings.queue_backpressure_max_pending_content,
                 "pending_process_news_item": (
                     settings.queue_backpressure_max_pending_process_news_item
                 ),
-                "pending_generate_news_digest": (
-                    settings.queue_backpressure_max_pending_generate_news_digest
+                "pending_generate_agent_digest": (
+                    settings.queue_backpressure_max_pending_generate_agent_digest
                 ),
             },
         }

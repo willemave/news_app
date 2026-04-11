@@ -9,12 +9,19 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_readonly_db_session
 from app.core.deps import get_current_user
+from app.models.api.common import NarrationResponse
 from app.models.user import User
 from app.queries import get_narration as get_narration_query
-from app.models.api.common import NarrationResponse
 from app.services.voice.narration_tts import get_digest_narration_tts_service
 
 router = APIRouter()
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
 
 
 def _prefers_audio(request: Request) -> bool:
@@ -49,7 +56,7 @@ def get_narration(
     """Return narration text or MP3 audio for one target."""
     payload = get_narration_query.execute(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         target_type=target_type,
         target_id=target_id,
     )

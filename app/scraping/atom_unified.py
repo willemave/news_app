@@ -116,7 +116,7 @@ class AtomScraper(BaseScraper):
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured Atom feeds with comprehensive error logging."""
-        items = []
+        items: list[dict[str, Any]] = []
 
         feeds = self._load_feeds()
         if not feeds:

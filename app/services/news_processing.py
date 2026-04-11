@@ -9,7 +9,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.constants import SUMMARY_KIND_SHORT_NEWS_DIGEST, SUMMARY_VERSION_V1
+from app.constants import SUMMARY_KIND_SHORT_NEWS, SUMMARY_VERSION_V1
 from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus
 from app.models.metadata import NewsSummary
@@ -43,6 +43,14 @@ def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def _require_news_item_id(item: NewsItem) -> int:
+    """Return a persisted news-item ID or raise."""
+    news_item_id = item.id
+    if news_item_id is None:
+        raise ValueError("News item must be persisted before use")
+    return news_item_id
+
+
 def _clean_string(value: Any) -> str | None:
     if not isinstance(value, str):
         return None
@@ -73,16 +81,15 @@ def _has_materialized_summary(
     return bool(key_points or summary_text)
 
 
-def _is_generated_news_digest(raw_metadata: dict[str, Any]) -> bool:
-    return (
-        raw_metadata.get("summary_kind") == SUMMARY_KIND_SHORT_NEWS_DIGEST
-        and raw_metadata.get("summary_version") == SUMMARY_VERSION_V1
-    )
-
-
 def _extract_existing_summary(item: NewsItem) -> NewsSummary | None:
     raw_metadata = dict(item.raw_metadata or {})
-    if not _is_generated_news_digest(raw_metadata):
+    if raw_metadata.get("summary_kind") == SUMMARY_KIND_SHORT_NEWS:
+        has_generated_summary = raw_metadata.get("summary_version") == SUMMARY_VERSION_V1
+    else:
+        has_generated_summary = raw_metadata.get(
+            "summary_version"
+        ) == SUMMARY_VERSION_V1 and isinstance(raw_metadata.get("summary"), dict)
+    if not has_generated_summary:
         return None
 
     item_key_points = _normalize_key_points(item.summary_key_points)
@@ -121,8 +128,8 @@ def _extract_discussion_snippets(raw_metadata: dict[str, Any]) -> list[str]:
         return []
     compact_comments = discussion.get("compact_comments")
     if isinstance(compact_comments, list):
-        snippets = [_clean_string(comment) for comment in compact_comments]
-        return [snippet for snippet in snippets if snippet][:MAX_DISCUSSION_SNIPPETS]
+        compact_snippets = [_clean_string(comment) for comment in compact_comments]
+        return [snippet for snippet in compact_snippets if snippet][:MAX_DISCUSSION_SNIPPETS]
 
     comments = discussion.get("comments")
     if not isinstance(comments, list):
@@ -223,7 +230,7 @@ def _persist_summary(item: NewsItem, summary: NewsSummary, raw_metadata: dict[st
     if resolved_title:
         raw_summary["title"] = resolved_title
     raw_metadata["summary"] = raw_summary
-    raw_metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS_DIGEST
+    raw_metadata["summary_kind"] = SUMMARY_KIND_SHORT_NEWS
     raw_metadata["summary_version"] = SUMMARY_VERSION_V1
     item.raw_metadata = raw_metadata
     item.status = NewsItemStatus.READY.value
@@ -244,7 +251,7 @@ def _finalize_processed_item(
         if target is None:
             raise ValueError(f"News item {item.id} not found")
         _persist_summary(target, summary, dict(raw_metadata))
-        reconcile_news_item_relation(db, news_item_id=target.id)
+        reconcile_news_item_relation(db, news_item_id=_require_news_item_id(target))
         db.commit()
 
     _write()
@@ -295,7 +302,7 @@ def process_news_item(
     news_item_id: int,
     summarizer: ContentSummarizer | None = None,
 ) -> NewsItemProcessingResult:
-    """Normalize one ``news_items`` row into digest-ready fields.
+    """Normalize one ``news_items`` row into news-ready fields.
 
     Args:
         db: Active SQLAlchemy session.
@@ -328,7 +335,7 @@ def process_news_item(
         if not isinstance(discussion_payload, dict):
             discussion_result = fetch_and_store_news_item_discussion(
                 db,
-                news_item_id=item.id,
+                news_item_id=_require_news_item_id(item),
                 comment_cap=DISCUSSION_COMMENT_CAP,
             )
             db.refresh(item)
@@ -367,7 +374,7 @@ def process_news_item(
                 article_body_text=article_body_text,
             )
             content_summarizer = summarizer or get_content_summarizer()
-            summarize_kwargs: dict[str, object] = {
+            summarize_kwargs: dict[str, Any] = {
                 "content_type": "news",
                 "title": _clean_title(item.article_title) or _clean_title(item.summary_title),
                 "content_id": item.id,

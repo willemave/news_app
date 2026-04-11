@@ -20,6 +20,13 @@ from app.services.scraper_configs import ensure_inbox_status
 logger = get_logger(__name__)
 
 
+def _require_content_id(content: Content) -> int:
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content is missing an id")
+    return int(content_id)
+
+
 def _normalize_instruction_links(links: list[InstructionLink], original_url: str) -> list[str]:
     """Normalize and dedupe instruction links.
 
@@ -99,13 +106,14 @@ def create_contents_from_instruction_links(
     for url in normalized_urls:
         existing = existing_by_url.get(url)
         if existing:
+            existing_content_id = _require_content_id(existing)
             if ensure_inbox_status(
                 db,
                 submitter_id,
-                existing.id,
+                existing_content_id,
                 content_type=existing.content_type,
             ):
-                existing_inbox_created_ids.append(existing.id)
+                existing_inbox_created_ids.append(existing_content_id)
                 has_updates = True
             continue
 
@@ -128,12 +136,13 @@ def create_contents_from_instruction_links(
 
         db.add(new_content)
         db.flush()
-        created_ids.append(new_content.id)
+        new_content_id = _require_content_id(new_content)
+        created_ids.append(new_content_id)
 
         if ensure_inbox_status(
             db,
             submitter_id,
-            new_content.id,
+            new_content_id,
             content_type=new_content.content_type,
         ):
             has_updates = True

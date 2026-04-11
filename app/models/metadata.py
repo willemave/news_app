@@ -15,6 +15,7 @@ from pydantic import (
     HttpUrl,
     TypeAdapter,
     field_validator,
+    model_validator,
 )
 
 from app.constants import (
@@ -22,7 +23,7 @@ from app.constants import (
     SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
-    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_KIND_SHORT_NEWS,
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
@@ -697,7 +698,9 @@ def _parse_summary_payload(
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
         return StructuredSummary.model_validate(value)
-    if summary_kind == SUMMARY_KIND_SHORT_NEWS_DIGEST:
+    if summary_kind == SUMMARY_KIND_SHORT_NEWS:
+        return NewsSummary.model_validate(value)
+    if summary_version == SUMMARY_VERSION_V1 and "summary" in value and "key_points" in value:
         return NewsSummary.model_validate(value)
     raise ValueError(f"Unsupported summary kind: {summary_kind}")
 
@@ -715,9 +718,7 @@ class BaseContentMetadata(BaseModel):
 
     summary_kind: str | None = Field(
         None,
-        description=(
-            "Summary discriminator (e.g., long_interleaved, long_structured, short_news_digest)"
-        ),
+        description=("Summary discriminator (e.g., long_interleaved, long_structured, short_news)"),
     )
     summary_version: int | None = Field(
         None, ge=1, description="Summary schema version for the current summary_kind"
@@ -869,7 +870,7 @@ class NewsMetadata(BaseContentMetadata):
                     "metadata": {"score": 420},
                 },
                 "discussion_url": "https://news.ycombinator.com/item?id=123",
-                "summary_kind": "short_news_digest",
+                "summary_kind": "short_news",
                 "summary_version": 1,
                 "summary": {
                     "title": "Techmeme: OpenAI ships GPT-5 with native agents",
@@ -1185,17 +1186,23 @@ class ContentData(BaseModel):
 
             # Standard topics array
             if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
-                return self.structured_summary.get("topics", [])
+                raw_topics = self.structured_summary.get("topics", [])
+                if isinstance(raw_topics, list):
+                    return [topic for topic in raw_topics if isinstance(topic, str)]
+                return []
 
             if summary_kind == SUMMARY_KIND_LONG_INTERLEAVED:
                 if summary_version == SUMMARY_VERSION_V2:
                     topics = self.structured_summary.get("topics", [])
                     if isinstance(topics, list):
-                        return [
-                            topic.get("topic")
-                            for topic in topics
-                            if isinstance(topic, dict) and topic.get("topic")
-                        ]
+                        extracted_topics: list[str] = []
+                        for topic in topics:
+                            if not isinstance(topic, dict):
+                                continue
+                            topic_name = topic.get("topic")
+                            if isinstance(topic_name, str) and topic_name:
+                                extracted_topics.append(topic_name)
+                        return extracted_topics
                 # Interleaved v1 - extract unique topics from insights
                 insights = self.structured_summary.get("insights", [])
                 if insights:
@@ -1222,16 +1229,6 @@ class ContentData(BaseModel):
         return None
 
     @property
-    def source(self) -> str | None:  # noqa: F811
-        """Get content source (substack name, podcast name, subreddit)."""
-        return self.metadata.get("source")
-
-    @property
-    def platform(self) -> str | None:  # noqa: F811
-        """Get content platform (twitter, substack, youtube, etc)."""
-        return self.metadata.get("platform")
-
-    @property
     def full_markdown(self) -> str | None:
         """Get full article content formatted as markdown from StructuredSummary."""
         summary_data = self.metadata.get("summary")
@@ -1239,7 +1236,20 @@ class ContentData(BaseModel):
             return summary_data.get("full_markdown")
         return None
 
-    def model_dump(self, *args, **kwargs):  # type: ignore[override]
+    @model_validator(mode="after")
+    def populate_source_fields(self) -> ContentData:
+        """Backfill platform/source fields from metadata when missing."""
+        if self.platform is None:
+            metadata_platform = self.metadata.get("platform")
+            if isinstance(metadata_platform, str) and metadata_platform.strip():
+                self.platform = metadata_platform.strip()
+        if self.source is None:
+            metadata_source = self.metadata.get("source")
+            if isinstance(metadata_source, str) and metadata_source.strip():
+                self.source = metadata_source.strip()
+        return self
+
+    def model_dump(self, *args, **kwargs):
         excludes = kwargs.pop("exclude", set())
         excludes = set(excludes) | {"platform", "source"}
         data = super().model_dump(*args, exclude=excludes, **kwargs)
@@ -1255,7 +1265,7 @@ class ContentData(BaseModel):
 
 # Helper functions from app/schemas/metadata.py
 def validate_content_metadata(
-    content_type: str, metadata: dict
+    content_type: str, metadata: dict[str, Any]
 ) -> ArticleMetadata | PodcastMetadata | NewsMetadata:
     """
     Validate and parse metadata based on content type.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import ValidationError
@@ -29,6 +29,21 @@ from app.services.scraper_configs import (
 
 router = APIRouter(prefix="/scrapers", tags=["scrapers"])
 
+ScraperTypeLiteral = Literal["substack", "atom", "podcast_rss", "youtube", "reddit"]
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
+
+
+def _require_config_id(config_id: int | None) -> int:
+    if config_id is None:
+        raise ValueError("Scraper config is missing an id")
+    return config_id
+
 
 def _coerce_limit(config: dict[str, Any]) -> int | None:
     limit = config.get("limit")
@@ -42,8 +57,9 @@ def _serialize_scraper_config(
     *,
     stats: dict[str, Any] | None = None,
 ) -> ScraperConfigResponse:
+    config_id = _require_config_id(config.id)
     return ScraperConfigResponse(
-        id=config.id,
+        id=config_id,
         scraper_type=config.scraper_type,
         display_name=config.display_name,
         config=config.config or {},
@@ -63,6 +79,7 @@ async def list_scraper_configs(
     types: str | None = Query(None, alias="types"),
 ) -> list[ScraperConfigResponse]:
     """List scraper configurations for the current user."""
+    user_id = _require_user_id(current_user)
     requested_types: set[str] = set()
     if scraper_type:
         requested_types.add(scraper_type)
@@ -79,14 +96,14 @@ async def list_scraper_configs(
 
     configs = list_user_scraper_configs(
         db,
-        current_user.id,
+        user_id,
         allowed_types=requested_types or None,
     )
-    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=configs)
+    stats_by_config = get_scraper_config_stats(db, user_id=user_id, configs=configs)
     return [
         _serialize_scraper_config(
             config,
-            stats=stats_by_config.get(config.id),
+            stats=stats_by_config.get(_require_config_id(config.id)),
         )
         for config in configs
     ]
@@ -99,13 +116,17 @@ async def create_scraper_config(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ScraperConfigResponse:
     """Create a scraper config for the current user."""
+    user_id = _require_user_id(current_user)
     try:
-        record = create_user_scraper_config(db, current_user.id, payload)
+        record = create_user_scraper_config(db, user_id, payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
-    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))
+    stats_by_config = get_scraper_config_stats(db, user_id=user_id, configs=[record])
+    return _serialize_scraper_config(
+        record,
+        stats=stats_by_config.get(_require_config_id(record.id)),
+    )
 
 
 @router.put("/{config_id}", response_model=ScraperConfigResponse)
@@ -116,13 +137,17 @@ async def update_scraper_config(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ScraperConfigResponse:
     """Update a scraper config belonging to the current user."""
+    user_id = _require_user_id(current_user)
     try:
-        record = update_user_scraper_config(db, current_user.id, config_id, payload)
+        record = update_user_scraper_config(db, user_id, config_id, payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
-    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))
+    stats_by_config = get_scraper_config_stats(db, user_id=user_id, configs=[record])
+    return _serialize_scraper_config(
+        record,
+        stats=stats_by_config.get(_require_config_id(record.id)),
+    )
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -133,9 +158,11 @@ async def delete_scraper_config_endpoint(
 ) -> None:
     """Delete a scraper config for the current user."""
     try:
-        delete_user_scraper_config(db, current_user.id, config_id)
+        delete_user_scraper_config(db, _require_user_id(current_user), config_id)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
 @router.post(
     "/subscribe", response_model=ScraperConfigResponse, status_code=status.HTTP_201_CREATED
 )
@@ -153,10 +180,12 @@ async def subscribe_to_feed(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported feed type: {payload.feed_type}",
         )
+    user_id = _require_user_id(current_user)
+    scraper_type = cast(ScraperTypeLiteral, payload.feed_type)
 
     try:
         create_payload = CreateUserScraperConfig(
-            scraper_type=payload.feed_type,
+            scraper_type=scraper_type,
             display_name=payload.display_name,
             config={
                 "feed_url": payload.feed_url,
@@ -168,9 +197,12 @@ async def subscribe_to_feed(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     try:
-        record = create_user_scraper_config(db, current_user.id, create_payload)
+        record = create_user_scraper_config(db, user_id, create_payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
-    stats_by_config = get_scraper_config_stats(db, user_id=current_user.id, configs=[record])
-    return _serialize_scraper_config(record, stats=stats_by_config.get(record.id))
+    stats_by_config = get_scraper_config_stats(db, user_id=user_id, configs=[record])
+    return _serialize_scraper_config(
+        record,
+        stats=stats_by_config.get(_require_config_id(record.id)),
+    )

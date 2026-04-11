@@ -1,15 +1,18 @@
-"""Screen-aware assistant turns backed by server-side tools."""
+"""Contextual assistant turns backed by server-side tools."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
+from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
+from pydantic import HttpUrl, TypeAdapter
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
 from sqlalchemy import and_, func, or_
@@ -25,9 +28,10 @@ from app.models.chat_message_metadata import (
     ChatMessageRenderMetadata,
 )
 from app.models.content_submission import SubmitContentRequest
+from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.internal.assistant import AssistantScreenContext
 from app.models.metadata import ContentType
-from app.models.schema import ChatSession, Content, UserScraperConfig
+from app.models.schema import ChatSession, Content, NewsItem, NewsItemReadStatus, UserScraperConfig
 from app.models.user import User
 from app.repositories import knowledge_repository, read_status_repository
 from app.repositories.content_feed_query import build_user_feed_query
@@ -111,6 +115,7 @@ SUBSCRIPTION_QUERY_HINTS = {
     "shows",
 }
 _agents: dict[tuple[str, str], Agent[AssistantDeps, str]] = {}
+URL_ADAPTER = TypeAdapter(HttpUrl)
 
 ASSISTANT_SYSTEM_PROMPT = (
     "You are Newsly's contextual assistant. "
@@ -140,7 +145,8 @@ ASSISTANT_SYSTEM_PROMPT = (
     "- Keep tool narration compact. State the outcome, not a verbose audit log.\n"
     "- When a request would take a long time, create the handoff and tell the user where "
     "to continue.\n"
-    "- When screen context is provided, treat it as the default frame of reference.\n"
+    "- When extra client context is provided, use it as supporting background. "
+    "Do not assume it changes tool routing on its own.\n"
     "- Do not use markdown tables in chat responses. "
     "For comparisons or lists, use headings, bullets, "
     "or one-item-per-line formatting that reads well on mobile.\n"
@@ -177,9 +183,43 @@ CONTENT_SEARCH_HINTS = (
     "in my inbox",
     "from my feed",
     "from my inbox",
+    "my feed",
+    "last day's content",
+    "recent news items",
+    "news items and articles",
     "recent articles",
     "recent posts",
 )
+NEWS_ITEM_QUERY_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "article",
+    "articles",
+    "content",
+    "day",
+    "feed",
+    "from",
+    "give",
+    "important",
+    "in",
+    "including",
+    "item",
+    "items",
+    "key",
+    "last",
+    "me",
+    "most",
+    "my",
+    "news",
+    "of",
+    "recent",
+    "summary",
+    "takeaways",
+    "the",
+    "themes",
+    "what",
+}
 WEB_HINTS = (
     "latest",
     "recent",
@@ -237,6 +277,46 @@ class AssistantDeps:
     session_factory: sessionmaker[Session]
     sandbox_session: PersonalLibrarySandboxSession | None = None
     personal_library_error: str | None = None
+
+
+def _build_submit_content_request(
+    *,
+    url: str,
+    title: str | None = None,
+    subscribe_to_feed: bool = False,
+) -> SubmitContentRequest:
+    return SubmitContentRequest(
+        url=URL_ADAPTER.validate_python(url),
+        content_type=None,
+        title=title,
+        platform=None,
+        instruction=None,
+        crawl_links=False,
+        subscribe_to_feed=subscribe_to_feed,
+        share_and_chat=False,
+        save_to_knowledge_and_mark_read=False,
+    )
+
+
+def _require_session_user_id(session: ChatSession) -> int:
+    user_id = session.user_id
+    if user_id is None:
+        raise ValueError("Chat session is missing a user_id")
+    return int(user_id)
+
+
+def _require_session_id(session: ChatSession) -> int:
+    session_id = session.id
+    if session_id is None:
+        raise ValueError("Chat session is missing an id")
+    return int(session_id)
+
+
+def _resolve_session_model(session: ChatSession) -> str:
+    model_spec = session.llm_model
+    if isinstance(model_spec, str) and model_spec:
+        return model_spec
+    return DEFAULT_MODEL
 
 
 def _normalize_turn_text(user_text: str) -> str:
@@ -348,6 +428,13 @@ def _build_turn_instructions(user_text: str) -> str | None:
             "useful file-level results."
         )
 
+    if _should_route_to_content_search(user_text):
+        return (
+            "For this turn, you must call SearchContent before answering. "
+            "Use it for in-app feed items, news items, and inbox content. "
+            "Only call search_web if SearchContent is insufficient."
+        )
+
     if _should_route_to_knowledge(user_text):
         return (
             "For this turn, call SearchKnowledge before answering. "
@@ -389,37 +476,10 @@ def _should_route_to_content_search(user_text: str) -> bool:
     """Detect turns that should use in-app content search."""
 
     normalized = _normalize_turn_text(user_text)
-    if _should_route_to_knowledge(normalized):
-        return False
     return any(hint in normalized for hint in CONTENT_SEARCH_HINTS)
 
 
-def _build_screen_aware_turn_instructions(
-    user_text: str,
-    screen_context: AssistantScreenContext,
-) -> str | None:
-    """Build per-turn instructions with screen-context overrides."""
-
-    if screen_context.screen_type == "daily_digest_list" or (
-        screen_context.screen_title and "digest" in screen_context.screen_title.lower()
-    ):
-        return (
-            "For this turn, you must call SearchContent before answering. "
-            "Use it for in-app feed items and inbox content. "
-            "Only call search_web if SearchContent is insufficient."
-        )
-
-    if _should_route_to_content_search(user_text):
-        return (
-            "For this turn, you must call SearchContent before answering. "
-            "Use it for in-app feed items and inbox content. "
-            "Only call search_web if SearchContent is insufficient."
-        )
-
-    return _build_turn_instructions(user_text)
-
-
-def _format_knowledge_hits(hits: list[object], query: str) -> str:
+def _format_knowledge_hits(hits: Sequence[object], query: str) -> str:
     """Serialize saved-knowledge hits for the assistant tool."""
 
     if not hits:
@@ -449,13 +509,59 @@ def _format_content_hits(
     query: str,
     content_rows: list[tuple[Content, object, object]],
     total_content_matches: int | None,
-    digest_rows: list[object] | None = None,
-    digest_bullets_by_digest_id: dict[int, object] | None = None,
+    news_item_rows: list[tuple[NewsItem, object]] | None = None,
+    total_news_item_matches: int | None = None,
 ) -> str:
     """Serialize in-app content results for the assistant tool."""
-    del digest_rows, digest_bullets_by_digest_id
 
     lines = [f'In-app content results for "{query}":']
+
+    if news_item_rows:
+        if total_news_item_matches is not None and total_news_item_matches > 0:
+            if total_news_item_matches > len(news_item_rows):
+                lines.append(
+                    f"News Items ({total_news_item_matches} total matches, "
+                    f"showing {len(news_item_rows)}):"
+                )
+            else:
+                lines.append(f"News Items ({total_news_item_matches} total matches):")
+        else:
+            lines.append("Recent News Items:")
+
+        for idx, (item, is_read) in enumerate(news_item_rows, start=1):
+            title = (item.summary_title or item.article_title or f"News item {item.id}").strip()
+            source = item.source_label or item.platform or "unknown"
+            url = (
+                item.article_url
+                or item.canonical_story_url
+                or item.discussion_url
+                or item.canonical_item_url
+                or ""
+            )
+            lines.append(
+                f"{idx}. [news:{item.id}] {title} | source={source} "
+                f"| read={bool(is_read)} | url={url}"
+            )
+            if item.summary_text:
+                lines.append(f"   summary: {item.summary_text[:240]}")
+            if item.summary_key_points:
+                key_points = ", ".join(
+                    str(point).strip() for point in item.summary_key_points if str(point).strip()
+                )
+                if key_points:
+                    lines.append(f"   key_points: {key_points[:240]}")
+            raw_top_comment = (
+                item.raw_metadata.get("top_comment")
+                if isinstance(item.raw_metadata, dict)
+                else None
+            )
+            if isinstance(raw_top_comment, dict):
+                comment_author = (
+                    str(raw_top_comment.get("author") or "unknown").strip() or "unknown"
+                )
+                comment_text = str(raw_top_comment.get("text") or "").strip()
+                if comment_text:
+                    lines.append(f"   top_comment: {comment_author}: {comment_text[:220]}")
 
     if content_rows:
         if total_content_matches is not None and total_content_matches > 0:
@@ -468,7 +574,7 @@ def _format_content_hits(
             else:
                 lines.append(f"Feed Content ({total_content_matches} total matches):")
         else:
-            lines.append("Feed Content:")
+            lines.append("Recent Feed Content:")
         for idx, (content, is_read, is_saved_to_knowledge) in enumerate(content_rows, start=1):
             lines.append(
                 f"{idx}. [{content.id}] {(content.title or 'Untitled').strip()} "
@@ -483,6 +589,98 @@ def _format_content_hits(
     if len(lines) == 1:
         return f'No in-app content matched "{query}".'
     return "\n".join(lines)
+
+
+def _significant_news_item_tokens(value: str | None) -> list[str]:
+    """Return de-duplicated news-item search tokens."""
+
+    if not value:
+        return []
+
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for token in re.findall(r"[a-z0-9]+", value.lower()):
+        if len(token) < 3 or token in NEWS_ITEM_QUERY_STOPWORDS:
+            continue
+        if token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+    return tokens
+
+
+def _visible_news_item_query(
+    db: Session,
+    *,
+    user_id: int,
+):
+    """Return the base visible news-item query for one user."""
+
+    return (
+        db.query(
+            NewsItem,
+            NewsItemReadStatus.id.label("is_read"),
+        )
+        .outerjoin(
+            NewsItemReadStatus,
+            and_(
+                NewsItemReadStatus.news_item_id == NewsItem.id,
+                NewsItemReadStatus.user_id == user_id,
+            ),
+        )
+        .filter(NewsItem.status == NewsItemStatus.READY.value)
+        .filter(NewsItem.representative_news_item_id.is_(None))
+        .filter(
+            or_(
+                NewsItem.visibility_scope == NewsItemVisibilityScope.GLOBAL.value,
+                and_(
+                    NewsItem.visibility_scope == NewsItemVisibilityScope.USER.value,
+                    NewsItem.owner_user_id == user_id,
+                ),
+            )
+        )
+    )
+
+
+def _find_visible_news_item_matches(
+    db: Session,
+    *,
+    user_id: int,
+    query: str,
+    limit: int,
+):
+    """Return visible news items matching the query or recent fallbacks."""
+
+    normalized_query = query.strip()
+    sort_expr = func.coalesce(
+        NewsItem.published_at,
+        NewsItem.processed_at,
+        NewsItem.ingested_at,
+        NewsItem.created_at,
+    )
+    base_query = _visible_news_item_query(db, user_id=user_id)
+    query_tokens = _significant_news_item_tokens(normalized_query)
+
+    matched_query = base_query
+    if query_tokens:
+        token_filters = [
+            or_(
+                func.lower(func.coalesce(NewsItem.summary_title, "")).like(f"%{token}%"),
+                func.lower(func.coalesce(NewsItem.article_title, "")).like(f"%{token}%"),
+                func.lower(func.coalesce(NewsItem.summary_text, "")).like(f"%{token}%"),
+                func.lower(func.coalesce(NewsItem.source_label, "")).like(f"%{token}%"),
+                func.lower(func.coalesce(NewsItem.article_domain, "")).like(f"%{token}%"),
+            )
+            for token in query_tokens
+        ]
+        matched_query = matched_query.filter(and_(*token_filters))
+        total_matches = matched_query.order_by(None).count()
+        rows = matched_query.order_by(sort_expr.desc(), NewsItem.id.desc()).limit(limit).all()
+        if rows:
+            return rows, total_matches
+
+    rows = base_query.order_by(sort_expr.desc(), NewsItem.id.desc()).limit(limit).all()
+    return rows, 0
 
 
 def _tokenize_subscription_query(value: str | None) -> list[str]:
@@ -568,7 +766,7 @@ def _find_subscription_content_matches(
         if not query_has_subscription_hint and not name_overlap:
             continue
 
-        per_config_filters = [
+        per_config_filters: list[Any] = [
             func.lower(Content.source).like(f"%{name.lower()}%") for name in candidate_names
         ]
         token_filters = [
@@ -754,11 +952,19 @@ def _get_or_create_agent(
                         .all()
                     )
                     total_content_matches = 0
+            news_item_rows, total_news_item_matches = _find_visible_news_item_matches(
+                db,
+                user_id=ctx.deps.user_id,
+                query=normalized_query,
+                limit=normalized_limit,
+            )
 
         return _format_content_hits(
             query=query,
             content_rows=content_rows,
             total_content_matches=total_content_matches,
+            news_item_rows=news_item_rows,
+            total_news_item_matches=total_news_item_matches,
         )
 
     @agent.tool
@@ -774,7 +980,7 @@ def _get_or_create_agent(
                 return "Unable to add to feed: user not found."
             response = submit_user_content(
                 db,
-                SubmitContentRequest(url=url, title=title),
+                _build_submit_content_request(url=url, title=title),
                 user,
                 submitted_via="assistant",
             )
@@ -795,7 +1001,7 @@ def _get_or_create_agent(
                 return "Unable to subscribe: user not found."
             response = submit_user_content(
                 db,
-                SubmitContentRequest(url=url, title=title, subscribe_to_feed=True),
+                _build_submit_content_request(url=url, title=title, subscribe_to_feed=True),
                 user,
                 submitted_via="assistant",
             )
@@ -878,7 +1084,14 @@ def _get_or_create_agent(
                 return "Unable to convert article: user not found."
             response = submit_user_content(
                 db,
-                SubmitContentRequest(url=article_url, title=article_meta.get("title")),
+                _build_submit_content_request(
+                    url=article_url,
+                    title=(
+                        article_meta.get("title")
+                        if isinstance(article_meta.get("title"), str)
+                        else None
+                    ),
+                ),
                 user,
                 submitted_via="assistant",
             )
@@ -1078,12 +1291,12 @@ def run_assistant_turn_sync(
 ):
     """Run one assistant turn synchronously and return the raw agent result."""
     agent = _get_or_create_agent(model_spec, api_key_override=provider_api_key)
-    turn_instructions = _build_screen_aware_turn_instructions(user_prompt, deps.screen_context)
+    turn_instructions = _build_turn_instructions(user_prompt)
     prompt_sections: list[str] = []
     if turn_instructions:
         prompt_sections.append(f"Turn instructions:\n{turn_instructions}")
     prompt_sections.append(f"User request:\n{user_prompt.strip()}")
-    prompt_sections.append(f"Current screen context:\n{deps.context_snapshot}")
+    prompt_sections.append(f"Current context:\n{deps.context_snapshot}")
     prompt = "\n\n".join(prompt_sections)
     with langfuse_trace_context(
         trace_name="assistant.turn.async",
@@ -1164,14 +1377,18 @@ async def process_assistant_turn_async(
             },
         ),
     )
+    deps: AssistantDeps | None = None
     try:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if session is None:
             logger.error("Assistant session %s not found", session_id)
             return
+        session_row_id = _require_session_id(session)
+        session_user_id = _require_session_user_id(session)
+        model_spec = _resolve_session_model(session)
 
         history_start = perf_counter()
-        history = load_message_history(db, session.id)
+        history = load_message_history(db, session_row_id)
         history_ms = (perf_counter() - history_start) * 1000
         logger.info(
             "Assistant history loaded",
@@ -1181,9 +1398,9 @@ async def process_assistant_turn_async(
                 event_name="assistant.turn.history_loaded",
                 status="completed",
                 duration_ms=history_ms,
-                session_id=session.id,
+                session_id=session_row_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 context_data={"history_count": len(history)},
             ),
@@ -1191,16 +1408,16 @@ async def process_assistant_turn_async(
 
         context_start = perf_counter()
         context_snapshot = session.context_snapshot or build_screen_context_snapshot(
-            db, user_id=session.user_id, screen_context=screen_context
+            db, user_id=session_user_id, screen_context=screen_context
         )
         context_ms = (perf_counter() - context_start) * 1000
         sandbox_session, personal_library_error = _build_assistant_personal_library_runtime(
             db=db,
-            user_id=session.user_id,
+            user_id=session_user_id,
         )
         deps = AssistantDeps(
-            user_id=session.user_id,
-            session_id=session.id,
+            user_id=session_user_id,
+            session_id=session_row_id,
             screen_context=screen_context,
             context_snapshot=context_snapshot,
             session_factory=get_session_factory(),
@@ -1215,9 +1432,9 @@ async def process_assistant_turn_async(
                 event_name="assistant.turn.context_built",
                 status="completed",
                 duration_ms=context_ms,
-                session_id=session.id,
+                session_id=session_row_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 context_data={
                     "screen_type": screen_context.screen_type,
@@ -1227,8 +1444,8 @@ async def process_assistant_turn_async(
         )
         provider_api_key = resolve_effective_api_key(
             db=db,
-            user_id=session.user_id,
-            model_spec=session.llm_model,
+            user_id=session_user_id,
+            model_spec=model_spec,
         )
         logger.info(
             "Assistant LLM call started",
@@ -1237,13 +1454,13 @@ async def process_assistant_turn_async(
                 operation="llm_call",
                 event_name="assistant.turn.llm_started",
                 status="started",
-                session_id=session.id,
+                session_id=session_row_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
-                    "model": session.llm_model,
+                    "model": model_spec,
                     "screen_type": screen_context.screen_type,
                 },
             ),
@@ -1251,7 +1468,7 @@ async def process_assistant_turn_async(
         agent_start = perf_counter()
         result = await run_in_threadpool(
             run_assistant_turn_sync,
-            session.llm_model,
+            model_spec,
             user_prompt,
             deps,
             history,
@@ -1287,11 +1504,11 @@ async def process_assistant_turn_async(
                 duration_ms=(perf_counter() - total_start) * 1000,
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
-                    "model": session.llm_model,
+                    "model": model_spec,
                     "tool_names": tool_names,
                     "tool_count": len([name for name in tool_names if name]),
                     "agent_ms": round(agent_ms, 2),
@@ -1316,7 +1533,7 @@ async def process_assistant_turn_async(
         db.rollback()
         update_message_failed(db, message_id, str(exc))
     finally:
-        _close_sandbox_session(locals().get("deps").sandbox_session if "deps" in locals() else None)
+        _close_sandbox_session(deps.sandbox_session if deps is not None else None)
         db.close()
 
 

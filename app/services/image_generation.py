@@ -11,6 +11,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 from google import genai
 from google.genai.types import GenerateContentConfig, ImageConfig
@@ -340,19 +341,15 @@ class ImageGenerationService:
     def __init__(self) -> None:
         settings = get_settings()
         if settings.google_cloud_project:
-            client_kwargs: dict[str, str | bool] = {
-                "vertexai": True,
-                "project": settings.google_cloud_project,
-                "location": settings.google_cloud_location,
-            }
+            self.client = genai.Client(
+                vertexai=True,
+                project=settings.google_cloud_project,
+                location=settings.google_cloud_location,
+            )
         else:
             if not settings.google_api_key:
                 raise ValueError("GOOGLE_API_KEY not configured for Vertex image generation.")
-            client_kwargs = {
-                "vertexai": True,
-                "api_key": settings.google_api_key,
-            }
-        self.client = genai.Client(**client_kwargs)
+            self.client = genai.Client(vertexai=True, api_key=settings.google_api_key)
         # Ensure output directories exist
         get_news_thumbnails_dir().mkdir(parents=True, exist_ok=True)
         get_content_images_dir().mkdir(parents=True, exist_ok=True)
@@ -380,15 +377,16 @@ class ImageGenerationService:
             thumbnail_path = get_thumbnails_dir() / f"{content_id}.png"
 
             with Image.open(source_path) as img:
+                working_img: Image.Image = img
                 # Convert to RGB if necessary (for PNG with transparency)
-                if img.mode in ("RGBA", "P"):
-                    img = img.convert("RGB")
+                if working_img.mode in ("RGBA", "P"):
+                    working_img = working_img.convert("RGB")
 
                 # Use LANCZOS resampling for high-quality downscaling
-                img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+                working_img.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
 
                 # Save with optimization
-                img.save(thumbnail_path, "PNG", optimize=True)
+                working_img.save(thumbnail_path, "PNG", optimize=True)
 
             logger.debug(
                 "Generated thumbnail for content %s: %s",
@@ -483,7 +481,7 @@ class ImageGenerationService:
                         feature="image_generation",
                         operation="image_generation.news_thumbnail",
                         source="queue",
-                        usage=usage_details,
+                        usage=cast(dict[str, int | None], usage_details),
                         content_id=content_id,
                         metadata={"image_type": "news_thumbnail"},
                     )
@@ -498,7 +496,10 @@ class ImageGenerationService:
                         and part.inline_data.mime_type
                         and part.inline_data.mime_type.startswith("image/")
                     ):
-                        image_path.write_bytes(part.inline_data.data)
+                        image_bytes = part.inline_data.data
+                        if image_bytes is None:
+                            continue
+                        image_path.write_bytes(image_bytes)
                         image_saved = True
                         break
 
@@ -573,7 +574,7 @@ class ImageGenerationService:
                         feature="image_generation",
                         operation="image_generation.infographic",
                         source="queue",
-                        usage=usage_details,
+                        usage=cast(dict[str, int | None], usage_details),
                         content_id=content_id,
                         metadata={
                             "image_type": "infographic",
@@ -591,7 +592,10 @@ class ImageGenerationService:
                         and part.inline_data.mime_type
                         and part.inline_data.mime_type.startswith("image/")
                     ):
-                        image_path.write_bytes(part.inline_data.data)
+                        image_bytes = part.inline_data.data
+                        if image_bytes is None:
+                            continue
+                        image_path.write_bytes(image_bytes)
                         image_saved = True
                         break
 

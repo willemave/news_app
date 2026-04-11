@@ -69,7 +69,7 @@ class CheckoutManager:
             content_list = query.with_for_update(skip_locked=True).all()
 
             # Extract IDs while objects are still attached to session
-            content_ids = [content.id for content in content_list]
+            content_ids = [content.id for content in content_list if content.id is not None]
 
             # Check out each item
             for content in content_list:
@@ -112,7 +112,7 @@ class CheckoutManager:
                 content.processed_at = datetime.now(UTC)
             elif new_status == ContentStatus.FAILED:
                 content.error_message = error_message
-                content.retry_count += 1
+                content.retry_count = (content.retry_count or 0) + 1
 
             db.commit()
             logger.debug(f"Content {content_id} checked in with status {new_status}")
@@ -141,7 +141,7 @@ class CheckoutManager:
                 content.checked_out_by = None
                 content.checked_out_at = None
                 content.status = ContentStatus.NEW.value
-                content.retry_count += 1
+                content.retry_count = (content.retry_count or 0) + 1
 
             db.commit()
 

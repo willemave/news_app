@@ -13,7 +13,7 @@ from app.core.settings import get_settings
 logger = get_logger(__name__)
 
 
-def _resolve_device(preferred: str) -> str:
+def resolve_transformer_device(preferred: str) -> str:
     candidate = preferred.strip().lower()
     if candidate and candidate != "auto":
         return candidate
@@ -36,7 +36,7 @@ def get_news_embedding_model() -> Any:
     from sentence_transformers import SentenceTransformer
 
     settings = get_settings()
-    device = _resolve_device(settings.news_embedding_device)
+    device = resolve_transformer_device(settings.news_embedding_device)
     logger.info(
         "Loading news embedding model",
         extra={
@@ -69,3 +69,7 @@ def encode_news_texts(texts: list[str]) -> np.ndarray:
         show_progress_bar=False,
     )
     return np.asarray(vectors, dtype=np.float32)
+
+
+def clear_news_embedding_cache() -> None:
+    get_news_embedding_model.cache_clear()

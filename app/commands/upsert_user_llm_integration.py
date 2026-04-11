@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
@@ -23,8 +25,11 @@ def execute(
     if provider not in SUPPORTED_LLM_PROVIDERS:
         raise HTTPException(status_code=404, detail="Unsupported provider")
     record = upsert_user_llm_integration(db, user_id=user_id, provider=provider, api_key=api_key)
+    stored_provider = record.provider
+    if stored_provider not in {"anthropic", "openai", "google"}:
+        raise HTTPException(status_code=500, detail="Stored integration has invalid provider")
     return UserLlmIntegrationResponse(
-        provider=record.provider,
+        provider=cast(Literal["anthropic", "openai", "google"], stored_provider),
         configured=bool(record.access_token_encrypted),
         updated_at=record.updated_at,
     )

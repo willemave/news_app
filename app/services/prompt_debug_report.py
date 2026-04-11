@@ -331,8 +331,7 @@ def reconstruct_summarize_prompt(
                 content_id=content_id,
                 url=str(content.url),
                 model=(
-                    failure.model
-                    or _default_model_for_summarize(content.content_type, prompt_type)
+                    failure.model or _default_model_for_summarize(content.content_type, prompt_type)
                 ),
                 error_type=failure.error_type,
                 error_message=failure.error_message,
@@ -452,9 +451,9 @@ def build_prompt_debug_report(options: PromptReportOptions) -> PromptDebugReport
         window_end=window_end,
         total_records_scanned=len(records),
         total_failures=len(failures),
-        by_phase=dict(phase_counts),
-        by_component=dict(component_counts),
-        by_model=dict(model_counts),
+        by_phase={str(key): value for key, value in phase_counts.items()},
+        by_component={str(key): value for key, value in component_counts.items()},
+        by_model={str(key): value for key, value in model_counts.items()},
         snapshots=snapshots,
     )
 

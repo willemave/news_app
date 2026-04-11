@@ -22,7 +22,7 @@ async def execute(
     response = await start_audio_discovery(
         db,
         user_id,
-        OnboardingAudioDiscoverRequest(transcript=payload.brief),
+        OnboardingAudioDiscoverRequest(transcript=payload.brief, locale=None),
     )
     return AgentOnboardingStartResponse(
         run_id=response.run_id,

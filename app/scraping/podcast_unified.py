@@ -205,7 +205,7 @@ class PodcastUnifiedScraper(BaseScraper):
         user_id: int | None,
         config_id: int | None = None,
         missing_audio_titles: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Process a single podcast entry."""
         title = entry.get("title", "No Title")
 
@@ -284,7 +284,7 @@ class PodcastUnifiedScraper(BaseScraper):
             "metadata": metadata,
         }
 
-    def _find_audio_enclosure(self, entry, title: str) -> str:
+    def _find_audio_enclosure(self, entry, title: str) -> str | None:
         """Find the audio enclosure URL for a podcast entry."""
         enclosures = entry.get("enclosures")
         if not enclosures:
@@ -339,22 +339,22 @@ class PodcastUnifiedScraper(BaseScraper):
     ) -> tuple[str, bool, str]:
         """Select the best link for a podcast entry with robust fallbacks."""
         link = entry.get("link")
-        if self._is_valid_entry_link(link):
+        if isinstance(link, str) and self._is_valid_entry_link(link):
             return link, False, "link"
 
         if link:
             logger.debug("Entry link unusable for '%s': %s", title, link)
 
         alternate_link = self._find_alternate_link(entry)
-        if self._is_valid_entry_link(alternate_link):
+        if isinstance(alternate_link, str) and self._is_valid_entry_link(alternate_link):
             return alternate_link, True, "alternate_link"
 
         entry_id = entry.get("id")
-        if self._is_url(entry_id):
+        if isinstance(entry_id, str) and self._is_url(entry_id):
             return entry_id, True, "entry_id"
 
         entry_guid = entry.get("guid")
-        if self._is_url(entry_guid):
+        if isinstance(entry_guid, str) and self._is_url(entry_guid):
             return entry_guid, True, "entry_guid"
 
         if not enclosure_url:
@@ -397,7 +397,7 @@ class PodcastUnifiedScraper(BaseScraper):
             return False
         return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
-    def _parse_duration(self, duration_str: str) -> int:
+    def _parse_duration(self, duration_str: str) -> int | None:
         """Parse duration string to seconds."""
         try:
             # Handle formats like "1:23:45" or "23:45" or "123"

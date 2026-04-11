@@ -11,6 +11,12 @@ from app.services.content_bodies import sanitize_metadata_for_api
 from app.utils.image_urls import build_content_image_url, build_thumbnail_url
 
 
+def _require_content_id(content_id: int | None) -> int:
+    if content_id is None:
+        raise ValueError("Content is missing an id")
+    return content_id
+
+
 def _extract_news_summary(domain_content: ContentData) -> dict[str, Any]:
     metadata = domain_content.metadata or {}
     article_meta = metadata.get("article", {})
@@ -58,6 +64,7 @@ def build_content_summary_response(
     thumbnail_url: str | None = None,
 ) -> ContentSummaryResponse:
     """Build a summary response for list/search views."""
+    content_id = _require_content_id(domain_content.id)
     if image_url is None or thumbnail_url is None:
         image_url, thumbnail_url = resolve_image_urls(domain_content)
 
@@ -102,14 +109,14 @@ def build_content_summary_response(
             top_comment = {"author": author, "text": text}
 
     return ContentSummaryResponse(
-        id=domain_content.id,
-        content_type=domain_content.content_type.value,
+        id=content_id,
+        content_type=domain_content.content_type,
         url=str(domain_content.url),
         source_url=domain_content.source_url,
         title=domain_content.display_title,
         source=domain_content.source,
         platform=domain_content.platform or content.platform,
-        status=domain_content.status.value,
+        status=domain_content.status,
         discussion_url=discussion_url,
         short_summary=news_summary_text,
         created_at=domain_content.created_at.isoformat() if domain_content.created_at else "",
@@ -148,6 +155,12 @@ def build_fallback_content_summary_response(
     short_summary = content.short_summary
     if not short_summary:
         return None
+    content_id = _require_content_id(content.id)
+    raw_content_type = content.content_type
+    raw_url = content.url
+    raw_status = content.status
+    if raw_content_type is None or raw_url is None or raw_status is None:
+        return None
     classification = None
     if content.classification in {
         ContentClassification.TO_READ.value,
@@ -158,22 +171,27 @@ def build_fallback_content_summary_response(
     image_url: str | None = None
     thumbnail_url: str | None = None
     if content.content_type == ContentType.ARTICLE.value and metadata.get("image_generated_at"):
-        image_url = build_content_image_url(content.id)
-        thumbnail_url = build_thumbnail_url(content.id)
+        image_url = build_content_image_url(content_id)
+        thumbnail_url = build_thumbnail_url(content_id)
     elif content.content_type == ContentType.PODCAST.value:
         raw_thumbnail = metadata.get("thumbnail_url")
         if isinstance(raw_thumbnail, str) and raw_thumbnail.startswith("http"):
             image_url = raw_thumbnail
 
     return ContentSummaryResponse(
-        id=content.id,
-        content_type=ContentType(content.content_type),
-        url=content.url,
+        id=content_id,
+        content_type=ContentType(raw_content_type),
+        url=raw_url,
         source_url=content.source_url,
         title=content.title,
         source=content.source,
         platform=content.platform,
-        status=ContentStatus(content.status),
+        status=ContentStatus(raw_status),
+        discussion_url=(
+            metadata.get("discussion_url")
+            if isinstance(metadata.get("discussion_url"), str)
+            else None
+        ),
         short_summary=short_summary,
         created_at=content.created_at.isoformat() if content.created_at else "",
         processed_at=content.processed_at.isoformat() if content.processed_at else None,
@@ -209,6 +227,7 @@ def build_content_detail_response(
     body_format: str | None = None,
 ) -> ContentDetailResponse:
     """Build a detail response for content."""
+    content_id = _require_content_id(domain_content.id)
     image_url, thumbnail_url = resolve_image_urls(domain_content)
 
     structured_summary = domain_content.structured_summary
@@ -247,14 +266,14 @@ def build_content_detail_response(
         )
 
     return ContentDetailResponse(
-        id=domain_content.id,
-        content_type=domain_content.content_type.value,
+        id=content_id,
+        content_type=domain_content.content_type,
         url=str(domain_content.url),
         source_url=domain_content.source_url,
         title=domain_content.title,
         display_title=domain_content.display_title,
         source=domain_content.source,
-        status=domain_content.status.value,
+        status=domain_content.status,
         discussion_url=discussion_url,
         error_message=domain_content.error_message,
         retry_count=domain_content.retry_count,

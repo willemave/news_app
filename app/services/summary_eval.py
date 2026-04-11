@@ -29,7 +29,7 @@ PromptType = Literal[
     "long_bullets",
     "interleaved",
     "structured",
-    "news_digest",
+    "news",
     "editorial_narrative",
 ]
 
@@ -153,7 +153,7 @@ def _resolve_prompt_settings(
     longform_template: LongformTemplate,
 ) -> tuple[PromptType, int, int]:
     if content_type == "news":
-        return "news_digest", 4, 0
+        return "news", 4, 0
     if longform_template == "interleaved_v2":
         return "interleaved", 8, 8
     if longform_template == "structured_v1":

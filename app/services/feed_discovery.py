@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from time import perf_counter
+from typing import Any, cast
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from pydantic import BaseModel, ConfigDict
@@ -99,6 +100,20 @@ class DiscoveryToolDeps:
     user_id: int
 
 
+def _require_run_id(run: FeedDiscoveryRun) -> int:
+    run_id = run.id
+    if run_id is None:
+        raise ValueError("Feed discovery run is missing an id")
+    return int(run_id)
+
+
+def _require_run_status(run: FeedDiscoveryRun) -> str:
+    status = run.status
+    if not isinstance(status, str) or not status:
+        raise ValueError("Feed discovery run is missing a status")
+    return status
+
+
 def run_feed_discovery(
     user_id: int,
     trigger: str = "cron",
@@ -152,11 +167,11 @@ def _run_feed_discovery(
             )
             db.commit()
             return DiscoveryRunResult(
-                run_id=run.id,
+                run_id=_require_run_id(run),
                 feeds=0,
                 podcasts=0,
                 youtube=0,
-                status=run.status,
+                status=_require_run_status(run),
             )
         if not favorites:
             run = _create_run(
@@ -168,11 +183,11 @@ def _run_feed_discovery(
             )
             db.commit()
             return DiscoveryRunResult(
-                run_id=run.id,
+                run_id=_require_run_id(run),
                 feeds=0,
                 podcasts=0,
                 youtube=0,
-                status=run.status,
+                status=_require_run_status(run),
             )
 
         selected = _select_seed_favorites(
@@ -268,7 +283,7 @@ def _run_feed_discovery(
             feeds, podcasts, youtube = _select_suggestions(suggestions)
             persist_start = perf_counter()
             persisted = _persist_suggestions(
-                db, run.id, request.user_id, feeds + podcasts + youtube
+                db, _require_run_id(run), request.user_id, feeds + podcasts + youtube
             )
             timing["persist_ms"] = (perf_counter() - persist_start) * 1000
 
@@ -304,11 +319,11 @@ def _run_feed_discovery(
             )
 
             return DiscoveryRunResult(
-                run_id=run.id,
+                run_id=_require_run_id(run),
                 feeds=_count_types(persisted, FEED_TYPES),
                 podcasts=_count_types(persisted, PODCAST_TYPES),
                 youtube=_count_types(persisted, {YOUTUBE_TYPE}),
-                status=run.status,
+                status=_require_run_status(run),
             )
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
@@ -327,11 +342,11 @@ def _run_feed_discovery(
                 },
             )
             return DiscoveryRunResult(
-                run_id=run.id,
+                run_id=_require_run_id(run),
                 feeds=0,
                 podcasts=0,
                 youtube=0,
-                status=run.status,
+                status=_require_run_status(run),
             )
         finally:
             end_usage_context(usage_token)
@@ -374,12 +389,12 @@ def _apply_usage_to_run(run: FeedDiscoveryRun) -> None:
 def _apply_timing_to_run(
     run: FeedDiscoveryRun, timing: dict[str, float], *, total_ms: float
 ) -> None:
-    run.duration_ms_total = total_ms
-    run.duration_ms_direction = timing.get("direction_ms")
-    run.duration_ms_lane = timing.get("lane_ms")
-    run.duration_ms_candidate_extract = timing.get("candidate_extract_ms")
-    run.duration_ms_candidate_validate = timing.get("candidate_validate_ms")
-    run.duration_ms_persist = timing.get("persist_ms")
+    run.duration_ms_total = cast(Any, total_ms)
+    run.duration_ms_direction = cast(Any, timing.get("direction_ms"))
+    run.duration_ms_lane = cast(Any, timing.get("lane_ms"))
+    run.duration_ms_candidate_extract = cast(Any, timing.get("candidate_extract_ms"))
+    run.duration_ms_candidate_validate = cast(Any, timing.get("candidate_validate_ms"))
+    run.duration_ms_persist = cast(Any, timing.get("persist_ms"))
     run.timing_json = timing
 
 
@@ -488,7 +503,7 @@ def _get_direction_agent(model_spec: str) -> Agent[DiscoveryToolDeps, DiscoveryD
                         Content.title.ilike(like),
                         Content.source.ilike(like),
                         Content.url.ilike(like),
-                        Content.short_summary.ilike(like),
+                        cast(Any, Content.short_summary).ilike(like),
                     )
                 )
 
@@ -946,9 +961,10 @@ def _normalize_candidate(candidate: DiscoveryCandidate) -> DiscoveryCandidate | 
     candidate.feed_url = feed_url
     candidate.item_url = item_url
 
-    candidate = _normalize_apple_podcast_candidate(candidate)
-    if not candidate:
+    normalized_candidate = _normalize_apple_podcast_candidate(candidate)
+    if normalized_candidate is None:
         return None
+    candidate = normalized_candidate
 
     if _should_skip_candidate(candidate):
         logger.debug(
@@ -1031,7 +1047,7 @@ def _normalize_youtube_candidate(candidate: DiscoveryCandidate) -> DiscoveryCand
         return None
 
     channel_id, playlist_id, canonical = _parse_youtube_identifiers(url)
-    candidate.suggestion_type = YOUTUBE_TYPE
+    candidate.suggestion_type = cast(Any, YOUTUBE_TYPE)
     if _looks_like_watch_url(url) and not candidate.item_url:
         candidate.item_url = canonical
     if candidate.site_url and _looks_like_watch_url(candidate.site_url) and not candidate.item_url:
@@ -1237,7 +1253,7 @@ def _persist_suggestions(
             channel_id=suggestion.channel_id,
             playlist_id=suggestion.playlist_id,
             rationale=suggestion.rationale,
-            score=suggestion.score,
+            score=cast(Any, suggestion.score),
             status="new",
             config=config,
             metadata_json={"evidence_urls": suggestion.evidence_urls},

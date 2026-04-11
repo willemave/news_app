@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -26,11 +28,8 @@ async def execute(
 ) -> DownloadMoreResponse:
     """Backfill additional feed items for the series that produced a content item."""
     context = build_visibility_context(user_id)
-    row = (
-        db.query(Content, context.is_in_inbox.label("is_in_inbox"))
-        .filter(Content.id == content_id)
-        .first()
-    )
+    is_in_inbox_expr = cast(Any, context.is_in_inbox).label("is_in_inbox")
+    row = db.query(Content, is_in_inbox_expr).filter(Content.id == content_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="Content not found")
 
@@ -43,6 +42,8 @@ async def execute(
     config = resolve_feed_config_for_content(db, user_id, content)
     if not config:
         raise HTTPException(status_code=400, detail="Feed config not found for content")
+    if config.id is None:
+        raise HTTPException(status_code=500, detail="Feed config missing id")
 
     try:
         result = await run_in_threadpool(

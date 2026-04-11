@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
+from types import ModuleType
 from typing import Any
 
 from pydantic import ValidationError
@@ -40,9 +41,11 @@ from app.services.news_embeddings import warm_news_embedding_model
 from app.services.queue import QueueService, TaskQueue, TaskType
 
 try:
-    import psycopg
+    import psycopg as _psycopg
 except ImportError:  # pragma: no cover
-    psycopg = None
+    psycopg: ModuleType | None = None
+else:
+    psycopg = _psycopg
 
 logger = get_logger(__name__)
 
@@ -602,6 +605,7 @@ class SequentialTaskProcessor:
             task = TaskEnvelope.from_queue_data(task_data)
         except ValidationError as exc:
             task_id = task_data.get("id")
+            log_task_id = task_id if isinstance(task_id, (str, int)) else None
             logger.error(
                 "Invalid task payload",
                 extra=build_log_extra(
@@ -609,8 +613,8 @@ class SequentialTaskProcessor:
                     operation="task_parse",
                     event_name="task.invalid_payload",
                     status="failed",
-                    item_id=task_id,
-                    task_id=task_id,
+                    item_id=log_task_id,
+                    task_id=log_task_id,
                     queue_name=self.queue_name,
                     worker_id=self.worker_id,
                     source="queue",
@@ -620,9 +624,9 @@ class SequentialTaskProcessor:
                     },
                 ),
             )
-            if task_id is not None:
+            if log_task_id is not None:
                 invalid_task = TaskEnvelope(
-                    id=int(task_id),
+                    id=int(log_task_id),
                     task_type=TaskType.SCRAPE,
                     retry_count=0,
                     payload={},

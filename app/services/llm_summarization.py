@@ -33,7 +33,7 @@ SummarizationPromptType = Literal[
     "structured",
     "interleaved",
     "long_bullets",
-    "news_digest",
+    "news",
     "editorial_narrative",
     "editorial_podcast",
     "editorial_substack",
@@ -95,7 +95,7 @@ def resolve_summarization_output_type(
     prompt_type: SummarizationPromptType,
 ) -> SummarizationOutputType:
     """Return the pydantic output type for a canonical summarization prompt type."""
-    if prompt_type == "news_digest":
+    if prompt_type == "news":
         return NewsSummary
     if is_editorial_prompt_type(prompt_type):
         return EditorialNarrativeSummary
@@ -124,8 +124,8 @@ def resolve_summarization_spec(
         prompt_type = "editorial_podcast"
         default_model_spec = models.get(normalized_type, editorial_default_model)
     elif normalized_type == "news":
-        prompt_type = "news_digest"
-        default_model_spec = models.get("news", models.get("news_digest", default_article_model))
+        prompt_type = "news"
+        default_model_spec = models.get("news", default_article_model)
     elif normalized_type in {
         "editorial_narrative",
         "editorial_podcast",
@@ -135,7 +135,7 @@ def resolve_summarization_spec(
         "editorial_github",
         "interleaved",
         "long_bullets",
-        "news_digest",
+        "news",
         "structured",
     }:
         prompt_type = cast(SummarizationPromptType, normalized_type)
@@ -185,7 +185,6 @@ def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
 
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "news": "google:gemini-3.1-flash-lite-preview",
-    "news_digest": "google:gemini-3.1-flash-lite-preview",
     "article": "openai:gpt-5.4-mini",
     "podcast": "openai:gpt-5.4-mini",
     "interleaved": "openai:gpt-5.4",

@@ -30,6 +30,30 @@ MAX_DISCUSSION_GROUP_SNIPPETS = 4
 MAX_DISCUSSION_SNIPPET_CHARS = 220
 
 
+def _require_session_id(session: ChatSession) -> int:
+    """Return a persisted chat-session ID or raise."""
+    session_id = session.id
+    if session_id is None:
+        raise ValueError("Chat session must be persisted before use")
+    return session_id
+
+
+def _require_message_id(message: Any) -> int:
+    """Return a persisted chat-message ID or raise."""
+    message_id = getattr(message, "id", None)
+    if message_id is None:
+        raise ValueError("Chat message must be persisted before use")
+    return int(message_id)
+
+
+def _require_task_id(task: ProcessingTask) -> int:
+    """Return a persisted processing-task ID or raise."""
+    task_id = task.id
+    if task_id is None:
+        raise ValueError("Processing task must be persisted before use")
+    return task_id
+
+
 def _build_content_context_snapshot(content: Content, user_id: int) -> str:
     """Build a compact content-grounding snapshot without importing assistant_router."""
 
@@ -263,8 +287,9 @@ def create_dig_deeper_message(
     """
     session = get_or_create_dig_deeper_session(db, content, user_id)
     prompt = build_dig_deeper_prompt(db, content)
-    message = create_processing_message(db, session.id, prompt)
-    return session.id, message.id, prompt
+    session_id = _require_session_id(session)
+    message = create_processing_message(db, session_id, prompt)
+    return session_id, _require_message_id(message), prompt
 
 
 def run_dig_deeper_message(
@@ -315,4 +340,4 @@ def enqueue_dig_deeper_task(db: Session, content_id: int, user_id: int) -> int:
     db.add(task)
     db.commit()
     db.refresh(task)
-    return task.id
+    return _require_task_id(task)

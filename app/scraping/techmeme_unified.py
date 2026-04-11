@@ -35,7 +35,7 @@ ENCODING_OVERRIDE_EXCEPTIONS = tuple(
 class TechmemeFeedSettings(BaseModel):
     """Configuration for fetching Techmeme clusters."""
 
-    url: HttpUrl = Field(default="https://www.techmeme.com/feed.xml")
+    url: HttpUrl | str = Field(default="https://www.techmeme.com/feed.xml")
     limit: int = Field(default=20, ge=1, le=50)
     include_related: bool = Field(default=True)
     max_related: int = Field(default=6, ge=0, le=20)
@@ -221,9 +221,7 @@ class TechmemeScraper(BaseScraper):
             "discussion_url": normalized_permalink,
             "excerpt": summary_text,
             "discovery_time": (
-                publication_date.isoformat()
-                if publication_date
-                else datetime.now(UTC).isoformat()
+                publication_date.isoformat() if publication_date else datetime.now(UTC).isoformat()
             ),
         }
 
@@ -245,7 +243,8 @@ class TechmemeScraper(BaseScraper):
         anchors: list[dict[str, str]] = []
 
         for tag in soup.find_all("a"):
-            href = (tag.get("href") or "").strip()
+            raw_href = tag.get("href")
+            href = raw_href.strip() if isinstance(raw_href, str) else ""
             if not href:
                 continue
             anchors.append(

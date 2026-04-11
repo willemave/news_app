@@ -39,6 +39,13 @@ STRUCTURED_FILTER_FIELDS = (
 logger = get_logger(__name__)
 
 
+def _modified_timestamp_sort_key(entry: dict[str, object]) -> float:
+    value = entry.get("modified_timestamp")
+    if isinstance(value, (int, float)):
+        return float(value)
+    return 0.0
+
+
 @router.get("/logs", response_class=HTMLResponse)
 async def list_logs(request: Request, _: None = Depends(require_admin)):
     """List all log files with recent error logs."""
@@ -101,7 +108,7 @@ async def list_logs(request: Request, _: None = Depends(require_admin)):
             )
 
     # Sort by modified time, newest first
-    log_files.sort(key=lambda x: x["modified_timestamp"], reverse=True)
+    log_files.sort(key=_modified_timestamp_sort_key, reverse=True)
 
     # Remove timestamp from final output
     for log in log_files:
@@ -378,9 +385,7 @@ def _an_parse_log_file(file_path: Path) -> list[dict[str, Any]]:
                     if strong and not plural_noise:
                         out.append(
                             {
-                                "timestamp": datetime.now(UTC)
-                                .isoformat()
-                                .replace("+00:00", "Z"),
+                                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
                                 "error_message": line.strip(),
                                 "file": str(file_path),
                             }
@@ -409,13 +414,13 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
             except Exception:
                 pass
             for e in _an_parse_jsonl_file(fp):
-                ts = e.get("timestamp")
+                ts_jsonl: object = e.get("timestamp")
                 try:
-                    if ts:
-                        if "Z" in ts:
-                            t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if isinstance(ts_jsonl, str) and ts_jsonl:
+                        if "Z" in ts_jsonl:
+                            t = datetime.fromisoformat(ts_jsonl.replace("Z", "+00:00"))
                         else:
-                            t = datetime.fromisoformat(ts)
+                            t = datetime.fromisoformat(ts_jsonl)
                         if t.tzinfo is None:
                             t = t.replace(tzinfo=UTC)
                         if t > cutoff:
@@ -430,10 +435,10 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
         llm = errors_dir / "llm_json_errors.log"
         if llm.exists():
             for e in _an_parse_log_file(llm):
-                ts = e.get("timestamp")
+                ts_llm: object = e.get("timestamp")
                 try:
-                    if ts:
-                        t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if isinstance(ts_llm, str) and ts_llm:
+                        t = datetime.fromisoformat(ts_llm.replace("Z", "+00:00"))
                         if t.tzinfo is None:
                             t = t.replace(tzinfo=UTC)
                         if t > cutoff:
@@ -447,10 +452,10 @@ def _an_get_recent_logs(logs_dir: Path, hours: int = 24) -> list[dict[str, Any]]
     # Root .log files
     for fp in logs_dir.glob("*.log"):
         for e in _an_parse_log_file(fp):
-            ts = e.get("timestamp")
+            ts_log: object = e.get("timestamp")
             try:
-                if ts:
-                    t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if isinstance(ts_log, str) and ts_log:
+                    t = datetime.fromisoformat(ts_log.replace("Z", "+00:00"))
                     if t.tzinfo is None:
                         t = t.replace(tzinfo=UTC)
                     if t > cutoff:
@@ -724,7 +729,7 @@ def _an_generate_llm_prompt(grouped: dict[str, list[dict[str, Any]]], hours: int
 
 def _get_recent_errors(limit: int = 10) -> list[dict[str, Any]]:
     """Get the most recent errors from error log files."""
-    errors = []
+    errors: list[dict[str, Any]] = []
 
     if not ERRORS_DIR.exists():
         return errors

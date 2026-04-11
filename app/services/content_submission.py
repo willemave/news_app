@@ -43,6 +43,34 @@ def normalize_url(raw_url: str) -> str:
     return str(URL_ADAPTER.validate_python(raw_url)).strip()
 
 
+def _require_user_id(user: User) -> int:
+    user_id = user.id
+    if user_id is None:
+        raise ValueError("User is missing an id")
+    return int(user_id)
+
+
+def _require_content_id(content: Content) -> int:
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content is missing an id")
+    return int(content_id)
+
+
+def _require_content_type(content: Content) -> str:
+    content_type = content.content_type
+    if not isinstance(content_type, str) or not content_type:
+        raise ValueError("Content is missing a content_type")
+    return content_type
+
+
+def _require_content_status(content: Content) -> str:
+    status = content.status
+    if not isinstance(status, str) or not status:
+        raise ValueError("Content is missing a status")
+    return status
+
+
 def _ensure_analyze_url_task(
     db: Session,
     content_id: int,
@@ -76,23 +104,26 @@ def _ensure_analyze_url_task(
     )
     if existing_task:
         if existing_task.task_type == TaskType.ANALYZE_URL.value:
-            payload = dict(existing_task.payload or {})
-            payload.setdefault("content_id", content_id)
+            existing_payload = dict(existing_task.payload or {})
+            existing_payload.setdefault("content_id", content_id)
             updated = False
             cleaned_instruction = instruction.strip() if instruction else None
-            if cleaned_instruction and payload.get("instruction") != cleaned_instruction:
-                payload["instruction"] = cleaned_instruction
+            if cleaned_instruction and existing_payload.get("instruction") != cleaned_instruction:
+                existing_payload["instruction"] = cleaned_instruction
                 updated = True
-            if crawl_links and payload.get("crawl_links") is not True:
-                payload["crawl_links"] = True
+            if crawl_links and existing_payload.get("crawl_links") is not True:
+                existing_payload["crawl_links"] = True
                 updated = True
-            if subscribe_to_feed and payload.get("subscribe_to_feed") is not True:
-                payload["subscribe_to_feed"] = True
+            if subscribe_to_feed and existing_payload.get("subscribe_to_feed") is not True:
+                existing_payload["subscribe_to_feed"] = True
                 updated = True
             if updated:
-                existing_task.payload = payload
+                existing_task.payload = existing_payload
                 db.commit()
-        return existing_task.id
+        existing_task_id = existing_task.id
+        if existing_task_id is None:
+            raise ValueError("Existing analyze task is missing an id")
+        return int(existing_task_id)
 
     payload: dict[str, object] = {"content_id": content_id}
     if instruction and instruction.strip():
@@ -112,7 +143,10 @@ def _ensure_analyze_url_task(
     db.add(task)
     db.commit()
     db.refresh(task)
-    return task.id
+    task_id = task.id
+    if task_id is None:
+        raise ValueError("Analyze task insert did not produce an id")
+    return int(task_id)
 
 
 def _append_share_and_chat_user(
@@ -216,9 +250,13 @@ def submit_user_content(
         payload.save_to_knowledge_and_mark_read and not subscribe_to_feed
     )
     platform_hint = (payload.platform or "").strip().lower() or None
+    current_user_id = _require_user_id(current_user)
 
     existing = db.query(Content).filter(Content.url == normalized_url).first()
     if existing:
+        existing_content_id = _require_content_id(existing)
+        existing_content_type = _require_content_type(existing)
+        existing_status = _require_content_status(existing)
         source_url_updated = False
         metadata_updated = False
         if not existing.source_url:
@@ -233,20 +271,20 @@ def submit_user_content(
                 existing_metadata,
                 subscribe_to_feed=True,
             )
-            existing_metadata.setdefault("submitted_by_user_id", current_user.id)
+            existing_metadata.setdefault("submitted_by_user_id", current_user_id)
             existing_metadata.setdefault("submitted_via", submission_channel)
             if platform_hint:
                 existing_metadata.setdefault("platform_hint", platform_hint)
             existing.content_metadata = existing_metadata
             db.commit()
         else:
-            if share_and_chat and existing.status != ContentStatus.COMPLETED.value:
+            if share_and_chat and existing_status != ContentStatus.COMPLETED.value:
                 existing.content_metadata = _append_share_and_chat_user(
-                    existing.content_metadata, current_user.id
+                    existing.content_metadata, current_user_id
                 )
                 metadata_updated = True
             status_created = ensure_inbox_status(
-                db, current_user.id, existing.id, content_type=existing.content_type
+                db, current_user_id, existing_content_id, content_type=existing_content_type
             )
             if status_created or source_url_updated or metadata_updated:
                 db.commit()
@@ -254,30 +292,30 @@ def submit_user_content(
                 enqueue_visible_long_form_image_if_needed(db, existing)
             _apply_submission_user_state(
                 db,
-                user_id=current_user.id,
-                content_id=existing.id,
+                user_id=current_user_id,
+                content_id=existing_content_id,
                 save_to_knowledge_and_mark_read=save_to_knowledge_and_mark_read,
                 share_and_chat=share_and_chat,
-                enqueue_dig_deeper=existing.status == ContentStatus.COMPLETED.value,
+                enqueue_dig_deeper=existing_status == ContentStatus.COMPLETED.value,
             )
         task_id: int | None = None
         if _should_enqueue_analysis_for_existing_content(
-            existing_status=existing.status,
+            existing_status=existing_status,
             instruction=instruction,
             crawl_links=crawl_links,
             subscribe_to_feed=subscribe_to_feed,
         ):
             task_id = _ensure_analyze_url_task(
                 db,
-                existing.id,
+                existing_content_id,
                 instruction=instruction,
                 crawl_links=crawl_links,
                 subscribe_to_feed=subscribe_to_feed,
             )
         return ContentSubmissionResponse(
-            content_id=existing.id,
-            content_type=ContentType(existing.content_type),
-            status=ContentStatus(existing.status),
+            content_id=existing_content_id,
+            content_type=ContentType(existing_content_type),
+            status=ContentStatus(existing_status),
             platform=existing.platform,
             already_exists=True,
             message=(
@@ -295,7 +333,7 @@ def submit_user_content(
     }
     metadata = update_processing_state(
         metadata,
-        submitted_by_user_id=current_user.id,
+        submitted_by_user_id=current_user_id,
         submitted_via=submission_channel,
     )
     if subscribe_to_feed:
@@ -303,7 +341,7 @@ def submit_user_content(
     if platform_hint:
         metadata = update_processing_state(metadata, platform_hint=platform_hint)
     if share_and_chat:
-        metadata = _append_share_and_chat_user(metadata, current_user.id)
+        metadata = _append_share_and_chat_user(metadata, current_user_id)
 
     # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
@@ -329,17 +367,20 @@ def submit_user_content(
         existing = db.query(Content).filter(Content.url == normalized_url).first()
         if not existing:
             raise
+        existing_content_id = _require_content_id(existing)
+        existing_content_type = _require_content_type(existing)
+        existing_status = _require_content_status(existing)
         task_id = _ensure_analyze_url_task(
             db,
-            existing.id,
+            existing_content_id,
             instruction=instruction,
             crawl_links=crawl_links,
             subscribe_to_feed=subscribe_to_feed,
         )
         return ContentSubmissionResponse(
-            content_id=existing.id,
-            content_type=ContentType(existing.content_type),
-            status=ContentStatus(existing.status),
+            content_id=existing_content_id,
+            content_type=ContentType(existing_content_type),
+            status=ContentStatus(existing_status),
             platform=existing.platform,
             already_exists=True,
             message=(
@@ -352,32 +393,35 @@ def submit_user_content(
         )
 
     db.refresh(new_content)
+    new_content_id = _require_content_id(new_content)
+    new_content_type = _require_content_type(new_content)
+    new_content_status = _require_content_status(new_content)
     if not subscribe_to_feed:
         status_created = ensure_inbox_status(
-            db, current_user.id, new_content.id, content_type=new_content.content_type
+            db, current_user_id, new_content_id, content_type=new_content_type
         )
         if status_created:
             db.commit()
             enqueue_visible_long_form_image_if_needed(db, new_content)
         _apply_submission_user_state(
             db,
-            user_id=current_user.id,
-            content_id=new_content.id,
+            user_id=current_user_id,
+            content_id=new_content_id,
             save_to_knowledge_and_mark_read=save_to_knowledge_and_mark_read,
             share_and_chat=share_and_chat,
         )
     task_id = _ensure_analyze_url_task(
         db,
-        new_content.id,
+        new_content_id,
         instruction=instruction,
         crawl_links=crawl_links,
         subscribe_to_feed=subscribe_to_feed,
     )
 
     return ContentSubmissionResponse(
-        content_id=new_content.id,
+        content_id=new_content_id,
         content_type=ContentType.UNKNOWN,
-        status=ContentStatus(new_content.status),
+        status=ContentStatus(new_content_status),
         platform=None,
         already_exists=False,
         message="Feed subscription queued" if subscribe_to_feed else "Content queued for analysis",

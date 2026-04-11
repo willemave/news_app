@@ -83,7 +83,7 @@ def resolve_summarization_prompt_route(
     normalized_content_type = _normalize_string(content_type) or ""
 
     if normalized_content_type == "news":
-        return "news_digest", 4, 0
+        return "news", 4, 0
 
     if normalized_content_type == "podcast":
         return "editorial_podcast", 10, 4

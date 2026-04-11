@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy.orm import Session
@@ -150,7 +150,7 @@ def subscribe_to_detected_feed_result(
     )
 
     payload = CreateUserScraperConfig(
-        scraper_type=feed_type,
+        scraper_type=cast(Any, feed_type),
         display_name=resolved_display_name,
         config={
             "feed_url": feed_url.strip(),

@@ -2,6 +2,7 @@
 This module provides a robust synchronous HTTP client.
 """
 
+from typing import Any, cast
 from urllib.parse import urlparse, urlunparse
 
 import httpx
@@ -36,7 +37,8 @@ class RobustHttpClient:
             headers: Default headers for requests.
                      Merges with a default User-Agent from settings or DEFAULT_USER_AGENT.
         """
-        self.default_timeout = timeout or getattr(settings, "http_timeout_seconds", DEFAULT_TIMEOUT)
+        configured_timeout = getattr(settings, "http_timeout_seconds", DEFAULT_TIMEOUT)
+        self.default_timeout = float(timeout if timeout is not None else configured_timeout)
 
         base_headers = {
             "User-Agent": getattr(settings, "HTTP_CLIENT_USER_AGENT", DEFAULT_USER_AGENT)
@@ -108,14 +110,18 @@ class RobustHttpClient:
                 follow_redirects=follow_redirects,
             )
         elif stream:
-            response = client.stream(
-                "GET",
-                retry_url,
-                headers=headers,
-                timeout=timeout,
-                follow_redirects=follow_redirects,
+            stream_response = cast(
+                Any,
+                client.stream(
+                    "GET",
+                    retry_url,
+                    headers=headers,
+                    timeout=timeout,
+                    follow_redirects=follow_redirects,
+                ),
             )
-            response.__enter__()
+            stream_response.__enter__()
+            response = cast(httpx.Response, stream_response)
         else:
             response = client.get(
                 retry_url,
@@ -163,14 +169,18 @@ class RobustHttpClient:
         )
         try:
             if stream:
-                response = client.stream(
-                    "GET",
-                    url,
-                    headers=request_headers,
-                    timeout=effective_timeout,
-                    follow_redirects=follow_redirects,
+                stream_response = cast(
+                    Any,
+                    client.stream(
+                        "GET",
+                        url,
+                        headers=request_headers,
+                        timeout=effective_timeout,
+                        follow_redirects=follow_redirects,
+                    ),
                 )
-                response.__enter__()  # Enter the context manager
+                stream_response.__enter__()
+                response: httpx.Response = cast(httpx.Response, stream_response)
             else:
                 response = client.get(
                     url,

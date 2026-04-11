@@ -85,6 +85,8 @@ def _extract_usage(result: object) -> dict[str, int | None] | None:
 def _coerce_int(value: object | None) -> int | None:
     if value is None:
         return None
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
+        return None
     try:
         return int(value)
     except (TypeError, ValueError):

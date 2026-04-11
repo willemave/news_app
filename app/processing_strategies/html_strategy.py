@@ -5,6 +5,8 @@ This module defines the strategy for processing standard HTML web pages using cr
 import asyncio
 import logging
 import re
+import threading
+from collections.abc import Coroutine
 from html import unescape
 from typing import Any
 from urllib.parse import urlparse
@@ -30,6 +32,48 @@ from app.utils.dates import parse_date_with_tz
 from app.utils.title_utils import clean_title
 
 logger = get_logger(__name__)
+
+
+def _run_coro_sync[T](coro: asyncio.Future[T] | Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine from sync code with explicit loop cleanup."""
+
+    def _run_on_new_loop() -> T:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coro)
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+            return result
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _run_on_new_loop()
+
+    result: T | None = None
+    error: BaseException | None = None
+
+    def _runner() -> None:
+        nonlocal result, error
+        try:
+            result = _run_on_new_loop()
+        except BaseException as exc:  # noqa: BLE001
+            error = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if error is not None:
+        raise error
+    if result is None:
+        raise RuntimeError("Coroutine runner returned without a result")
+    return result
+
 
 ACCESS_GATE_TITLE_MARKERS: tuple[str, ...] = (
     "just a moment",
@@ -204,7 +248,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
     def _get_source_specific_config(self, source: str) -> dict[str, Any]:
         """Get source-specific configuration for crawl4ai."""
         # Base configuration
-        config = {
+        config: dict[str, Any] = {
             "word_count_threshold": 20,
             "excluded_tags": ["script", "style", "nav", "footer", "header"],
             "exclude_external_links": True,
@@ -401,8 +445,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             match = re.search(pattern, html_content, re.IGNORECASE | re.DOTALL)
             if not match:
                 continue
-            title = unescape(match.group(1)).strip()
-            title = re.sub(r"\s+", " ", title) if title else None
+            raw_title = unescape(match.group(1)).strip()
+            title = re.sub(r"\s+", " ", raw_title) if raw_title else ""
             cleaned = clean_title(title)
             if cleaned:
                 return cleaned
@@ -723,9 +767,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         publication_date = getattr(article, "publish_date", None)
         authors = getattr(article, "authors", None)
         author = (
-            ", ".join(author for author in authors if author)
-            if isinstance(authors, list)
-            else None
+            ", ".join(author for author in authors if author) if isinstance(authors, list) else None
         )
 
         logger.info(
@@ -831,7 +873,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             )
 
             # Use AsyncWebCrawler with asyncio.run
-            async def run_crawl_with_retries():
+            async def run_crawl_with_retries() -> Any:
                 crawl4ai_logger = logging.getLogger("crawl4ai")
                 original_level = crawl4ai_logger.level
                 crawl4ai_logger.setLevel(logging.WARNING)
@@ -892,7 +934,7 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     crawl4ai_logger.setLevel(original_level)
 
             try:
-                result = asyncio.run(run_crawl_with_retries())
+                result = _run_coro_sync(run_crawl_with_retries())
             except Exception as crawl_exc:  # noqa: BLE001
                 if self._should_use_httpx_fallback(crawl_exc):
                     fallback_data = self._fallback_fetch(url, source)

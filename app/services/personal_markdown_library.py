@@ -21,10 +21,10 @@ from app.utils.summary_utils import extract_short_summary, extract_summary_text
 
 logger = get_logger(__name__)
 
-CONTENT_ID_PATTERN = re.compile(r"__c(?P<content_id>\d+)\.md$")
-VARIANT_SOURCE = "source"
-VARIANT_SUMMARY = "summary"
 MarkdownVariant = Literal["source", "summary"]
+CONTENT_ID_PATTERN = re.compile(r"__c(?P<content_id>\d+)\.md$")
+VARIANT_SOURCE: MarkdownVariant = "source"
+VARIANT_SUMMARY: MarkdownVariant = "summary"
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,14 @@ class PersonalMarkdownDocument:
     @property
     def size_bytes(self) -> int:
         return len(self.text.encode("utf-8"))
+
+
+def _require_content_id(content: Content) -> int:
+    """Return a persisted content ID or raise."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return content_id
 
 
 def get_personal_markdown_user_root(user_id: int) -> Path:
@@ -259,7 +267,7 @@ def _load_contents_by_id(db: Session, content_ids: set[int]) -> dict[int, Conten
         return {}
 
     contents = db.query(Content).filter(Content.id.in_(content_ids)).all()
-    return {int(content.id): content for content in contents}
+    return {_require_content_id(content): content for content in contents if content.id is not None}
 
 
 def _load_reasons_for_content(
@@ -286,7 +294,9 @@ def _load_reasons_for_content(
         )
         .all()
     )
-    chat_session_ids = [int(session_id) for session_id, _created_at in chat_rows]
+    chat_session_ids = [
+        int(session_id) for session_id, _created_at in chat_rows if session_id is not None
+    ]
     chat_saved_at = min(
         (created_at for _session_id, created_at in chat_rows if created_at is not None),
         default=None,
@@ -306,7 +316,8 @@ def _sync_content_markdown_files(
     content: Content,
     reasons: PersonalMarkdownReasons,
 ) -> list[Path]:
-    deleted_files = _delete_content_files(user_root, int(content.id))
+    content_id = _require_content_id(content)
+    deleted_files = _delete_content_files(user_root, content_id)
     if deleted_files:
         logger.debug(
             "Rewriting personal markdown files for content_id=%s user_id=%s",
@@ -360,7 +371,7 @@ def _build_content_markdown_documents(
         documents.append(
             PersonalMarkdownDocument(
                 relative_path=relative_path,
-                content_id=int(content.id),
+                content_id=_require_content_id(content),
                 variant=variant,
                 updated_at=updated_at,
                 text=_render_markdown_document(
@@ -427,7 +438,7 @@ def _build_filename(*, content: Content, variant: MarkdownVariant) -> str:
         max_length=settings.personal_markdown_max_slug_length,
     )
     date_value = _content_date(content).strftime("%Y-%m-%d")
-    return f"{slug}__{date_value}__{variant}__c{int(content.id)}.md"
+    return f"{slug}__{date_value}__{variant}__c{_require_content_id(content)}.md"
 
 
 def _render_markdown_document(
@@ -439,7 +450,7 @@ def _render_markdown_document(
     reasons: PersonalMarkdownReasons,
 ) -> str:
     frontmatter = {
-        "content_id": int(content.id),
+        "content_id": _require_content_id(content),
         "user_id": user_id,
         "content_type": content.content_type,
         "variant": variant,

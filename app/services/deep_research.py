@@ -200,7 +200,10 @@ class DeepResearchClient:
                     operation="start_research",
                     event_name="assistant.turn.llm_started",
                     status="failed",
-                    context_data={"failure_class": type(e).__name__, "status_code": e.status_code},
+                    context_data={
+                        "failure_class": type(e).__name__,
+                        "status_code": getattr(e, "status_code", None),
+                    },
                 ),
             )
             raise
@@ -226,7 +229,10 @@ class DeepResearchClient:
                     operation="poll_result",
                     event_name="assistant.turn.llm_completed",
                     status="failed",
-                    context_data={"response_id": response_id, "status_code": e.status_code},
+                    context_data={
+                        "response_id": response_id,
+                        "status_code": getattr(e, "status_code", None),
+                    },
                 ),
             )
             raise
@@ -540,9 +546,15 @@ async def process_deep_research_message(
 
         if result.status in ("succeeded", "completed") and result.output_text:
             # Build the message list with user request and assistant response
-            from pydantic_ai.messages import ModelMessagesTypeAdapter
+            from pydantic_ai.messages import (
+                ModelMessagesTypeAdapter,
+                ModelRequest,
+                ModelResponse,
+                TextPart,
+                UserPromptPart,
+            )
 
-            messages = [
+            messages: list[ModelRequest | ModelResponse] = [
                 ModelRequest(parts=[UserPromptPart(content=user_prompt)]),
                 ModelResponse(parts=[TextPart(content=result.output_text)]),
             ]

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 import feedparser
 import httpx
@@ -76,6 +76,16 @@ class AnalysisError:
     recoverable: bool = True
 
 
+class DetectedMedia(TypedDict):
+    """Structured result of HTML media scanning."""
+
+    platforms: list[str]
+    platform_urls: list[str]
+    audio_urls: list[str]
+    rss_feeds: list[str]
+    rss_audio_url: str | None
+
+
 # System prompt for the content analyzer agent
 CONTENT_ANALYZER_SYSTEM_PROMPT = """\
 You classify web pages as article, podcast, or video and optionally extract links that \
@@ -138,7 +148,18 @@ def _fetch_page_content(url: str) -> tuple[str | None, str | None]:
         return None, None
 
 
-def _detect_media_in_html(html: str, page_url: str) -> dict:
+def _empty_detected_media() -> DetectedMedia:
+    """Return an empty media-detection payload."""
+    return {
+        "platforms": [],
+        "platform_urls": [],
+        "audio_urls": [],
+        "rss_feeds": [],
+        "rss_audio_url": None,
+    }
+
+
+def _detect_media_in_html(html: str, page_url: str) -> DetectedMedia:
     """Scan HTML for podcast/video platform links, audio files, and RSS feeds.
 
     Args:
@@ -148,13 +169,7 @@ def _detect_media_in_html(html: str, page_url: str) -> dict:
     Returns:
         Dict with detected platforms, media URLs, and RSS feeds.
     """
-    detected = {
-        "platforms": [],
-        "platform_urls": [],
-        "audio_urls": [],
-        "rss_feeds": [],
-        "rss_audio_url": None,
-    }
+    detected: DetectedMedia = _empty_detected_media()
 
     # Check for podcast/video platform links
     for pattern, platform in PODCAST_VIDEO_PATTERNS:
@@ -255,7 +270,6 @@ class ContentAnalyzer:
             model, model_settings = build_pydantic_model(f"openai:{CONTENT_ANALYSIS_MODEL}")
             self._agent = Agent(
                 model,
-                deps_type=None,
                 output_type=ContentAnalysisOutput,
                 system_prompt=CONTENT_ANALYZER_SYSTEM_PROMPT,
                 model_settings=model_settings,
@@ -306,16 +320,8 @@ class ContentAnalyzer:
                 text = ""
 
             # Step 2: Scan HTML for podcast/video links and RSS feeds
-            detected = (
-                _detect_media_in_html(html or "", url)
-                if html
-                else {
-                    "platforms": [],
-                    "platform_urls": [],
-                    "audio_urls": [],
-                    "rss_feeds": [],
-                    "rss_audio_url": None,
-                }
+            detected: DetectedMedia = (
+                _detect_media_in_html(html or "", url) if html else _empty_detected_media()
             )
 
             # Step 3: Use LLM to analyze content with detected media info

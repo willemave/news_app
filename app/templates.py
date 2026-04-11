@@ -1,4 +1,5 @@
 import time
+from typing import Any
 
 import markdown
 from fastapi.templating import Jinja2Templates
@@ -13,10 +14,10 @@ templates.env.globals["static_version"] = str(int(time.time()))
 
 
 # Add markdown filter
-def markdown_filter(text):
+def markdown_filter(text: Any) -> Markup:
     """Convert markdown text to HTML."""
     if not text:
-        return ""
+        return Markup("")
     # Configure markdown with useful extensions
     md = markdown.Markdown(
         extensions=[

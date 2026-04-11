@@ -10,12 +10,16 @@ from typing import Any
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.schema import NewsItem
 from app.services.news_embeddings import encode_news_texts
+from app.services.news_reranker import rerank_news_documents
 from app.utils.title_utils import clean_title
 from app.utils.url_utils import normalize_http_url
+
+logger = get_logger(__name__)
 
 MATCH_TOKEN_PATTERN = re.compile(r"[a-z0-9]{3,}")
 MATCH_STOPWORDS = {
@@ -80,6 +84,13 @@ def _coerce_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value
     return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def _require_news_item_id(item: NewsItem) -> int:
+    item_id = item.id
+    if item_id is None:
+        raise ValueError("News item is missing an id")
+    return int(item_id)
 
 
 def matching_text(item: NewsItem) -> str:
@@ -178,6 +189,50 @@ def _candidate_title_similarity_scores(
         if best_score is None or score > best_score:
             scores[candidate_index] = score
     return scores
+
+
+def reranker_query_text(item: NewsItem) -> str:
+    """Build a compact reranker query for one incoming item."""
+    parts: list[str] = []
+    title = _relation_primary_title(item)
+    if title:
+        parts.append(f"Title: {title}")
+    domain = _clean_string(item.article_domain)
+    if domain:
+        parts.append(f"Domain: {domain}")
+    source = _clean_string(item.source_label)
+    if source:
+        parts.append(f"Source: {source}")
+    return "\n".join(parts)
+
+
+def reranker_candidate_text(item: NewsItem) -> str:
+    """Build a compact cluster document for reranking."""
+    titles = _cluster_related_titles(item)
+    parts: list[str] = []
+    if titles:
+        parts.append(f"Representative title: {titles[0]}")
+        if len(titles) > 1:
+            parts.append("Related titles:")
+            parts.extend(f"- {title}" for title in titles[1:])
+    domain = _clean_string(item.article_domain)
+    if domain:
+        parts.append(f"Domain: {domain}")
+    source = _clean_string(item.source_label)
+    if source:
+        parts.append(f"Source: {source}")
+    return "\n".join(parts)
+
+
+def _candidate_reranker_scores(
+    item: NewsItem,
+    candidates: list[NewsItem],
+) -> list[float]:
+    query_text = reranker_query_text(item)
+    if not query_text:
+        return [0.0] * len(candidates)
+    candidate_texts = [reranker_candidate_text(candidate) for candidate in candidates]
+    return rerank_news_documents(query=query_text, documents=candidate_texts)
 
 
 def _key_point_texts(item: NewsItem) -> list[str]:
@@ -316,7 +371,9 @@ def _semantic_prefilter_candidates(
     ranked.sort(key=lambda entry: entry[:4], reverse=True)
     selected = ranked[:SEMANTIC_PREFILTER_MAX_CANDIDATES]
     selected_candidates = [candidate for *_prefix, candidate, _tokens in selected]
-    selected_tokens = {candidate.id: tokens for *_prefix, candidate, tokens in selected}
+    selected_tokens: dict[int, set[str]] = {}
+    for *_prefix, candidate, tokens in selected:
+        selected_tokens[_require_news_item_id(candidate)] = tokens
     return selected_candidates, selected_tokens, item_tokens
 
 
@@ -388,7 +445,7 @@ def select_best_evidence_item(items: list[NewsItem]) -> NewsItem:
         return (
             len(matching_text(item)),
             _coerce_utc(item.ingested_at) or datetime.min,
-            item.id,
+            _require_news_item_id(item),
         )
 
     return max(items, key=_sort_key)
@@ -567,6 +624,44 @@ def find_related_representative(
             ),
         },
     )
+    ranked_indexes = sorted(
+        range(len(semantic_candidates)),
+        key=lambda index: float(similarity_scores[index]),
+        reverse=True,
+    )
+    if settings.news_list_reranker_enabled:
+        rerank_indexes = ranked_indexes[: settings.news_list_reranker_max_candidates]
+        rerank_candidates = [semantic_candidates[index] for index in rerank_indexes]
+        try:
+            rerank_scores = _candidate_reranker_scores(item, rerank_candidates)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "News reranker failed; falling back to embedding-only clustering",
+                extra={
+                    "component": "news_relations",
+                    "operation": "rerank_candidates",
+                    "context_data": {
+                        "news_item_id": _require_news_item_id(item),
+                        "candidate_count": len(rerank_candidates),
+                    },
+                },
+            )
+        else:
+            best_rerank_index: int | None = None
+            best_rerank_score = -1.0
+            for local_index, score in enumerate(rerank_scores):
+                numeric_score = float(score)
+                if numeric_score <= best_rerank_score:
+                    continue
+                best_rerank_index = local_index
+                best_rerank_score = numeric_score
+            if (
+                best_rerank_index is not None
+                and best_rerank_score >= settings.news_list_reranker_similarity_threshold
+            ):
+                return rerank_candidates[best_rerank_index]
+            return None
+
     best_candidate: NewsItem | None = None
     best_score = -1.0
     for index, candidate in enumerate(semantic_candidates):
@@ -578,7 +673,7 @@ def find_related_representative(
         if score < settings.news_list_secondary_similarity_threshold or score <= best_score:
             continue
 
-        candidate_tokens = candidate_tokens_by_id[candidate.id]
+        candidate_tokens = candidate_tokens_by_id[_require_news_item_id(candidate)]
         if relaxed_lexical_guard(
             item,
             candidate,
@@ -605,8 +700,12 @@ def reconcile_news_item_relation(
     if representative is None:
         item.representative_news_item_id = None
         db.flush()
-        return recompute_representative_enrichment(db, representative_id=item.id)
+        return recompute_representative_enrichment(
+            db, representative_id=_require_news_item_id(item)
+        )
 
-    item.representative_news_item_id = representative.id
+    item.representative_news_item_id = _require_news_item_id(representative)
     db.flush()
-    return recompute_representative_enrichment(db, representative_id=representative.id)
+    return recompute_representative_enrichment(
+        db, representative_id=_require_news_item_id(representative)
+    )

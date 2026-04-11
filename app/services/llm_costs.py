@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -97,8 +97,11 @@ MODEL_ALIASES: dict[str, str] = {
 
 def extract_usage_from_result(result: object) -> dict[str, int | None] | None:
     """Extract token usage from a pydantic-ai style result object."""
+    usage_fn = getattr(result, "usage", None)
+    if not callable(usage_fn):
+        return None
     try:
-        usage = result.usage()
+        usage = usage_fn()
     except Exception:  # noqa: BLE001
         return None
 
@@ -171,7 +174,7 @@ def record_llm_usage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=total_tokens,
-        cost_usd=cost_usd,
+        cost_usd=cast(Any, cost_usd),
         currency=USD,
         pricing_version=PRICING_VERSION,
         metadata_json=metadata or {},
@@ -364,6 +367,8 @@ def _pricing_candidates(*, provider: str, model: str) -> list[str]:
 
 def _coerce_int(value: object | None) -> int | None:
     if value is None:
+        return None
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
         return None
     try:
         return int(value)

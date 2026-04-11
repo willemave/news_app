@@ -120,7 +120,10 @@ def record_content_interaction(
         )
         db.add(interaction)
         db.flush()
-        analytics_interaction_id = int(interaction.id)
+        interaction_row_id = interaction.id
+        if interaction_row_id is None:
+            raise ValueError("Analytics interaction insert did not produce an id")
+        analytics_interaction_id = int(interaction_row_id)
         db.commit()
         return RecordContentInteractionResult(
             recorded=True,

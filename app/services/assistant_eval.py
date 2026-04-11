@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -24,13 +24,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.settings import get_settings
 from app.models.chat_message_metadata import AssistantFeedOption
-from app.models.contracts import TaskStatus, TaskType
+from app.models.contracts import NewsItemVisibilityScope, TaskStatus, TaskType
 from app.models.internal.assistant import AssistantScreenContext
 from app.models.schema import (
     Content,
     ContentKnowledgeSave,
-    NewsDigest,
-    NewsDigestBullet,
+    NewsItem,
     ProcessingTask,
     UserScraperConfig,
 )
@@ -62,6 +61,22 @@ DEFAULT_SCREEN_CONTEXT = AssistantScreenContext(
 )
 
 
+def _require_user_id(user: User) -> int:
+    """Return a persisted user ID or raise."""
+    user_id = user.id
+    if user_id is None:
+        raise ValueError("User must be persisted before use")
+    return user_id
+
+
+def _require_content_id(content: Content) -> int:
+    """Return a persisted content ID or raise."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return content_id
+
+
 class AssistantEvalDefaults(BaseModel):
     """Defaults shared across all eval cases."""
 
@@ -85,39 +100,28 @@ class AssistantEvalCase(BaseModel):
     seed_data: AssistantEvalSeedData = Field(default_factory=lambda: AssistantEvalSeedData())
 
 
-class AssistantEvalSeedNewsDigestBullet(BaseModel):
-    """News digest bullet fixture seeded for one eval case."""
+class AssistantEvalSeedNewsItem(BaseModel):
+    """Visible news-item fixture seeded for one eval case."""
 
-    topic: str = Field(..., min_length=1, max_length=240)
-    details: str = Field(..., min_length=1)
-
-
-class AssistantEvalSeedNewsDigest(BaseModel):
-    """News digest fixture seeded for one eval case."""
-
-    title: str = Field(..., min_length=1, max_length=240)
+    title: str = Field(..., min_length=1, max_length=500)
     summary: str = Field(..., min_length=1)
-    bullets: list[AssistantEvalSeedNewsDigestBullet] = Field(default_factory=list)
-    source_count: int = Field(default=0, ge=0)
-    timezone: str = Field(default="UTC", min_length=1, max_length=100)
-    trigger_reason: str = Field(default="assistant_eval", min_length=1, max_length=64)
-    llm_model: str = Field(default="eval-seed", min_length=1, max_length=120)
-    read_at: datetime | None = None
-    window_start_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
-    )
-    window_end_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
-    )
-    generated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)
-    )
+    source_label: str | None = Field(default="Hacker News", max_length=255)
+    platform: str | None = Field(default="hackernews", max_length=50)
+    source_type: str | None = Field(default="hackernews", max_length=50)
+    article_url: str | None = Field(default=None, max_length=2048)
+    discussion_url: str | None = Field(default=None, max_length=2048)
+    article_domain: str | None = Field(default="example.com", max_length=255)
+    summary_key_points: list[str] = Field(default_factory=list)
+    top_comment_text: str | None = Field(default=None, min_length=1)
+    top_comment_author: str | None = Field(default="Commenter", max_length=255)
+    visibility_scope: Literal["global", "user"] = "global"
+    ingested_at: datetime = Field(default_factory=lambda: datetime.now(UTC).replace(tzinfo=None))
 
 
 class AssistantEvalSeedData(BaseModel):
     """Fixture data seeded before an eval case runs."""
 
-    news_digests: list[AssistantEvalSeedNewsDigest] = Field(default_factory=list)
+    news_items: list[AssistantEvalSeedNewsItem] = Field(default_factory=list)
     favorites: list[AssistantEvalSeedFavorite] = Field(default_factory=list)
 
 
@@ -212,6 +216,7 @@ class AssistantEvalReport(BaseModel):
     suite: str
     results: list[AssistantEvalResult]
 
+
 @dataclass
 class _EvalQueueGateway:
     """Minimal queue gateway for in-process eval task execution."""
@@ -271,36 +276,53 @@ def _seed_case_data(
 ) -> None:
     """Seed fixture data required by an eval case."""
 
-    for digest in seed_data.news_digests:
-        row = NewsDigest(
-            user_id=user_id,
-            timezone=digest.timezone,
-            window_start_at=digest.window_start_at,
-            window_end_at=digest.window_end_at,
-            title=digest.title,
-            summary=digest.summary,
-            source_count=digest.source_count,
-            group_count=len(digest.bullets),
-            embedding_model="eval-seed",
-            llm_model=digest.llm_model,
-            pipeline_version="assistant-eval",
-            trigger_reason=digest.trigger_reason,
-            generated_at=digest.generated_at,
-            read_at=digest.read_at,
-            build_metadata={},
+    for index, item in enumerate(seed_data.news_items, start=1):
+        article_url = item.article_url or f"https://example.com/news-item-{index}"
+        discussion_url = (
+            item.discussion_url or f"https://news.ycombinator.com/item?id={5000 + index}"
         )
-        db.add(row)
-        db.flush()
-        for position, bullet in enumerate(digest.bullets, start=1):
-            db.add(
-                NewsDigestBullet(
-                    digest_id=row.id,
-                    position=position,
-                    topic=bullet.topic,
-                    details=bullet.details,
-                    source_count=0,
-                )
+        raw_metadata: dict[str, Any] = {
+            "summary": {
+                "title": item.title,
+                "summary": item.summary,
+            }
+        }
+        if item.top_comment_text:
+            raw_metadata["top_comment"] = {
+                "author": item.top_comment_author or "Commenter",
+                "text": item.top_comment_text,
+            }
+
+        db.add(
+            NewsItem(
+                ingest_key=f"assistant-eval-news-item-{index}",
+                visibility_scope=(
+                    NewsItemVisibilityScope.USER.value
+                    if item.visibility_scope == "user"
+                    else NewsItemVisibilityScope.GLOBAL.value
+                ),
+                owner_user_id=user_id if item.visibility_scope == "user" else None,
+                platform=item.platform,
+                source_type=item.source_type,
+                source_label=item.source_label,
+                source_external_id=f"assistant-eval-source-{index}",
+                canonical_item_url=discussion_url,
+                canonical_story_url=article_url,
+                article_url=article_url,
+                article_title=item.title,
+                article_domain=item.article_domain,
+                discussion_url=discussion_url,
+                summary_title=item.title,
+                summary_key_points=list(item.summary_key_points),
+                summary_text=item.summary,
+                raw_metadata=raw_metadata,
+                status="ready",
+                representative_news_item_id=None,
+                cluster_size=1,
+                ingested_at=item.ingested_at,
+                processed_at=item.ingested_at,
             )
+        )
     for favorite in seed_data.favorites:
         content_metadata: dict[str, Any] = {}
         if favorite.summary:
@@ -318,9 +340,9 @@ def _seed_case_data(
         )
         db.add(content)
         db.flush()
-        db.add(ContentKnowledgeSave(user_id=user_id, content_id=int(content.id)))
+        db.add(ContentKnowledgeSave(user_id=user_id, content_id=_require_content_id(content)))
 
-    if seed_data.news_digests or seed_data.favorites:
+    if seed_data.news_items or seed_data.favorites:
         db.commit()
 
 
@@ -352,7 +374,7 @@ def _run_pending_analyze_url_tasks(session_factory: sessionmaker) -> None:
         settings=get_settings(),
         llm_service=None,
         worker_id="assistant-eval",
-        queue_gateway=queue_gateway,
+        queue_gateway=cast(Any, queue_gateway),
         db_factory=lambda: _db_context_factory(session_factory),
     )
     handler = AnalyzeUrlHandler()
@@ -412,40 +434,40 @@ def build_assistant_trace(
 
     for model_message in messages:
         if isinstance(model_message, ModelResponse):
-            for part in model_message.parts:
-                if isinstance(part, ToolCallPart):
+            for response_part in model_message.parts:
+                if isinstance(response_part, ToolCallPart):
                     args_value: dict[str, Any] | str | None
-                    if isinstance(part.args, dict):
-                        args_value = part.args
-                    elif part.args is None:
+                    if isinstance(response_part.args, dict):
+                        args_value = response_part.args
+                    elif response_part.args is None:
                         args_value = None
                     else:
-                        args_value = str(part.args)
+                        args_value = str(response_part.args)
                     events.append(
                         AssistantTraceEvent(
                             kind="tool_call",
-                            tool_name=part.tool_name,
-                            tool_call_id=part.tool_call_id,
+                            tool_name=response_part.tool_name,
+                            tool_call_id=response_part.tool_call_id,
                             args=args_value,
                         )
                     )
-                elif isinstance(part, TextPart) and part.content:
-                    assistant_texts.append(part.content)
+                elif isinstance(response_part, TextPart) and response_part.content:
+                    assistant_texts.append(response_part.content)
                     events.append(
                         AssistantTraceEvent(
                             kind="assistant_text",
-                            content=part.content,
+                            content=response_part.content,
                         )
                     )
         elif isinstance(model_message, ModelRequest):
-            for part in model_message.parts:
-                if isinstance(part, ToolReturnPart):
+            for request_part in model_message.parts:
+                if isinstance(request_part, ToolReturnPart):
                     events.append(
                         AssistantTraceEvent(
                             kind="tool_return",
-                            tool_name=part.tool_name,
-                            tool_call_id=part.tool_call_id,
-                            content=_serialize_event_payload(part.content),
+                            tool_name=request_part.tool_name,
+                            tool_call_id=request_part.tool_call_id,
+                            content=_serialize_event_payload(request_part.content),
                         )
                     )
 
@@ -534,9 +556,7 @@ def _build_debug_state(
     return AssistantEvalDebugState(
         subscriptions=rows,
         tasks=task_rows,
-        feed_options=[
-            option.model_dump(mode="json") for option in (feed_options or [])
-        ],
+        feed_options=[option.model_dump(mode="json") for option in (feed_options or [])],
     )
 
 
@@ -565,16 +585,17 @@ def run_assistant_eval_case(
             db.add(user)
             db.commit()
             db.refresh(user)
-            _seed_case_data(db, user_id=user.id, seed_data=case.seed_data)
+            user_id = _require_user_id(user)
+            _seed_case_data(db, user_id=user_id, seed_data=case.seed_data)
 
             context_snapshot = build_screen_context_snapshot(
                 db,
-                user_id=user.id,
+                user_id=user_id,
                 screen_context=screen_context,
             )
             chat_session = create_assistant_session(
                 db,
-                user_id=user.id,
+                user_id=user_id,
                 context_snapshot=context_snapshot,
                 screen_context=screen_context,
             )
@@ -582,18 +603,21 @@ def run_assistant_eval_case(
             chat_session.llm_provider = resolve_model_provider(model_spec)
             db.commit()
             db.refresh(chat_session)
+            chat_session_id = chat_session.id
+            if chat_session_id is None:
+                raise ValueError("Assistant eval chat session must be persisted before use")
 
-            history = load_message_history(db, chat_session.id)
+            history = load_message_history(db, chat_session_id)
             deps = AssistantDeps(
-                user_id=user.id,
-                session_id=chat_session.id,
+                user_id=user_id,
+                session_id=chat_session_id,
                 screen_context=screen_context,
                 context_snapshot=context_snapshot,
                 session_factory=session_factory,
             )
             provider_api_key = resolve_effective_api_key(
                 db=db,
-                user_id=user.id,
+                user_id=user_id,
                 model_spec=model_spec,
             )
 
@@ -622,7 +646,7 @@ def run_assistant_eval_case(
             db.expire_all()
             debug_state = _build_debug_state(
                 db,
-                user_id=user.id,
+                user_id=user_id,
                 feed_options=feed_options,
             )
             passed = verdict.passed
@@ -631,14 +655,8 @@ def run_assistant_eval_case(
             if case.expected_feed_options and not feed_options:
                 passed = False
                 score = 0.0
-                requirement_reason = (
-                    "Missing validated feed options in assistant render metadata."
-                )
-                reasoning = (
-                    f"{reasoning} {requirement_reason}"
-                    if reasoning
-                    else requirement_reason
-                )
+                requirement_reason = "Missing validated feed options in assistant render metadata."
+                reasoning = f"{reasoning} {requirement_reason}" if reasoning else requirement_reason
             return AssistantEvalResult(
                 suite=suite_name,
                 case_id=case.id,

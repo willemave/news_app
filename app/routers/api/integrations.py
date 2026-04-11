@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -10,8 +10,6 @@ from sqlalchemy.orm import Session
 from app.commands import delete_user_llm_integration, upsert_user_llm_integration
 from app.core.db import get_db_session
 from app.core.deps import get_current_user
-from app.models.user import User
-from app.queries import list_user_llm_integrations
 from app.models.api.common import (
     IntegrationDisconnectResponse,
     UpsertUserLlmIntegrationRequest,
@@ -22,6 +20,8 @@ from app.models.api.common import (
     XOAuthStartRequest,
     XOAuthStartResponse,
 )
+from app.models.user import User
+from app.queries import list_user_llm_integrations
 from app.services.x_integration import (
     XConnectionView,
     disconnect_x_connection,
@@ -32,6 +32,13 @@ from app.services.x_integration import (
 
 router = APIRouter(prefix="/integrations/x", tags=["integrations"])
 llm_router = APIRouter(prefix="/integrations/llm", tags=["integrations"])
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
 
 
 def _to_connection_response(view: XConnectionView) -> XConnectionResponse:
@@ -118,7 +125,7 @@ def get_llm_integrations(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[UserLlmIntegrationResponse]:
     """List user-managed LLM provider keys."""
-    return list_user_llm_integrations.execute(db, user_id=current_user.id)
+    return list_user_llm_integrations.execute(db, user_id=_require_user_id(current_user))
 
 
 @llm_router.put("/{provider}", response_model=UserLlmIntegrationResponse)
@@ -131,7 +138,7 @@ def put_llm_integration(
     """Store or update a user-managed LLM provider key."""
     return upsert_user_llm_integration.execute(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         provider=provider,
         api_key=payload.api_key,
     )
@@ -144,7 +151,11 @@ def delete_llm_integration(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, str]:
     """Delete a user-managed LLM provider key."""
-    return delete_user_llm_integration.execute(db, user_id=current_user.id, provider=provider)
+    return delete_user_llm_integration.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        provider=provider,
+    )
 
 
 @llm_router.post("/{provider}/test", response_model=UserLlmIntegrationTestResponse)
@@ -154,11 +165,14 @@ def test_llm_integration(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UserLlmIntegrationTestResponse:
     """Validate presence of a user-managed LLM provider key."""
+    user_id = _require_user_id(current_user)
     integrations = {
         integration.provider: integration
-        for integration in list_user_llm_integrations.execute(db, user_id=current_user.id)
+        for integration in list_user_llm_integrations.execute(db, user_id=user_id)
     }
+    if provider not in {"anthropic", "openai", "google"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unsupported provider")
     return UserLlmIntegrationTestResponse(
-        provider=provider,  # type: ignore[arg-type]
+        provider=cast(Literal["anthropic", "openai", "google"], provider),
         ok=provider in integrations and integrations[provider].configured,
     )

@@ -6,6 +6,8 @@ fetches comments, and generates comment summaries.
 import asyncio
 import contextlib
 import re
+import threading
+from collections.abc import Coroutine
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +21,47 @@ from app.processing_strategies.html_strategy import HtmlProcessorStrategy
 from app.processing_strategies.pdf_strategy import PdfProcessorStrategy
 
 logger = get_logger(__name__)
+
+
+def _run_coro_sync[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run a coroutine from sync code, even if an event loop is already active."""
+
+    def _run_on_new_loop() -> T:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coro)
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.run_until_complete(loop.shutdown_default_executor())
+            return result
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _run_on_new_loop()
+
+    result: T | None = None
+    error: BaseException | None = None
+
+    def _runner() -> None:
+        nonlocal result, error
+        try:
+            result = _run_on_new_loop()
+        except BaseException as exc:  # noqa: BLE001
+            error = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if error is not None:
+        raise error
+    if result is None:
+        raise RuntimeError("Coroutine runner returned without a result")
+    return result
 
 
 class HackerNewsProcessorStrategy(UrlProcessorStrategy):
@@ -114,7 +157,7 @@ class HackerNewsProcessorStrategy(UrlProcessorStrategy):
         self, item_data: dict[str, Any], max_comments: int = 30
     ) -> list[dict[str, Any]]:
         """Fetch top-level comments for an item."""
-        comments = []
+        comments: list[dict[str, Any]] = []
         comment_ids = item_data.get("kids", [])[:max_comments]
 
         if not comment_ids:
@@ -193,7 +236,7 @@ class HackerNewsProcessorStrategy(UrlProcessorStrategy):
             comments = await self._fetch_comments(item_data)
             return item_data, comments
 
-        item_data, comments = asyncio.run(fetch_all_data())
+        item_data, comments = _run_coro_sync(fetch_all_data())
 
         if not item_data:
             logger.error(f"Could not fetch HN item data for ID: {item_id}")
@@ -276,7 +319,7 @@ class HackerNewsProcessorStrategy(UrlProcessorStrategy):
                 response_headers = None
                 try:
                     # Make a HEAD request to determine content type
-                    response = self.http_client.request("HEAD", linked_url, follow_redirects=True)
+                    response = self.http_client.head(linked_url)
                     response_headers = response.headers
                 except Exception as e:
                     logger.warning(f"HEAD request failed for {linked_url}: {e}")
@@ -336,7 +379,7 @@ HackerNews Discussion Context:
     def extract_internal_urls(self, content: str, original_url: str) -> list[str]:
         """Extract any relevant URLs from the HN discussion."""
         # For now, we'll just return the linked URL if any
-        urls = []
+        urls: list[str] = []
 
         # This would be populated from the extract_data method
         # but for now return empty list

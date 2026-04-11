@@ -50,6 +50,13 @@ from app.services.personal_markdown_library import collect_personal_markdown_doc
 router = APIRouter(tags=["agent"])
 
 
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
+
+
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job(
     job_id: int,
@@ -82,7 +89,11 @@ async def start_onboarding(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AgentOnboardingStartResponse:
     """Start simplified async onboarding."""
-    return await start_agent_onboarding.execute(db, user_id=current_user.id, payload=payload)
+    return await start_agent_onboarding.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        payload=payload,
+    )
 
 
 @router.get(
@@ -95,7 +106,11 @@ def get_onboarding(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> OnboardingDiscoveryStatusResponse:
     """Return onboarding run status."""
-    return get_agent_onboarding_status.execute(db, user_id=current_user.id, run_id=run_id)
+    return get_agent_onboarding_status.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        run_id=run_id,
+    )
 
 
 @router.post(
@@ -107,11 +122,11 @@ def complete_onboarding(
     payload: AgentOnboardingCompleteRequest,
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-):
+) -> dict[str, object]:
     """Complete onboarding from simplified selections."""
     response = complete_agent_onboarding.execute(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         run_id=run_id,
         payload=payload,
     )
@@ -127,7 +142,11 @@ def generate_digest(
     """Queue arbitrary-window digest generation for agent clients."""
     if payload is None:
         raise HTTPException(status_code=404, detail="Not Found")
-    return generate_agent_digest.execute(db, user_id=current_user.id, payload=payload)
+    return generate_agent_digest.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        payload=payload,
+    )
 
 
 @router.post("/agent/cli/link/start", response_model=CliLinkStartResponse)
@@ -209,7 +228,7 @@ def get_agent_library_manifest(
     """Return manifest metadata for exportable per-user markdown files."""
     documents = collect_personal_markdown_documents_for_user(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         include_source=include_source,
     )
     return AgentLibraryManifestResponse(
@@ -238,7 +257,7 @@ def get_agent_library_file(
     """Return one rendered markdown document by relative manifest path."""
     documents = collect_personal_markdown_documents_for_user(
         db,
-        user_id=current_user.id,
+        user_id=_require_user_id(current_user),
         include_source=True,
     )
     document = next((item for item in documents if item.relative_path.as_posix() == path), None)

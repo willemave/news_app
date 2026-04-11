@@ -11,8 +11,8 @@ try:  # pragma: no cover - import availability covered by readiness checks
     from elevenlabs import VoiceSettings
     from elevenlabs.client import ElevenLabs
 except Exception:  # pragma: no cover - gracefully handled at runtime
-    VoiceSettings = None  # type: ignore[assignment]
-    ElevenLabs = None  # type: ignore[assignment]
+    VoiceSettings = None  # type: ignore[misc,assignment]
+    ElevenLabs = None  # type: ignore[misc,assignment]
 
 logger = get_logger(__name__)
 

@@ -3,6 +3,7 @@ This module defines the abstract base class for URL processing strategies.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from typing import Any
 
 import httpx  # For type hinting httpx.Headers
@@ -69,7 +70,11 @@ class UrlProcessorStrategy(ABC):
         pass
 
     @abstractmethod
-    def extract_data(self, content: Any, url: str) -> dict[str, Any]:
+    def extract_data(
+        self,
+        content: Any,
+        url: str,
+    ) -> dict[str, Any] | Awaitable[dict[str, Any]]:
         """
         Extracts relevant data from the downloaded content.
         Should return a standardized dictionary.
@@ -101,7 +106,10 @@ class UrlProcessorStrategy(ABC):
         pass
 
     @abstractmethod
-    def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
+    def prepare_for_llm(
+        self,
+        extracted_data: dict[str, Any],
+    ) -> dict[str, Any] | Awaitable[dict[str, Any]]:
         """
         Prepares the extracted data into a format suitable for LLM processing
         (filtering and summarization) based on app.llm functions.

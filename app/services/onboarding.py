@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import yaml
 from pydantic import BaseModel, Field
@@ -60,15 +60,16 @@ from app.utils.paths import resolve_config_path
 
 logger = get_logger(__name__)
 
+SuggestionType = Literal["substack", "atom", "podcast_rss", "reddit"]
+SelectedSuggestionType = Literal["substack", "atom", "podcast_rss"]
+
 ONBOARDING_PRIMARY_MODEL = "cerebras:zai-glm-4.7"
 PROFILE_MODEL = ONBOARDING_PRIMARY_MODEL
 FAST_DISCOVER_MODEL = ONBOARDING_PRIMARY_MODEL
 VOICE_PARSE_MODEL = ONBOARDING_PRIMARY_MODEL
 AUDIO_PLAN_MODEL = ONBOARDING_PRIMARY_MODEL
-DISCOVERY_FALLBACK_MODELS = (
-)
-AUDIO_PLAN_FALLBACK_MODELS = (
-)
+DISCOVERY_FALLBACK_MODELS = ()
+AUDIO_PLAN_FALLBACK_MODELS = ()
 
 PROFILE_TIMEOUT_SECONDS = 8
 FAST_DISCOVER_TIMEOUT_SECONDS = 12
@@ -145,12 +146,14 @@ AUDIO_PLAN_SYSTEM_PROMPT = (
     "Return structured output only."
 )
 
+
 class _ProfileOutput(BaseModel):
     """LLM output for onboarding profile creation."""
 
     profile_summary: str
     inferred_topics: list[str] = Field(default_factory=list)
     candidate_sources: list[str] = Field(default_factory=list)
+
 
 class _DiscoverSuggestion(BaseModel):
     """LLM output suggestion seed."""
@@ -209,6 +212,48 @@ class _AudioPlanOutput(BaseModel):
     topic_summary: str
     inferred_topics: list[str] = Field(default_factory=list)
     lanes: list[_AudioLane] = Field(default_factory=list)
+
+
+def _require_run_id(run: OnboardingDiscoveryRun) -> int:
+    """Return a persisted discovery run ID or raise."""
+    run_id = run.id
+    if run_id is None:
+        raise ValueError("Onboarding discovery run must be persisted before use")
+    return run_id
+
+
+def _require_run_status(run: OnboardingDiscoveryRun) -> str:
+    """Return a discovery run status or raise."""
+    status = run.status
+    if not isinstance(status, str) or not status:
+        raise ValueError("Onboarding discovery run missing status")
+    return status
+
+
+def _normalize_lane_target(value: str | None) -> Literal["feeds", "podcasts", "reddit"] | None:
+    if value in {"feeds", "podcasts", "reddit"}:
+        return cast(Literal["feeds", "podcasts", "reddit"], value)
+    return None
+
+
+def _normalize_suggestion_type(value: str | None) -> SuggestionType | None:
+    if value in {"substack", "atom", "podcast_rss", "reddit"}:
+        return cast(SuggestionType, value)
+    return None
+
+
+def _normalize_selected_suggestion_type(value: str | None) -> SelectedSuggestionType | None:
+    if value in {"substack", "atom", "podcast_rss"}:
+        return cast(SelectedSuggestionType, value)
+    return None
+
+
+def _normalize_score(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def build_onboarding_profile(request: OnboardingProfileRequest) -> OnboardingProfileResponse:
@@ -382,16 +427,18 @@ async def start_audio_discovery(
         lanes.append(lane_row)
 
     db.commit()
+    run_id = _require_run_id(run)
+    run_status = _require_run_status(run)
 
     queue_gateway = get_task_queue_gateway()
     queue_gateway.enqueue(
         TaskType.ONBOARDING_DISCOVER,
-        payload={"user_id": user_id, "run_id": run.id},
+        payload={"user_id": user_id, "run_id": run_id},
     )
 
     return OnboardingAudioDiscoverResponse(
-        run_id=run.id,
-        run_status=run.status,
+        run_id=run_id,
+        run_status=run_status,
         topic_summary=run.topic_summary,
         inferred_topics=list(run.inferred_topics or []),
         lanes=[_serialize_lane_status(lane) for lane in lanes],
@@ -418,21 +465,23 @@ def get_onboarding_discovery_status(
     )
     if not run:
         raise ValueError("Discovery run not found")
+    run_id_value = _require_run_id(run)
+    run_status = _require_run_status(run)
 
     lanes = (
         db.query(OnboardingDiscoveryLane)
-        .filter(OnboardingDiscoveryLane.run_id == run.id)
+        .filter(OnboardingDiscoveryLane.run_id == run_id_value)
         .order_by(OnboardingDiscoveryLane.id.asc())
         .all()
     )
 
     suggestions: OnboardingFastDiscoverResponse | None = None
-    if run.status == "completed":
-        suggestions = _load_onboarding_suggestions(db, run.id)
+    if run_status == "completed":
+        suggestions = _load_onboarding_suggestions(db, run_id_value)
 
     return OnboardingDiscoveryStatusResponse(
-        run_id=run.id,
-        run_status=run.status,
+        run_id=run_id_value,
+        run_status=run_status,
         topic_summary=run.topic_summary,
         inferred_topics=list(run.inferred_topics or []),
         lanes=[_serialize_lane_status(lane) for lane in lanes],
@@ -511,9 +560,7 @@ def complete_onboarding(
     should_update_twitter_username = request.twitter_username is not None
     if should_update_twitter_username:
         normalized_username = normalize_twitter_username(request.twitter_username)
-    should_update_news_list_preference_prompt = (
-        request.news_list_preference_prompt is not None
-    )
+    should_update_news_list_preference_prompt = request.news_list_preference_prompt is not None
     if should_update_news_list_preference_prompt:
         normalized_news_list_preference_prompt = normalize_news_list_preference_prompt(
             request.news_list_preference_prompt
@@ -746,7 +793,7 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
                         num_results=FAST_DISCOVER_EXA_RESULTS,
                         include_social=(lane.target == "reddit"),
                         lane_name=lane.lane_name,
-                        lane_target=lane.target,
+                        lane_target=_normalize_lane_target(lane.target),
                     )
                 )
                 lane.completed_queries = idx + 1
@@ -871,7 +918,7 @@ def _run_exa_queries(
     include_social: bool = False,
 ) -> list[ExaSearchResult]:
     results: list[ExaSearchResult] = []
-    exclude_domains = [] if include_social else None
+    exclude_domains: list[str] | None = [] if include_social else None
     for query in queries:
         results.extend(
             exa_search(
@@ -894,11 +941,9 @@ def _run_discovery_exa_queries(
 ) -> list[_DiscoveryWebResult]:
     """Run Exa queries and attach onboarding discovery metadata."""
     results: list[_DiscoveryWebResult] = []
-    exclude_domains = [] if include_social else None
+    exclude_domains: list[str] | None = [] if include_social else None
     cleaned_queries = [
-        query.strip()
-        for query in queries
-        if isinstance(query, str) and query.strip()
+        query.strip() for query in queries if isinstance(query, str) and query.strip()
     ]
     if not cleaned_queries:
         return results
@@ -1503,9 +1548,7 @@ def _target_query_keyword(target: Literal["feeds", "podcasts", "reddit"]) -> str
     return "newsletters and rss feeds"
 
 
-def _enforce_query_word_range(
-    query: str, target: Literal["feeds", "podcasts", "reddit"]
-) -> str:
+def _enforce_query_word_range(query: str, target: Literal["feeds", "podcasts", "reddit"]) -> str:
     tokens = [token.strip(".,;:!?") for token in query.split()]
     tokens = [token for token in tokens if token]
 
@@ -1621,8 +1664,8 @@ def _format_discovery_prompt(
         if not section_items:
             lines.append("  - none")
             continue
-        for idx, item in enumerate(section_items, start=1):
-            lines.append(f"  {idx}. {_format_curated_candidate(item)}")
+        for idx, curated_item in enumerate(section_items, start=1):
+            lines.append(f"  {idx}. {_format_curated_candidate(curated_item)}")
     return "\n".join(lines)
 
 
@@ -1687,9 +1730,7 @@ def _ensure_response_rationales(
 ) -> OnboardingFastDiscoverResponse:
     topic_list = list(inferred_topics or [])
     for item in (
-        response.recommended_substacks
-        + response.recommended_pods
-        + response.recommended_subreddits
+        response.recommended_substacks + response.recommended_pods + response.recommended_subreddits
     ):
         if item.rationale and item.rationale.strip():
             continue
@@ -1717,11 +1758,11 @@ def _infer_feed_url_from_site(site_url: str | None) -> str | None:
 
 
 def _normalize_suggestions(
-    items: list[_DiscoverSuggestion], suggestion_type: str
+    items: list[_DiscoverSuggestion], suggestion_type: SuggestionType
 ) -> list[OnboardingSuggestion]:
     normalized: list[OnboardingSuggestion] = []
     for item in items:
-        feed_url = (item.feed_url or "").strip()
+        feed_url: str | None = (item.feed_url or "").strip() or None
         candidate_feed_url = (item.candidate_feed_url or "").strip()
         site_url = (item.site_url or "").strip() or None
         subreddit = _normalize_subreddit_name((item.subreddit or "").strip())
@@ -1958,9 +1999,12 @@ def _defaults_to_selected_sources(
         else:
             limit = DEFAULT_SOURCE_LIMITS[suggestion_type]
         for suggestion in defaults[:limit]:
+            selected_type = _normalize_selected_suggestion_type(suggestion.suggestion_type)
+            if selected_type is None:
+                continue
             selections.append(
                 OnboardingSelectedSource(
-                    suggestion_type=suggestion.suggestion_type,
+                    suggestion_type=selected_type,
                     title=suggestion.title,
                     feed_url=suggestion.feed_url or "",
                     config={"feed_url": suggestion.feed_url or ""},
@@ -2102,9 +2146,7 @@ def _seed_default_feed_content_for_user(
         .filter(
             Content.content_metadata["feed_url"].as_string().in_(feed_urls),
             Content.status == ContentStatus.COMPLETED.value,
-            Content.content_type.in_(
-                [ContentType.ARTICLE.value, ContentType.PODCAST.value]
-            ),
+            Content.content_type.in_([ContentType.ARTICLE.value, ContentType.PODCAST.value]),
             (Content.classification != "skip") | (Content.classification.is_(None)),
         )
         .filter(~Content.id.in_(existing))
@@ -2143,8 +2185,8 @@ def _get_tutorial_flag(db: Session, user_id: int) -> bool:
 
 def _serialize_lane_status(lane: OnboardingDiscoveryLane) -> OnboardingDiscoveryLaneStatus:
     return OnboardingDiscoveryLaneStatus(
-        name=lane.lane_name,
-        status=lane.status,
+        name=lane.lane_name or "",
+        status=lane.status or "queued",
         completed_queries=lane.completed_queries or 0,
         query_count=lane.query_count or 0,
     )
@@ -2201,7 +2243,7 @@ def _persist_onboarding_suggestions(
                 subreddit=item.subreddit,
                 title=item.title,
                 rationale=item.rationale,
-                score=item.score,
+                score=cast(Any, _normalize_score(item.score)),
                 status="new",
             )
         )
@@ -2257,19 +2299,22 @@ def _load_onboarding_suggestions(db: Session, run_id: int) -> OnboardingFastDisc
     subreddits: list[OnboardingSuggestion] = []
 
     for suggestion in suggestions:
+        suggestion_type = _normalize_suggestion_type(suggestion.suggestion_type)
+        if suggestion_type is None:
+            continue
         item = OnboardingSuggestion(
-            suggestion_type=suggestion.suggestion_type,
+            suggestion_type=suggestion_type,
             title=suggestion.title,
             site_url=suggestion.site_url,
             feed_url=suggestion.feed_url,
             subreddit=suggestion.subreddit,
             rationale=suggestion.rationale,
-            score=suggestion.score,
+            score=_normalize_score(suggestion.score),
             is_default=False,
         )
-        if suggestion.suggestion_type == "podcast_rss":
+        if suggestion_type == "podcast_rss":
             podcasts.append(item)
-        elif suggestion.suggestion_type == "reddit":
+        elif suggestion_type == "reddit":
             subreddits.append(item)
         else:
             feeds.append(item)
@@ -2331,7 +2376,7 @@ def _persist_discovery_run(
                         feed_url=feed_url,
                         title=suggestion.title,
                         rationale=suggestion.rationale,
-                        score=suggestion.score,
+                        score=cast(Any, _normalize_score(suggestion.score)),
                         status="new",
                         config={"feed_url": feed_url},
                     )

@@ -53,7 +53,24 @@ def _news_item_sort_timestamp_expr():
 
 
 def _news_item_sort_timestamp(item: NewsItem) -> datetime:
-    return item.published_at or item.processed_at or item.ingested_at or item.created_at
+    timestamp = item.published_at or item.processed_at or item.ingested_at or item.created_at
+    if timestamp is not None:
+        return timestamp
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _require_news_item_id(item: NewsItem) -> int:
+    item_id = item.id
+    if item_id is None:
+        raise ValueError("News item is missing an id")
+    return int(item_id)
+
+
+def _require_news_item_created_at(item: NewsItem) -> datetime:
+    created_at = item.ingested_at or item.created_at
+    if created_at is not None:
+        return created_at
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _resolve_item_url(item: NewsItem) -> str:
@@ -107,8 +124,9 @@ def _comment_count(item: NewsItem) -> int | None:
         except (TypeError, ValueError):
             continue
 
-    if item.cluster_size > 1:
-        return item.cluster_size - 1
+    cluster_size = item.cluster_size
+    if cluster_size is not None and cluster_size > 1:
+        return cluster_size - 1
     return None
 
 
@@ -155,7 +173,7 @@ def _present_summary(
     display_title = _news_item_display_title(item)
 
     return ContentSummaryResponse(
-        id=item.id,
+        id=_require_news_item_id(item),
         content_type=ContentType.NEWS,
         url=_resolve_item_url(item),
         source_url=item.canonical_item_url or item.discussion_url,
@@ -165,7 +183,7 @@ def _present_summary(
         platform=item.platform,
         status=_content_status(item),
         short_summary=item.summary_text,
-        created_at=(item.ingested_at or item.created_at).isoformat(),
+        created_at=_require_news_item_created_at(item).isoformat(),
         processed_at=item.processed_at.isoformat() if item.processed_at else None,
         classification=_content_classification(item),
         publication_date=item.published_at.isoformat() if item.published_at else None,
@@ -230,7 +248,7 @@ def _present_detail(
     metadata.setdefault("cluster", _cluster_metadata(item))
 
     return ContentDetailResponse(
-        id=item.id,
+        id=_require_news_item_id(item),
         content_type=ContentType.NEWS,
         url=_resolve_item_url(item),
         source_url=item.canonical_item_url or item.discussion_url,
@@ -242,12 +260,15 @@ def _present_detail(
         error_message=None,
         retry_count=0,
         metadata=metadata,
-        created_at=(item.ingested_at or item.created_at).isoformat(),
+        created_at=_require_news_item_created_at(item).isoformat(),
         updated_at=item.updated_at.isoformat() if item.updated_at else None,
         processed_at=item.processed_at.isoformat() if item.processed_at else None,
         checked_out_by=None,
         checked_out_at=None,
         publication_date=item.published_at.isoformat() if item.published_at else None,
+        body_available=False,
+        body_kind=None,
+        body_format=None,
         is_read=is_read,
         is_saved_to_knowledge=False,
         summary=item.summary_text,
@@ -336,10 +357,7 @@ def list_visible_news_items(
         rows = rows[:limit]
 
     available_dates = sorted(
-        {
-            _coerce_utc(_news_item_sort_timestamp(item)).date().isoformat()
-            for item, _row_is_read in rows
-        },
+        {_news_item_sort_timestamp(item).date().isoformat() for item, _row_is_read in rows},
         reverse=True,
     )
     next_cursor = None

@@ -35,10 +35,13 @@ def mark_unread(db: Session, *, user_id: int, content_id: int) -> dict[str, obje
         )
     )
     db.commit()
+    removed_records = getattr(result, "rowcount", 0)
+    if not isinstance(removed_records, int):
+        removed_records = 0
     return {
         "status": "success",
         "content_id": content_id,
-        "removed_records": result.rowcount,
+        "removed_records": removed_records,
     }
 
 

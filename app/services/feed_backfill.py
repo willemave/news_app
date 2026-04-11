@@ -21,6 +21,22 @@ logger = get_logger(__name__)
 DEFAULT_FEED_SCRAPE_LIMIT = 10
 
 
+def _require_config_id(config: UserScraperConfig) -> int:
+    """Return a persisted scraper-config ID or raise."""
+    config_id = config.id
+    if config_id is None:
+        raise ValueError("User scraper config must be persisted before use")
+    return config_id
+
+
+def _require_scraper_type(config: UserScraperConfig) -> str:
+    """Return a scraper type or raise."""
+    scraper_type = config.scraper_type
+    if not isinstance(scraper_type, str) or not scraper_type:
+        raise ValueError("Scraper config missing scraper_type")
+    return scraper_type
+
+
 def resolve_feed_config_for_content(
     db: Session,
     user_id: int,
@@ -148,11 +164,11 @@ def backfill_feed_for_config(request: FeedBackfillRequest) -> FeedBackfillResult
             raise ValueError("feed_url_missing")
 
         feed_info = {**feed_payloads[0], "limit": target_limit}
-        scraper = _single_feed_scraper(config.scraper_type, feed_info)
+        scraper = _single_feed_scraper(_require_scraper_type(config), feed_info)
         stats = scraper.run_with_stats()
 
         return FeedBackfillResult(
-            config_id=config.id,
+            config_id=_require_config_id(config),
             base_limit=base_limit,
             target_limit=target_limit,
             scraped=stats.scraped,

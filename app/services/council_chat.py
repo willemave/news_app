@@ -49,6 +49,14 @@ class CouncilBranchExecutionResult:
     assistant_text: str
 
 
+def _require_session_id(session: ChatSession) -> int:
+    """Return a persisted session ID or raise."""
+    session_id = session.id
+    if session_id is None:
+        raise ValueError("Chat session must be persisted before use")
+    return session_id
+
+
 def validate_council_parent_session(session: ChatSession) -> None:
     """Raise a value error when the session cannot be used for council mode."""
 
@@ -189,12 +197,13 @@ def build_council_branch_sessions(
     """Create hidden council child sessions for the supplied parent session."""
 
     child_sessions: list[ChatSession] = []
+    parent_session_id = _require_session_id(parent_session)
     personas = resolve_user_council_personas(user)
     for persona in personas:
         child_session = ChatSession(
             user_id=parent_session.user_id,
             content_id=parent_session.content_id,
-            parent_session_id=parent_session.id,
+            parent_session_id=parent_session_id,
             title=parent_session.title,
             session_type=parent_session.session_type,
             topic=parent_session.topic,
@@ -218,8 +227,8 @@ def build_council_branch_sessions(
         db.flush()
         clone_session_messages(
             db,
-            source_session_id=parent_session.id,
-            target_session_id=child_session.id,
+            source_session_id=parent_session_id,
+            target_session_id=_require_session_id(child_session),
         )
         child_sessions.append(child_session)
 
@@ -313,7 +322,7 @@ async def _run_council_branch_turn(
         branch_db.commit()
 
         return CouncilBranchExecutionResult(
-            child_session_id=child_session.id,
+            child_session_id=_require_session_id(child_session),
             persona_id=child_session.council_persona_id or "persona",
             persona_name=child_session.council_persona_name or "Persona",
             assistant_text=assistant_text,
@@ -338,6 +347,7 @@ async def start_council_chat(
         parent_session=parent_session,
         user=user,
     )
+    parent_session_id = _require_session_id(parent_session)
     branch_session_factory = sessionmaker(
         bind=db.get_bind(),
         autocommit=False,
@@ -348,7 +358,7 @@ async def start_council_chat(
         *[
             _run_council_branch_turn(
                 session_factory=branch_session_factory,
-                child_session_id=child_session.id,
+                child_session_id=_require_session_id(child_session),
                 user_prompt=user_prompt,
             )
             for child_session in child_sessions
@@ -377,7 +387,7 @@ async def start_council_chat(
 
     council_message = save_messages(
         db,
-        parent_session.id,
+        parent_session_id,
         [
             ModelRequest(parts=[UserPromptPart(content=user_prompt)]),
             ModelResponse(parts=[TextPart(content=active_child_assistant_text)]),
@@ -439,6 +449,9 @@ def select_council_branch(
         )
         if council_message is not None:
             candidates = get_parent_council_candidates(db, parent_session)
+            message_list_json = council_message.message_list
+            if not isinstance(message_list_json, str):
+                raise ValueError("Council message payload missing")
             active_candidate = next(
                 (
                     candidate
@@ -451,7 +464,7 @@ def select_council_branch(
                 _update_council_message_content(
                     council_message,
                     user_prompt=_extract_user_prompt(
-                        ModelMessagesTypeAdapter.validate_json(council_message.message_list)
+                        ModelMessagesTypeAdapter.validate_json(message_list_json)
                     )
                     or "",
                     assistant_text=active_candidate.content,

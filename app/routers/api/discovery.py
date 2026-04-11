@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Literal, cast
 from urllib.parse import urlparse, urlunparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import HttpUrl, TypeAdapter
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -48,6 +50,28 @@ logger = get_logger(__name__)
 
 router = APIRouter()
 
+ScraperTypeLiteral = Literal["substack", "atom", "podcast_rss", "youtube", "reddit"]
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
+
+
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
+
+
+def _require_run_id(run_id: int | None) -> int:
+    if run_id is None:
+        raise ValueError("Discovery run is missing an id")
+    return run_id
+
+
+def _require_suggestion_id(suggestion_id: int | None) -> int:
+    if suggestion_id is None:
+        raise ValueError("Discovery suggestion is missing an id")
+    return suggestion_id
+
 
 def _serialize_dt(value: datetime | None) -> str | None:
     if value is None:
@@ -83,19 +107,25 @@ def _normalize_feed_url_for_match(feed_url: str | None) -> str | None:
 
 
 def _suggestion_to_response(suggestion: FeedDiscoverySuggestion) -> DiscoverySuggestionResponse:
+    suggestion_id = _require_suggestion_id(suggestion.id)
+    suggestion_type = suggestion.suggestion_type
+    feed_url = suggestion.feed_url
+    status = suggestion.status
+    if suggestion_type is None or feed_url is None or status is None:
+        raise ValueError("Discovery suggestion is missing required fields")
     return DiscoverySuggestionResponse(
-        id=suggestion.id,
-        suggestion_type=suggestion.suggestion_type,
+        id=suggestion_id,
+        suggestion_type=suggestion_type,
         site_url=suggestion.site_url,
-        feed_url=suggestion.feed_url,
+        feed_url=feed_url,
         item_url=suggestion.item_url,
         title=suggestion.title,
         description=suggestion.description,
         channel_id=suggestion.channel_id,
         playlist_id=suggestion.playlist_id,
         rationale=suggestion.rationale,
-        score=suggestion.score,
-        status=suggestion.status,
+        score=float(suggestion.score) if suggestion.score is not None else None,
+        status=status,
         created_at=_serialize_dt(suggestion.created_at) or "",
     )
 
@@ -109,9 +139,10 @@ async def get_discovery_suggestions(
     db: Session = Depends(get_readonly_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoverySuggestionsResponse:
+    user_id = _require_user_id(current_user)
     run = (
         db.query(FeedDiscoveryRun)
-        .filter(FeedDiscoveryRun.user_id == current_user.id)
+        .filter(FeedDiscoveryRun.user_id == user_id)
         .order_by(FeedDiscoveryRun.created_at.desc())
         .first()
     )
@@ -121,7 +152,7 @@ async def get_discovery_suggestions(
     suggestions = (
         db.query(FeedDiscoverySuggestion)
         .filter(
-            FeedDiscoverySuggestion.user_id == current_user.id,
+            FeedDiscoverySuggestion.user_id == user_id,
             FeedDiscoverySuggestion.run_id == run.id,
             FeedDiscoverySuggestion.status == "new",
         )
@@ -134,7 +165,10 @@ async def get_discovery_suggestions(
     youtube: list[DiscoverySuggestionResponse] = []
 
     for suggestion in suggestions:
-        response_item = _suggestion_to_response(suggestion)
+        try:
+            response_item = _suggestion_to_response(suggestion)
+        except ValueError:
+            continue
         if suggestion.suggestion_type in {"atom", "substack"}:
             feeds.append(response_item)
         elif suggestion.suggestion_type == "podcast_rss":
@@ -143,7 +177,7 @@ async def get_discovery_suggestions(
             youtube.append(response_item)
 
     return DiscoverySuggestionsResponse(
-        run_id=run.id,
+        run_id=_require_run_id(run.id),
         run_status=run.status,
         run_created_at=_serialize_dt(run.created_at),
         direction_summary=run.direction_summary,
@@ -163,9 +197,10 @@ async def get_discovery_history(
     db: Session = Depends(get_readonly_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryHistoryResponse:
+    user_id = _require_user_id(current_user)
     runs = (
         db.query(FeedDiscoveryRun)
-        .filter(FeedDiscoveryRun.user_id == current_user.id)
+        .filter(FeedDiscoveryRun.user_id == user_id)
         .order_by(FeedDiscoveryRun.created_at.desc())
         .limit(limit)
         .all()
@@ -173,11 +208,11 @@ async def get_discovery_history(
     if not runs:
         return DiscoveryHistoryResponse()
 
-    run_ids = [run.id for run in runs]
+    run_ids = [_require_run_id(run.id) for run in runs if run.id is not None]
     suggestions = (
         db.query(FeedDiscoverySuggestion)
         .filter(
-            FeedDiscoverySuggestion.user_id == current_user.id,
+            FeedDiscoverySuggestion.user_id == user_id,
             FeedDiscoverySuggestion.run_id.in_(run_ids),
             FeedDiscoverySuggestion.status == "new",
         )
@@ -190,8 +225,14 @@ async def get_discovery_history(
     }
 
     for suggestion in suggestions:
-        response_item = _suggestion_to_response(suggestion)
-        bucket = grouped.get(suggestion.run_id)
+        try:
+            response_item = _suggestion_to_response(suggestion)
+        except ValueError:
+            continue
+        suggestion_run_id = suggestion.run_id
+        if suggestion_run_id is None:
+            continue
+        bucket = grouped.get(suggestion_run_id)
         if not bucket:
             continue
         if suggestion.suggestion_type in {"atom", "substack"}:
@@ -203,15 +244,19 @@ async def get_discovery_history(
 
     run_payloads: list[DiscoveryRunSuggestions] = []
     for run in runs:
-        bucket = grouped.get(run.id)
+        run_id = run.id
+        run_status = run.status
+        if run_id is None or run_status is None:
+            continue
+        bucket = grouped.get(run_id)
         if not bucket:
             continue
         if not (bucket["feeds"] or bucket["podcasts"] or bucket["youtube"]):
             continue
         run_payloads.append(
             DiscoveryRunSuggestions(
-                run_id=run.id,
-                run_status=run.status,
+                run_id=run_id,
+                run_status=run_status,
                 run_created_at=_serialize_dt(run.created_at) or "",
                 direction_summary=run.direction_summary,
                 feeds=bucket["feeds"],
@@ -239,10 +284,11 @@ async def search_discovery_podcast_episodes(
     db: Session = Depends(get_readonly_db_session),
     current_user: User = Depends(get_current_user),
 ) -> PodcastEpisodeSearchResponse:
+    user_id = _require_user_id(current_user)
     existing_feed_rows = (
         db.query(UserScraperConfig.feed_url)
         .filter(
-            UserScraperConfig.user_id == current_user.id,
+            UserScraperConfig.user_id == user_id,
             UserScraperConfig.scraper_type == "podcast_rss",
             UserScraperConfig.is_active.is_(True),
         )
@@ -293,10 +339,11 @@ async def refresh_discovery(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryRefreshResponse:
+    user_id = _require_user_id(current_user)
     settings = get_settings()
     knowledge_save_count = (
         db.query(func.count(ContentKnowledgeSave.id))
-        .filter(ContentKnowledgeSave.user_id == current_user.id)
+        .filter(ContentKnowledgeSave.user_id == user_id)
         .scalar()
         or 0
     )
@@ -308,7 +355,7 @@ async def refresh_discovery(
 
     task_id = get_task_queue_gateway().enqueue(
         TaskType.DISCOVER_FEEDS,
-        payload={"user_id": current_user.id, "trigger": "manual"},
+        payload={"user_id": user_id, "trigger": "manual"},
     )
     return DiscoveryRefreshResponse(status="queued", task_id=task_id)
 
@@ -323,10 +370,11 @@ async def subscribe_discovery_suggestions(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoverySubscribeResponse:
+    user_id = _require_user_id(current_user)
     suggestions = (
         db.query(FeedDiscoverySuggestion)
         .filter(
-            FeedDiscoverySuggestion.user_id == current_user.id,
+            FeedDiscoverySuggestion.user_id == user_id,
             FeedDiscoverySuggestion.id.in_(payload.suggestion_ids),
         )
         .all()
@@ -337,17 +385,24 @@ async def subscribe_discovery_suggestions(
     errors: list[dict[str, str]] = []
 
     for suggestion in suggestions:
+        suggestion_id = suggestion.id
+        if suggestion_id is None:
+            continue
         if suggestion.status == "subscribed":
-            skipped.append(suggestion.id)
+            skipped.append(suggestion_id)
             continue
         if suggestion.suggestion_type == "youtube" and _is_youtube_watch_url(suggestion.feed_url):
-            skipped.append(suggestion.id)
+            skipped.append(suggestion_id)
             errors.append(
-                {"id": str(suggestion.id), "error": "youtube_watch_url_requires_add_item"}
+                {"id": str(suggestion_id), "error": "youtube_watch_url_requires_add_item"}
             )
             continue
 
         try:
+            scraper_type = suggestion.suggestion_type
+            if scraper_type not in {"substack", "atom", "podcast_rss", "youtube", "reddit"}:
+                errors.append({"id": str(suggestion_id), "error": "invalid_suggestion_type"})
+                continue
             config_payload = {**(suggestion.config or {})}
             if suggestion.feed_url and not config_payload.get("feed_url"):
                 config_payload["feed_url"] = suggestion.feed_url
@@ -355,32 +410,32 @@ async def subscribe_discovery_suggestions(
                 config_payload["limit"] = DEFAULT_NEW_FEED_LIMIT
             create_user_scraper_config(
                 db,
-                user_id=current_user.id,
+                user_id=user_id,
                 data=CreateUserScraperConfig(
-                    scraper_type=suggestion.suggestion_type,
+                    scraper_type=cast(ScraperTypeLiteral, scraper_type),
                     display_name=suggestion.title,
                     config=config_payload,
                 ),
             )
             suggestion.status = "subscribed"
-            subscribed.append(suggestion.id)
+            subscribed.append(suggestion_id)
         except ValueError as exc:
             if "already exists" in str(exc):
                 suggestion.status = "subscribed"
-                subscribed.append(suggestion.id)
+                subscribed.append(suggestion_id)
             else:
-                errors.append({"id": str(suggestion.id), "error": str(exc)})
+                errors.append({"id": str(suggestion_id), "error": str(exc)})
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "Failed to subscribe discovery suggestion",
                 extra={
                     "component": "feed_discovery",
                     "operation": "subscribe",
-                    "item_id": str(suggestion.id),
+                    "item_id": str(suggestion_id),
                     "context_data": {"error": str(exc)},
                 },
             )
-            errors.append({"id": str(suggestion.id), "error": str(exc)})
+            errors.append({"id": str(suggestion_id), "error": str(exc)})
 
     db.commit()
     return DiscoverySubscribeResponse(subscribed=subscribed, skipped=skipped, errors=errors)
@@ -396,10 +451,11 @@ async def add_discovery_items(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryAddItemResponse:
+    user_id = _require_user_id(current_user)
     suggestions = (
         db.query(FeedDiscoverySuggestion)
         .filter(
-            FeedDiscoverySuggestion.user_id == current_user.id,
+            FeedDiscoverySuggestion.user_id == user_id,
             FeedDiscoverySuggestion.id.in_(payload.suggestion_ids),
         )
         .all()
@@ -410,18 +466,33 @@ async def add_discovery_items(
     errors: list[dict[str, str]] = []
 
     for suggestion in suggestions:
-        if not suggestion.item_url:
-            skipped.append(suggestion.id)
+        suggestion_id = suggestion.id
+        item_url = suggestion.item_url
+        if suggestion_id is None:
+            continue
+        if not item_url:
+            skipped.append(suggestion_id)
             continue
 
         try:
+            validated_item_url = _HTTP_URL_ADAPTER.validate_python(item_url)
             response = submit_user_content(
                 db,
-                SubmitContentRequest(url=suggestion.item_url, title=suggestion.title),
+                SubmitContentRequest(
+                    url=validated_item_url,
+                    content_type=None,
+                    title=suggestion.title,
+                    platform=None,
+                    instruction=None,
+                    crawl_links=False,
+                    subscribe_to_feed=False,
+                    share_and_chat=False,
+                    save_to_knowledge_and_mark_read=False,
+                ),
                 current_user,
             )
             if response.already_exists:
-                skipped.append(suggestion.id)
+                skipped.append(suggestion_id)
             else:
                 created.append(response.content_id)
         except Exception as exc:  # noqa: BLE001
@@ -430,11 +501,11 @@ async def add_discovery_items(
                 extra={
                     "component": "feed_discovery",
                     "operation": "add_item",
-                    "item_id": str(suggestion.id),
+                    "item_id": str(suggestion_id),
                     "context_data": {"error": str(exc)},
                 },
             )
-            errors.append({"id": str(suggestion.id), "error": str(exc)})
+            errors.append({"id": str(suggestion_id), "error": str(exc)})
 
     db.commit()
     return DiscoveryAddItemResponse(created=created, skipped=skipped, errors=errors)
@@ -450,10 +521,11 @@ async def dismiss_discovery_suggestions(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryDismissResponse:
+    user_id = _require_user_id(current_user)
     suggestions = (
         db.query(FeedDiscoverySuggestion)
         .filter(
-            FeedDiscoverySuggestion.user_id == current_user.id,
+            FeedDiscoverySuggestion.user_id == user_id,
             FeedDiscoverySuggestion.id.in_(payload.suggestion_ids),
         )
         .all()
@@ -462,7 +534,8 @@ async def dismiss_discovery_suggestions(
     dismissed: list[int] = []
     for suggestion in suggestions:
         suggestion.status = "dismissed"
-        dismissed.append(suggestion.id)
+        if suggestion.id is not None:
+            dismissed.append(suggestion.id)
 
     db.commit()
     return DiscoveryDismissResponse(dismissed=dismissed)
@@ -477,17 +550,17 @@ async def clear_discovery_suggestions(
     db: Session = Depends(get_db_session),
     current_user: User = Depends(get_current_user),
 ) -> DiscoveryDismissResponse:
+    user_id = _require_user_id(current_user)
     suggestions = (
-        db.query(FeedDiscoverySuggestion)
-        .filter(FeedDiscoverySuggestion.user_id == current_user.id)
-        .all()
+        db.query(FeedDiscoverySuggestion).filter(FeedDiscoverySuggestion.user_id == user_id).all()
     )
 
     dismissed: list[int] = []
     for suggestion in suggestions:
         if suggestion.status != "dismissed":
             suggestion.status = "dismissed"
-            dismissed.append(suggestion.id)
+            if suggestion.id is not None:
+                dismissed.append(suggestion.id)
 
     db.commit()
     return DiscoveryDismissResponse(dismissed=dismissed)

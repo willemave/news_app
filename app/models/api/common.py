@@ -61,11 +61,9 @@ class ContentSummaryResponse(BaseModel):
         None, description="Aggregator discussion URL (HN thread, tweet, etc.)"
     )
     news_key_points: list[str] | None = Field(
-        None, description="Key points provided for news digests"
+        None, description="Key points provided for news items"
     )
-    news_summary: str | None = Field(
-        None, description="Short overview synthesized for news digests"
-    )
+    news_summary: str | None = Field(None, description="Short overview synthesized for news items")
     user_status: str | None = Field(
         None, description="Per-user content status (e.g., inbox, archived)"
     )
@@ -494,11 +492,9 @@ class ContentDetailResponse(BaseModel):
         None, description="Aggregator discussion URL (HN thread, tweet, etc.)"
     )
     news_key_points: list[str] | None = Field(
-        None, description="Key points provided for news digests"
+        None, description="Key points provided for news items"
     )
-    news_summary: str | None = Field(
-        None, description="Short overview synthesized for news digests"
-    )
+    news_summary: str | None = Field(None, description="Short overview synthesized for news items")
     image_url: str | None = Field(
         None, description="URL of full-size AI-generated image for this content"
     )

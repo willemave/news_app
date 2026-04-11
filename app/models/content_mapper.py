@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import HttpUrl, TypeAdapter
+
 from app.core.logging import get_logger
 from app.models.metadata import ContentData, ContentStatus, ContentType
 from app.models.metadata_state import merge_runtime_metadata, normalize_metadata_shape
@@ -11,6 +13,7 @@ from app.utils.summary_metadata import infer_summary_kind_version
 from app.utils.url_utils import is_http_url
 
 logger = get_logger(__name__)
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
 
 
 def _is_user_scoped_x_digest_url(raw_url: str, metadata: dict[str, Any], content_type: str) -> bool:
@@ -53,6 +56,16 @@ def _select_http_url(raw_url: str, metadata: dict[str, Any], content_type: str) 
 def content_to_domain(db_content: DBContent) -> ContentData:
     """Convert database Content to normalized ContentData."""
     try:
+        content_type = db_content.content_type
+        url = db_content.url
+        status = db_content.status
+        if (
+            not isinstance(content_type, str)
+            or not isinstance(url, str)
+            or not isinstance(status, str)
+        ):
+            raise ValueError(f"Content {db_content.id} is missing required string fields")
+
         stored_metadata = normalize_metadata_shape(dict(db_content.content_metadata or {}))
         metadata = merge_runtime_metadata(stored_metadata)
 
@@ -60,21 +73,21 @@ def content_to_domain(db_content: DBContent) -> ContentData:
             metadata["platform"] = db_content.platform
         if db_content.source and metadata.get("source") is None:
             metadata["source"] = db_content.source
-        _normalize_summary_metadata(metadata, db_content.content_type)
+        _normalize_summary_metadata(metadata, content_type)
 
         resolved_url = _select_http_url(
-            db_content.url,
+            url,
             metadata,
-            db_content.content_type,
+            content_type,
         )
 
         return ContentData(
             id=db_content.id,
-            content_type=ContentType(db_content.content_type),
-            url=resolved_url,
-            source_url=db_content.source_url or db_content.url,
+            content_type=ContentType(content_type),
+            url=_HTTP_URL_ADAPTER.validate_python(resolved_url),
+            source_url=db_content.source_url or url,
             title=db_content.title,
-            status=ContentStatus(db_content.status),
+            status=ContentStatus(status),
             metadata=metadata,
             platform=db_content.platform,
             source=db_content.source,

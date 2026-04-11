@@ -14,11 +14,18 @@ from pydantic_ai.models.instrumented import InstrumentationSettings
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 
+Langfuse: Any | None
+propagate_attributes: Any | None
+
 try:
-    from langfuse import Langfuse, propagate_attributes
+    from langfuse import Langfuse as _Langfuse
+    from langfuse import propagate_attributes as _propagate_attributes
+
+    Langfuse = _Langfuse
+    propagate_attributes = _propagate_attributes
 except Exception:  # noqa: BLE001
-    Langfuse = None  # type: ignore[assignment,misc]
-    propagate_attributes = None  # type: ignore[assignment,misc]
+    Langfuse = None
+    propagate_attributes = None
 
 logger = get_logger(__name__)
 
@@ -31,6 +38,8 @@ _LANGFUSE_INIT_LOCK = Lock()
 def _as_int(value: object) -> int | None:
     """Convert usage values to integers when possible."""
     if value is None:
+        return None
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
         return None
     try:
         return int(value)
@@ -270,7 +279,7 @@ def langfuse_generation_context(
         return
 
     normalized_metadata = _normalize_metadata(metadata)
-    with _LANGFUSE_CLIENT.start_as_current_observation(  # type: ignore[union-attr]
+    with _LANGFUSE_CLIENT.start_as_current_observation(
         name=name,
         as_type="generation",
         model=model,

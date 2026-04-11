@@ -116,7 +116,7 @@ class SubstackScraper(BaseScraper):
 
     def scrape(self) -> list[dict[str, Any]]:
         """Scrape all configured Substack feeds with comprehensive error logging."""
-        items = []
+        items: list[dict[str, Any]] = []
 
         feeds = self._load_feeds()
         if not feeds:
@@ -233,7 +233,7 @@ class SubstackScraper(BaseScraper):
         source_name: str = "",
         user_id: int | None = None,
         config_id: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Process a single entry from an RSS feed."""
         title = entry.get("title", "No Title")
         link = entry.get("link")

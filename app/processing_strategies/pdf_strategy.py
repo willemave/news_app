@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from google import genai
@@ -95,7 +95,7 @@ class PdfProcessorStrategy(UrlProcessorStrategy):
             ) as generation:
                 response = self.client.models.generate_content(
                     model=self.model_name,
-                    contents=[pdf_part, extraction_prompt],
+                    contents=cast(Any, [pdf_part, extraction_prompt]),
                     config={"temperature": 0.3, "max_output_tokens": 50000},
                 )
                 usage_details = extract_google_usage_details(response)

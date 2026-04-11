@@ -16,12 +16,12 @@ logger = get_logger(__name__)
 class StrategyRegistry:
     """Registry for content processing strategies."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.strategies: list[UrlProcessorStrategy] = []
         self.http_client = RobustHttpClient()
         self._initialize_default_strategies()
 
-    def _initialize_default_strategies(self):
+    def _initialize_default_strategies(self) -> None:
         """Initialize with default strategies."""
         # Order is important: more specific strategies should come before general ones.
         # HackerNewsStrategy for HN item URLs (needs to be early to intercept HN links)

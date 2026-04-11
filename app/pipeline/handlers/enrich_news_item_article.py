@@ -19,6 +19,8 @@ class EnrichNewsItemArticleHandler:
     def handle(self, task: TaskEnvelope, context: TaskContext) -> TaskResult:
         payload = task.payload if isinstance(task.payload, dict) else {}
         raw_news_item_id = payload.get("news_item_id")
+        if not isinstance(raw_news_item_id, (str, int)):
+            return TaskResult.fail("Invalid news_item_id in task payload", retryable=False)
         try:
             news_item_id = int(raw_news_item_id)
         except (TypeError, ValueError):

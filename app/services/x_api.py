@@ -579,9 +579,7 @@ def _oauth_token_request(*, grant_type: str, extra: dict[str, str]) -> dict[str,
     if grant_type == "authorization_code":
         redirect_uri = (settings.x_oauth_redirect_uri or "").strip()
         if not redirect_uri:
-            raise ValueError(
-                "X OAuth is not configured (X_OAUTH_REDIRECT_URI is required)"
-            )
+            raise ValueError("X OAuth is not configured (X_OAUTH_REDIRECT_URI is required)")
         payload["redirect_uri"] = redirect_uri
     auth: tuple[str, str] | None = None
     client_secret = (settings.x_client_secret or "").strip()
@@ -745,10 +743,7 @@ def _map_tweet(tweet_data: dict[str, Any], users_by_id: dict[str, dict[str, Any]
     article_title, article_text = _extract_article_parts(tweet_data.get("article"))
     note_tweet_text = _extract_note_tweet_text(tweet_data.get("note_tweet"))
     text = (
-        _optional_string(tweet_data.get("text"))
-        or note_tweet_text
-        or article_title
-        or article_text
+        _optional_string(tweet_data.get("text")) or note_tweet_text or article_title or article_text
     )
     if not tweet_id or not text:
         return None
@@ -758,12 +753,10 @@ def _map_tweet(tweet_data: dict[str, Any], users_by_id: dict[str, dict[str, Any]
     username = _optional_string(author_data.get("username"))
     name = _optional_string(author_data.get("name")) or username
 
-    metrics = (
-        tweet_data.get("public_metrics")
-        if isinstance(tweet_data.get("public_metrics"), dict)
-        else {}
-    )
-    entities = tweet_data.get("entities") if isinstance(tweet_data.get("entities"), dict) else {}
+    raw_metrics = tweet_data.get("public_metrics")
+    metrics: dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
+    raw_entities = tweet_data.get("entities")
+    entities: dict[str, Any] = raw_entities if isinstance(raw_entities, dict) else {}
 
     return XTweet(
         id=tweet_id,
@@ -881,11 +874,11 @@ def _extract_linked_tweet_ids(tweet_data: dict[str, Any], entities: dict[str, An
         raw_url = item.get("expanded_url") or item.get("unwound_url") or item.get("url")
         if not isinstance(raw_url, str):
             continue
-        tweet_id = extract_tweet_id(raw_url)
-        if not tweet_id or tweet_id in seen:
+        linked_tweet_id = extract_tweet_id(raw_url)
+        if not linked_tweet_id or linked_tweet_id in seen:
             continue
-        seen.add(tweet_id)
-        linked_ids.append(tweet_id)
+        seen.add(linked_tweet_id)
+        linked_ids.append(linked_tweet_id)
 
     return linked_ids
 

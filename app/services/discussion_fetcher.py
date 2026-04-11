@@ -464,8 +464,8 @@ def _build_reddit_payload(discussion_url: str, comment_cap: int) -> DiscussionPa
 
     try:
         submission = client.submission(id=submission_id)
-        _ = submission.title  # Force fetch to surface API/auth errors.
         submission.comment_sort = "top"
+        _ = submission.title  # Force fetch to surface API/auth errors.
         submission.comments.replace_more(limit=0)
     except Exception as exc:  # noqa: BLE001
         raise DiscussionFetchError(
@@ -590,7 +590,9 @@ def _fetch_techmeme_discussion_groups(
 
         for anchor in links_container.find_all("a"):
             href = anchor.get("href")
-            normalized_url = normalize_http_url(urljoin(canonical_url, href or ""))
+            if not isinstance(href, str) or not href.strip():
+                continue
+            normalized_url = normalize_http_url(urljoin(canonical_url, href))
             if not normalized_url:
                 continue
             grouped_items[label].append(
@@ -789,7 +791,8 @@ def _extract_anchor_titles_from_html(html: str) -> dict[str, str]:
     soup = BeautifulSoup(html, "html.parser")
     titles: dict[str, str] = {}
     for anchor in soup.find_all("a", href=True):
-        href = anchor.get("href") or ""
+        href_value = anchor.get("href")
+        href = href_value if isinstance(href_value, str) else ""
         text = anchor.get_text(" ", strip=True)
         if not href or not text:
             continue
@@ -856,11 +859,7 @@ def _get_reddit_client() -> praw.Reddit | None:
         "timeout": settings.http_timeout_seconds,
     }
 
-    if (
-        not settings.reddit_read_only
-        and settings.reddit_username
-        and settings.reddit_password
-    ):
+    if not settings.reddit_read_only and settings.reddit_username and settings.reddit_password:
         reddit_kwargs["username"] = settings.reddit_username
         reddit_kwargs["password"] = settings.reddit_password
 

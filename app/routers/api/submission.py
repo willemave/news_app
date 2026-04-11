@@ -16,7 +16,7 @@ from app.models.api.common import (
     SubmissionStatusResponse,
 )
 from app.models.content_submission import ContentSubmissionResponse, SubmitContentRequest
-from app.models.metadata import ContentStatus
+from app.models.metadata import ContentStatus, ContentType
 from app.models.pagination import PaginationMetadata
 from app.models.schema import Content
 from app.models.user import User
@@ -43,7 +43,7 @@ async def submit_content(
     payload: SubmitContentRequest,
     db: Annotated[Session, Depends(get_db_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> ContentSubmissionResponse:
+) -> ContentSubmissionResponse | JSONResponse:
     """Create or reuse content for a user-submitted URL and enqueue processing."""
     try:
         result = submit_content_command.execute(
@@ -79,6 +79,9 @@ async def list_submission_statuses(
     ),
 ) -> SubmissionStatusListResponse:
     """List status information for the current user's submissions."""
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
     last_id = None
     last_created_at = None
     if cursor:
@@ -98,7 +101,7 @@ async def list_submission_statuses(
     ]
 
     submitter_filter = cast(Content.content_metadata["submitted_by_user_id"], String) == str(
-        current_user.id
+        user_id
     )
 
     query = (
@@ -126,14 +129,18 @@ async def list_submission_statuses(
     for content in contents:
         try:
             metadata = content.content_metadata or {}
+            raw_content_type = content.content_type
+            raw_status = content.status
+            if raw_content_type is None or raw_status is None:
+                raise ValueError("Submission row is missing required fields")
             submissions.append(
                 SubmissionStatusResponse(
-                    id=content.id,
-                    content_type=content.content_type,
+                    id=_require_content_id(content.id),
+                    content_type=ContentType(raw_content_type),
                     url=str(content.url),
                     source_url=content.source_url,
                     title=content.title,
-                    status=content.status,
+                    status=ContentStatus(raw_status),
                     error_message=content.error_message,
                     created_at=content.created_at.isoformat() if content.created_at else "",
                     processed_at=content.processed_at.isoformat() if content.processed_at else None,
@@ -158,8 +165,10 @@ async def list_submission_statuses(
     next_cursor = None
     if has_more and contents:
         last_item = contents[-1]
+        if last_item.created_at is None:
+            raise ValueError("Submission row is missing created_at")
         next_cursor = PaginationCursor.encode_cursor(
-            last_id=last_item.id,
+            last_id=_require_content_id(last_item.id),
             last_created_at=last_item.created_at,
             filters={},
         )
@@ -173,3 +182,9 @@ async def list_submission_statuses(
             total=len(submissions),
         ),
     )
+
+
+def _require_content_id(content_id: int | None) -> int:
+    if content_id is None:
+        raise ValueError("Content is missing an id")
+    return content_id

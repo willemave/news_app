@@ -20,13 +20,14 @@ from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessi
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_costs import extract_usage_from_result, record_llm_usage_out_of_band
-from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
-    LLMProvider as ChatModelProvider,
-)
 from app.services.llm_models import (
+    DEFAULT_MODEL,
     build_pydantic_model,
     resolve_effective_api_key,
     resolve_model_provider,
+)
+from app.services.llm_models import (  # noqa: F401 (re-export for API schemas)
+    LLMProvider as ChatModelProvider,
 )
 from app.services.personal_markdown_library import sync_personal_markdown_library_for_user
 from app.services.sandbox_runtime import (
@@ -69,6 +70,30 @@ SYSTEM_PROMPT_TEXT = (
     "- Always cite sources with markdown links when referencing search results\n"
     "- Keep responses focused and scannable"
 )
+
+
+def _require_session_id(session: ChatSession) -> int:
+    """Return a persisted session ID or raise."""
+    session_id = session.id
+    if session_id is None:
+        raise ValueError("Chat session must be persisted before use")
+    return session_id
+
+
+def _require_session_user_id(session: ChatSession) -> int:
+    """Return the owning user ID for a session or raise."""
+    user_id = session.user_id
+    if user_id is None:
+        raise ValueError("Chat session must have a user_id")
+    return user_id
+
+
+def _resolve_session_model(session: ChatSession) -> str:
+    """Resolve the effective model spec for a session."""
+    model_spec = session.llm_model
+    if isinstance(model_spec, str) and model_spec.strip():
+        return model_spec
+    return DEFAULT_MODEL
 
 
 def _estimate_tokens(text: str | None) -> int:
@@ -589,7 +614,10 @@ def load_message_history(db: Session, session_id: int) -> list[ModelMessage]:
     for db_msg in db_messages:
         try:
             # Deserialize JSON to list of ModelMessage
-            msg_list = ModelMessagesTypeAdapter.validate_json(db_msg.message_list)
+            message_list_json = db_msg.message_list
+            if not isinstance(message_list_json, str):
+                continue
+            msg_list = ModelMessagesTypeAdapter.validate_json(message_list_json)
             messages.extend(msg_list)
         except Exception as e:
             logger.warning(f"Failed to deserialize message {db_msg.id}: {e}")
@@ -832,13 +860,15 @@ def _build_personal_library_runtime(
     session: ChatSession,
 ) -> tuple[PersonalLibrarySandboxSession | None, str | None]:
     """Synchronize and hydrate the personal markdown library for a chat turn."""
+    session_id = _require_session_id(session)
+    user_id = _require_session_user_id(session)
     settings = get_settings()
     if not settings.personal_markdown_enabled or settings.chat_sandbox_provider == "disabled":
         return None, None
 
     try:
-        sync_personal_markdown_library_for_user(db, user_id=session.user_id)
-        sandbox_session = create_personal_library_sandbox_session(user_id=session.user_id)
+        sync_personal_markdown_library_for_user(db, user_id=user_id)
+        sandbox_session = create_personal_library_sandbox_session(user_id=user_id)
         return sandbox_session, None
     except SandboxRuntimeUnavailableError as exc:
         return None, str(exc)
@@ -850,8 +880,8 @@ def _build_personal_library_runtime(
                 operation="build_personal_library_runtime",
                 event_name="chat.turn.personal_library",
                 status="degraded",
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_id,
+                user_id=user_id,
                 content_id=session.content_id,
                 context_data={"failure_class": type(exc).__name__},
             ),
@@ -880,18 +910,21 @@ def _log_chat_usage(
     usage_details = extract_usage_from_result(result)
     if usage_details is None:
         return
+    user_id = _require_session_user_id(session)
+    model_spec = _resolve_session_model(session)
+    provider = resolve_model_provider(model_spec)
 
     try:
         usage = record_llm_usage_out_of_band(
-            provider=resolve_model_provider(session.llm_model),
-            model=session.llm_model,
+            provider=provider,
+            model=model_spec,
             feature="chat",
             operation=f"chat.{context}",
             source=context,
             usage=usage_details,
             session_id=session_id,
             message_id=message_id,
-            user_id=session.user_id,
+            user_id=user_id,
             content_id=session.content_id,
             metadata={"session_type": session.session_type},
         )
@@ -907,12 +940,12 @@ def _log_chat_usage(
             status="completed",
             session_id=session_id,
             message_id=message_id,
-            user_id=session.user_id,
+            user_id=user_id,
             content_id=session.content_id,
             source=context,
             context_data={
-                "model": session.llm_model,
-                "provider": resolve_model_provider(session.llm_model),
+                "model": model_spec,
+                "provider": provider,
                 "usage_recorded": usage is not None,
             },
         ),
@@ -986,6 +1019,10 @@ async def run_chat_turn(
         task_id: Optional queue task identifier.
     """
     total_start = perf_counter()
+    session_row_id = _require_session_id(session)
+    session_user_id = _require_session_user_id(session)
+    model_spec = _resolve_session_model(session)
+    provider = resolve_model_provider(model_spec)
     logger.info(
         "Chat turn started",
         extra=build_log_extra(
@@ -993,13 +1030,13 @@ async def run_chat_turn(
             operation="run_chat_turn",
             event_name="chat.turn",
             status="started",
-            session_id=session.id,
-            user_id=session.user_id,
+            session_id=session_row_id,
+            user_id=session_user_id,
             content_id=session.content_id,
             source=source,
             context_data={
-                "model": session.llm_model,
-                "provider": resolve_model_provider(session.llm_model),
+                "model": model_spec,
+                "provider": provider,
                 "session_type": session.session_type,
                 "prompt_chars": len(user_prompt),
             },
@@ -1007,7 +1044,7 @@ async def run_chat_turn(
     )
 
     history_start = perf_counter()
-    history = load_message_history(db, session.id)
+    history = load_message_history(db, session_row_id)
     history_ms = (perf_counter() - history_start) * 1000
     logger.info(
         "Chat history loaded",
@@ -1017,8 +1054,8 @@ async def run_chat_turn(
             event_name="chat.turn.history_loaded",
             status="completed",
             duration_ms=history_ms,
-            session_id=session.id,
-            user_id=session.user_id,
+            session_id=session_row_id,
+            user_id=session_user_id,
             context_data={"history_count": len(history)},
         ),
     )
@@ -1032,8 +1069,8 @@ async def run_chat_turn(
     )
     provider_api_key = resolve_effective_api_key(
         db=db,
-        user_id=session.user_id,
-        model_spec=session.llm_model,
+        user_id=session_user_id,
+        model_spec=model_spec,
     )
     deps_ms = (perf_counter() - deps_start) * 1000
     logger.info(
@@ -1044,8 +1081,8 @@ async def run_chat_turn(
             event_name="chat.turn.context_built",
             status="completed",
             duration_ms=deps_ms,
-            session_id=session.id,
-            user_id=session.user_id,
+            session_id=session_row_id,
+            user_id=session_user_id,
             content_id=session.content_id,
             context_data={"context_chars": len(deps.article_context or "")},
         ),
@@ -1059,17 +1096,17 @@ async def run_chat_turn(
                 operation="llm_call",
                 event_name="chat.turn.llm_started",
                 status="started",
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
-                context_data={"model": session.llm_model},
+                context_data={"model": model_spec},
             ),
         )
         agent_start = perf_counter()
         result = await run_in_threadpool(
             _run_agent_sync,
-            session.llm_model,
+            model_spec,
             user_prompt,
             deps,
             history,
@@ -1079,11 +1116,11 @@ async def run_chat_turn(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, session, session.id, None, "sync")
+        _log_chat_usage(result, session, session_row_id, None, "sync")
         new_messages = result.new_messages()
         save_messages(
             db,
-            session.id,
+            session_row_id,
             new_messages,
             display_user_prompt=user_prompt,
         )
@@ -1109,12 +1146,12 @@ async def run_chat_turn(
                 event_name="chat.turn",
                 status="completed",
                 duration_ms=total_ms,
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
-                    "model": session.llm_model,
+                    "model": model_spec,
                     "deps_ms": round(deps_ms, 2),
                     "history_ms": round(history_ms, 2),
                     "agent_ms": round(agent_ms, 2),
@@ -1139,8 +1176,8 @@ async def run_chat_turn(
                 event_name="chat.turn",
                 status="failed",
                 duration_ms=(perf_counter() - total_start) * 1000,
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={"failure_class": type(exc).__name__},
@@ -1192,11 +1229,15 @@ async def process_message_async(
 
     SessionLocal = get_session_factory()
     db = SessionLocal()
+    deps: ChatDeps | None = None
     try:
         session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
         if not session:
             logger.error("[AsyncChat:ERROR] Session %s not found", session_id)
             return
+        session_row_id = _require_session_id(session)
+        session_user_id = _require_session_user_id(session)
+        model_spec = _resolve_session_model(session)
 
         include_full_text = True
 
@@ -1215,7 +1256,7 @@ async def process_message_async(
                 duration_ms=deps_ms,
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
@@ -1227,7 +1268,7 @@ async def process_message_async(
 
         # Load history (excluding the processing message we just created)
         history_start = perf_counter()
-        history = load_message_history(db, session.id)
+        history = load_message_history(db, session_row_id)
         history_ms = (perf_counter() - history_start) * 1000
         logger.info(
             "Async chat history loaded",
@@ -1239,14 +1280,14 @@ async def process_message_async(
                 duration_ms=history_ms,
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 context_data={"history_count": len(history)},
             ),
         )
         provider_api_key = resolve_effective_api_key(
             db=db,
-            user_id=session.user_id,
-            model_spec=session.llm_model,
+            user_id=session_user_id,
+            model_spec=model_spec,
         )
 
         # Run the agent
@@ -1259,16 +1300,16 @@ async def process_message_async(
                 status="started",
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
-                context_data={"model": session.llm_model, "history_count": len(history)},
+                context_data={"model": model_spec, "history_count": len(history)},
             ),
         )
         agent_start = perf_counter()
         result = await run_in_threadpool(
             _run_agent_sync,
-            session.llm_model,
+            model_spec,
             user_prompt,
             deps,
             history,
@@ -1300,7 +1341,7 @@ async def process_message_async(
                 duration_ms=agent_ms,
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
@@ -1339,11 +1380,11 @@ async def process_message_async(
                 duration_ms=total_ms,
                 session_id=session_id,
                 message_id=message_id,
-                user_id=session.user_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
-                    "model": session.llm_model,
+                    "model": model_spec,
                     "deps_ms": round(deps_ms, 2),
                     "history_ms": round(history_ms, 2),
                     "agent_ms": round(agent_ms, 2),
@@ -1373,7 +1414,7 @@ async def process_message_async(
         except Exception as update_exc:
             logger.error("[AsyncChat:UPDATE_FAILED] mid=%s error=%s", message_id, update_exc)
     finally:
-        _close_sandbox_session(locals().get("deps").sandbox_session if "deps" in locals() else None)
+        _close_sandbox_session(deps.sandbox_session if deps is not None else None)
         db.close()
 
 
@@ -1409,6 +1450,9 @@ async def generate_initial_suggestions(
         task_id: Optional queue task identifier.
     """
     total_start = perf_counter()
+    session_row_id = _require_session_id(session)
+    session_user_id = _require_session_user_id(session)
+    model_spec = _resolve_session_model(session)
     logger.info(
         "Initial suggestions started",
         extra=build_log_extra(
@@ -1416,11 +1460,11 @@ async def generate_initial_suggestions(
             operation="generate_initial_suggestions",
             event_name="chat.turn",
             status="started",
-            session_id=session.id,
-            user_id=session.user_id,
+            session_id=session_row_id,
+            user_id=session_user_id,
             content_id=session.content_id,
             source=source,
-            context_data={"model": session.llm_model, "session_type": session.session_type},
+            context_data={"model": model_spec, "session_type": session.session_type},
         ),
     )
 
@@ -1432,8 +1476,8 @@ async def generate_initial_suggestions(
                 operation="generate_initial_suggestions",
                 event_name="chat.turn",
                 status="skipped",
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 source=source,
             ),
         )
@@ -1443,15 +1487,15 @@ async def generate_initial_suggestions(
     deps = _build_chat_deps(db, session, include_full_text=include_full_text)
     provider_api_key = resolve_effective_api_key(
         db=db,
-        user_id=session.user_id,
-        model_spec=session.llm_model,
+        user_id=session_user_id,
+        model_spec=model_spec,
     )
 
     try:
         agent_start = perf_counter()
         result = await run_in_threadpool(
             _run_agent_sync,
-            session.llm_model,
+            model_spec,
             INITIAL_QUESTIONS_PROMPT,
             deps,
             [],
@@ -1461,10 +1505,10 @@ async def generate_initial_suggestions(
             provider_api_key=provider_api_key,
         )
         agent_ms = (perf_counter() - agent_start) * 1000
-        _log_chat_usage(result, session, session.id, None, "initial_suggestions")
+        _log_chat_usage(result, session, session_row_id, None, "initial_suggestions")
         new_messages = result.new_messages()
         save_start = perf_counter()
-        save_messages(db, session.id, new_messages)
+        save_messages(db, session_row_id, new_messages)
         save_ms = (perf_counter() - save_start) * 1000
 
         session.last_message_at = datetime.now(UTC)
@@ -1487,12 +1531,12 @@ async def generate_initial_suggestions(
                 event_name="chat.turn.persisted",
                 status="completed",
                 duration_ms=total_ms,
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={
-                    "model": session.llm_model,
+                    "model": model_spec,
                     "agent_ms": round(agent_ms, 2),
                     "save_ms": round(save_ms, 2),
                     "tool_names": tool_names,
@@ -1516,8 +1560,8 @@ async def generate_initial_suggestions(
                 event_name="chat.turn.failed",
                 status="failed",
                 duration_ms=(perf_counter() - total_start) * 1000,
-                session_id=session.id,
-                user_id=session.user_id,
+                session_id=session_row_id,
+                user_id=session_user_id,
                 content_id=session.content_id,
                 source=source,
                 context_data={"failure_class": type(exc).__name__},

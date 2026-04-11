@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from app.constants import (
     SUMMARY_KIND_LONG_BULLETS,
     SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
-    SUMMARY_KIND_SHORT_NEWS_DIGEST,
+    SUMMARY_KIND_SHORT_NEWS,
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
@@ -142,9 +142,7 @@ class SummarizeHandler:
                     content.status,
                 )
                 metadata = (
-                    content.content_metadata
-                    if isinstance(content.content_metadata, dict)
-                    else {}
+                    content.content_metadata if isinstance(content.content_metadata, dict) else {}
                 )
                 terminal_statuses = {
                     ContentStatus.FAILED.value,
@@ -157,9 +155,8 @@ class SummarizeHandler:
                         content.status,
                     )
                     return TaskResult.ok()
-                if (
-                    content.status == ContentStatus.COMPLETED.value
-                    and isinstance(metadata.get("summary"), dict)
+                if content.status == ContentStatus.COMPLETED.value and isinstance(
+                    metadata.get("summary"), dict
                 ):
                     logger.info(
                         "Skipping summarize task for content %s; summary already exists",
@@ -410,13 +407,11 @@ class SummarizeHandler:
                     )
 
                     if isinstance(summary, NewsSummary):
-                        summary_kind = SUMMARY_KIND_SHORT_NEWS_DIGEST
+                        summary_kind = SUMMARY_KIND_SHORT_NEWS
                         summary_version = SUMMARY_VERSION_V1
                     elif isinstance(summary, EditorialNarrativeSummary):
                         summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
-                        summary_version = resolve_editorial_summary_version(
-                            summarization_type
-                        )
+                        summary_version = resolve_editorial_summary_version(summarization_type)
                     elif isinstance(summary, BulletedSummary):
                         summary_kind = SUMMARY_KIND_LONG_BULLETS
                         summary_version = SUMMARY_VERSION_V1
@@ -451,7 +446,7 @@ class SummarizeHandler:
                             content.title = summary.title
 
                         logger.info(
-                            "Generated news digest summary for content %s",
+                            "Generated news summary for content %s",
                             content_id,
                         )
                     else:
@@ -494,7 +489,7 @@ class SummarizeHandler:
                         enqueue_visible_long_form_image_if_needed(
                             db,
                             content,
-                            queue_service=context.queue,
+                            queue_service=cast(Any, context.queue),
                         )
                         is not None
                     ):

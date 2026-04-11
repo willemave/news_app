@@ -120,7 +120,7 @@ class UserResponse(UserBase):
     @classmethod
     def normalize_council_personas(
         cls, value: list[CouncilPersonaConfig] | list[dict[str, Any]] | None
-    ) -> list[dict[str, Any]]:
+    ) -> list[CouncilPersonaConfig] | list[dict[str, Any]]:
         """Allow unset council personas on legacy users."""
 
         if value is None:

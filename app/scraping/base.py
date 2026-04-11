@@ -177,13 +177,14 @@ class BaseScraper(ABC):
                     )
 
                     if existing:
+                        existing_id = existing.id
                         inbox_created = False
-                        if should_add_to_inbox(content_type_value):
+                        if should_add_to_inbox(content_type_value) and existing_id is not None:
                             if user_id is not None:
                                 inbox_created = ensure_inbox_status(
                                     db,
                                     user_id=user_id,
-                                    content_id=existing.id,
+                                    content_id=existing_id,
                                     content_type=content_type_value,
                                 )
                             elif content_type_value == ContentType.NEWS.value:
@@ -193,7 +194,7 @@ class BaseScraper(ABC):
                                     if ensure_inbox_status(
                                         db,
                                         user_id=active_user_id,
-                                        content_id=existing.id,
+                                        content_id=existing_id,
                                         content_type=content_type_value,
                                     ):
                                         inbox_created = True
@@ -220,13 +221,14 @@ class BaseScraper(ABC):
 
                     db.add(content)
                     db.flush()
+                    content_id = content.id
 
-                    if should_add_to_inbox(content_type_value):
+                    if should_add_to_inbox(content_type_value) and content_id is not None:
                         if user_id is not None:
                             ensure_inbox_status(
                                 db,
                                 user_id=user_id,
-                                content_id=content.id,
+                                content_id=content_id,
                                 content_type=content_type_value,
                             )
                         elif content_type_value == ContentType.NEWS.value:
@@ -236,7 +238,7 @@ class BaseScraper(ABC):
                                 ensure_inbox_status(
                                     db,
                                     user_id=active_user_id,
-                                    content_id=content.id,
+                                    content_id=content_id,
                                     content_type=content_type_value,
                                 )
 

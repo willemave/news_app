@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
@@ -34,6 +34,13 @@ from app.utils.url_utils import is_http_url, normalize_http_url
 router = APIRouter(tags=["news"], responses={404: {"description": "Not found"}})
 
 
+def _require_user_id(current_user: User) -> int:
+    user_id = current_user.id
+    if user_id is None:
+        raise ValueError("Authenticated user is missing an id")
+    return user_id
+
+
 @router.get("/items", response_model=ContentListResponse, summary="List visible news items")
 def list_news_items(
     db: Annotated[Session, Depends(get_readonly_db_session)],
@@ -46,9 +53,10 @@ def list_news_items(
     limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> ContentListResponse:
     """Return the visible representative news feed for the current user."""
+    user_id = _require_user_id(current_user)
     return list_visible_news_items(
         db,
-        user_id=current_user.id,
+        user_id=user_id,
         read_filter=read_filter,
         cursor=cursor,
         limit=limit,
@@ -62,9 +70,10 @@ def mark_news_items_read(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> dict[str, Any]:
     """Mark the given visible representative news items as read."""
+    user_id = _require_user_id(current_user)
     return bulk_mark_news_items_read(
         db,
-        user_id=current_user.id,
+        user_id=user_id,
         news_item_ids=payload.content_ids,
     )
 
@@ -80,7 +89,11 @@ def get_news_item(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDetailResponse:
     """Return one visible representative news item."""
-    item = get_visible_news_item_detail(db, user_id=current_user.id, news_item_id=news_item_id)
+    item = get_visible_news_item_detail(
+        db,
+        user_id=_require_user_id(current_user),
+        news_item_id=news_item_id,
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
     return item
@@ -97,7 +110,11 @@ def get_news_item_discussion(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDiscussionResponse:
     """Return discussion payload for one visible representative news item."""
-    item = get_visible_news_item(db, user_id=current_user.id, news_item_id=news_item_id)
+    item = get_visible_news_item(
+        db,
+        user_id=_require_user_id(current_user),
+        news_item_id=news_item_id,
+    )
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
 
@@ -146,21 +163,25 @@ def convert_news_item_to_article(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ConvertNewsItemResponse:
     """Convert one representative news item into saved article content."""
-    item = get_visible_news_item(db, user_id=current_user.id, news_item_id=news_item_id)
+    user_id = _require_user_id(current_user)
+    item = get_visible_news_item(db, user_id=user_id, news_item_id=news_item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="News item not found")
 
     article_url = normalize_http_url(item.article_url or item.canonical_story_url)
     if not is_http_url(article_url):
         raise HTTPException(status_code=400, detail="No article URL found for news item")
+    canonical_article_url = cast(str, article_url)
 
     article, already_exists = convert_article_url_to_content(
         db,
-        article_url=article_url,
+        article_url=canonical_article_url,
         title=item.article_title,
         source=item.article_domain,
     )
-    ensure_article_saved_to_knowledge(db, user_id=current_user.id, content_id=article.id)
+    if item.id is None or article.id is None:
+        raise HTTPException(status_code=500, detail="Converted content is missing required ids")
+    ensure_article_saved_to_knowledge(db, user_id=user_id, content_id=article.id)
 
     return ConvertNewsItemResponse(
         news_item_id=item.id,

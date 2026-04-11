@@ -22,9 +22,9 @@ from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
 
 try:  # pragma: no cover - optional dependency in tests
-    import yt_dlp  # type: ignore
+    import yt_dlp
 except ImportError:  # pragma: no cover
-    yt_dlp = None  # type: ignore
+    yt_dlp = None
 
 # Resolve project root (two levels up from this file: app/ → project root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -647,7 +647,7 @@ class PodcastDownloadWorker:
                     if db_content:
                         db_content.status = ContentStatus.FAILED.value
                         db_content.error_message = error_msg[:500]  # Limit error message length
-                        db_content.retry_count += 1
+                        db_content.retry_count = (db_content.retry_count or 0) + 1
                         db.commit()
             except Exception as db_error:
                 logger.error(
@@ -876,7 +876,7 @@ class PodcastMediaWorker:
                     if db_content:
                         db_content.status = ContentStatus.FAILED.value
                         db_content.error_message = str(exc)[:500]
-                        db_content.retry_count += 1
+                        db_content.retry_count = (db_content.retry_count or 0) + 1
                         db.commit()
             except Exception:  # noqa: BLE001
                 logger.exception(
@@ -987,6 +987,8 @@ class PodcastTranscribeWorker:
 
                     # YouTube transcript already available from strategy processing
                     transcript_text = content.metadata.get("transcript")
+                    if not isinstance(transcript_text, str) or not transcript_text.strip():
+                        raise ValueError("Missing YouTube transcript text")
 
                     # Create directory for YouTube transcripts
                     youtube_dir = self.base_dir / "youtube"
@@ -1164,7 +1166,7 @@ class PodcastTranscribeWorker:
                     if db_content:
                         db_content.status = ContentStatus.FAILED.value
                         db_content.error_message = str(e)
-                        db_content.retry_count += 1
+                        db_content.retry_count = (db_content.retry_count or 0) + 1
                         db.commit()
             except Exception:
                 pass

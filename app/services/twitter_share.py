@@ -228,6 +228,12 @@ def resolve_twitter_credentials(
             error=f"Missing required Twitter credentials: {', '.join(missing)}",
         )
 
+    if auth_token is None or ct0 is None:
+        return TwitterCredentialsResult(
+            success=False,
+            error="Missing required Twitter credentials",
+        )
+
     return TwitterCredentialsResult(
         success=True,
         credentials=TwitterCredentials(
@@ -652,20 +658,31 @@ def _extract_user_data(current: dict[str, Any], legacy: dict[str, Any]) -> dict[
     )
     user_data: dict[str, Any] = {}
     if isinstance(user_result, dict):
+        normalized_user_result = user_result
+        nested_user = user_result.get("user")
         if user_result.get("__typename") == "UserWithVisibilityResults" and isinstance(
-            user_result.get("user"), dict
+            nested_user, dict
         ):
-            user_result = user_result.get("user")
-        legacy_user = user_result.get("legacy")
-        user_data = legacy_user if isinstance(legacy_user, dict) else user_result
+            normalized_user_result = nested_user
+        legacy_user = normalized_user_result.get("legacy")
+        user_data = legacy_user if isinstance(legacy_user, dict) else normalized_user_result
 
     if not user_data and isinstance(legacy.get("user"), dict):
-        user_data = legacy.get("user", {})
+        legacy_user = legacy.get("user")
+        user_data = legacy_user if isinstance(legacy_user, dict) else {}
 
     if not user_data and isinstance(current.get("author"), dict):
-        author = current.get("author") or {}
+        author_value = current.get("author")
+        author = author_value if isinstance(author_value, dict) else {}
         legacy_author = author.get("legacy")
-        user_data = legacy_author if isinstance(legacy_author, dict) else author.get("result") or {}
+        result_author = author.get("result")
+        user_data = (
+            legacy_author
+            if isinstance(legacy_author, dict)
+            else result_author
+            if isinstance(result_author, dict)
+            else {}
+        )
 
     return user_data if isinstance(user_data, dict) else {}
 

@@ -67,7 +67,12 @@ from app.services.council_chat import (
     select_council_branch,
     start_council_chat,
 )
-from app.services.llm_models import is_deep_research_provider, resolve_model
+from app.services.llm_models import (
+    DEFAULT_MODEL,
+    DEFAULT_PROVIDER,
+    is_deep_research_provider,
+    resolve_model,
+)
 from app.services.personal_markdown_library import sync_personal_markdown_for_content
 
 logger = get_logger(__name__)
@@ -78,6 +83,38 @@ _SEARCH_TOOL_NAMES = {
     "exa_web_search",
     "search_personal_library",
 }
+
+
+def _require_user_id(user: User) -> int:
+    user_id = user.id
+    if user_id is None:
+        raise HTTPException(status_code=500, detail="User record missing id")
+    return user_id
+
+
+def _require_session_id(session: ChatSession) -> int:
+    session_id = session.id
+    if session_id is None:
+        raise HTTPException(status_code=500, detail="Chat session missing id")
+    return session_id
+
+
+def _require_message_id(db_message: ChatMessage) -> int:
+    message_id = db_message.id
+    if message_id is None:
+        raise HTTPException(status_code=500, detail="Chat message missing id")
+    return message_id
+
+
+def _require_timestamp(value: datetime | None, *, detail: str) -> datetime:
+    if value is None:
+        raise HTTPException(status_code=500, detail=detail)
+    return value
+
+
+def _resolve_message_status(db_message: ChatMessage) -> MessageProcessingStatusDto:
+    raw_status = db_message.status or MessageProcessingStatus.PROCESSING.value
+    return MessageProcessingStatusDto(raw_status)
 
 
 def _format_process_summary_label(
@@ -132,28 +169,30 @@ def _session_to_summary(
     last_message_role: str | None = None,
 ) -> ChatSessionSummaryDto:
     """Convert database ChatSession to API response."""
+    session_id = _require_session_id(session)
+    created_at = _require_timestamp(session.created_at, detail="Chat session missing created_at")
     return ChatSessionSummaryDto(
-        id=session.id,
+        id=session_id,
         content_id=session.content_id,
         title=session.title,
         session_type=session.session_type,
         topic=session.topic,
-        llm_provider=session.llm_provider,
-        llm_model=session.llm_model,
-        created_at=session.created_at,
+        llm_provider=session.llm_provider or DEFAULT_PROVIDER,
+        llm_model=session.llm_model or DEFAULT_MODEL,
+        created_at=created_at,
         updated_at=session.updated_at,
         last_message_at=session.last_message_at,
         article_title=article_title,
         article_url=article_url,
         article_summary=article_summary,
         article_source=article_source,
-        is_archived=session.is_archived,
+        is_archived=bool(session.is_archived),
         has_pending_message=has_pending_message,
         is_saved_to_knowledge=is_saved_to_knowledge,
         has_messages=has_messages,
         last_message_preview=last_message_preview,
         last_message_role=last_message_role,
-        council_mode=session.council_mode,
+        council_mode=bool(session.council_mode),
         active_child_session_id=session.active_child_session_id,
     )
 
@@ -164,13 +203,17 @@ def _build_processing_user_message(
     session_id: int,
     content: str,
 ) -> ChatMessageDto:
+    message_id = _require_message_id(db_message)
     return ChatMessageDto(
-        id=db_message.id,
-        source_message_id=db_message.id,
+        id=message_id,
+        source_message_id=message_id,
         session_id=session_id,
         role=ChatMessageRole.USER,
         content=content,
-        timestamp=db_message.created_at,
+        timestamp=_require_timestamp(
+            db_message.created_at,
+            detail="Chat message missing created_at",
+        ),
         status=MessageProcessingStatusDto.PROCESSING,
     )
 
@@ -265,21 +308,24 @@ def _extract_last_message_preview(
     )
 
     try:
-        msg_list = ModelMessagesTypeAdapter.validate_json(db_message.message_list)
+        message_list_json = db_message.message_list
+        if not isinstance(message_list_json, str):
+            return None, None
+        msg_list = ModelMessagesTypeAdapter.validate_json(message_list_json)
     except Exception:
         return None, None
 
     # Walk backwards to find the last text content
     for model_msg in reversed(msg_list):
         if isinstance(model_msg, ModelResponse):
-            for part in reversed(model_msg.parts):
-                if isinstance(part, TextPart) and part.content:
-                    text = part.content[:max_length]
+            for response_part in reversed(model_msg.parts):
+                if isinstance(response_part, TextPart) and response_part.content:
+                    text = response_part.content[:max_length]
                     return text, "assistant"
         elif isinstance(model_msg, ModelRequest):
-            for part in reversed(model_msg.parts):
-                if isinstance(part, UserPromptPart) and part.content:
-                    text = str(part.content)[:max_length]
+            for request_part in reversed(model_msg.parts):
+                if isinstance(request_part, UserPromptPart) and request_part.content:
+                    text = str(request_part.content)[:max_length]
                     return text, "user"
 
     return None, None
@@ -318,42 +364,50 @@ def _extract_messages_for_display(
     for db_msg in db_messages:
         try:
             # Deserialize JSON to list of ModelMessage
-            msg_list = ModelMessagesTypeAdapter.validate_json(db_msg.message_list)
-            status = MessageProcessingStatusDto(db_msg.status)
+            message_list_json = db_msg.message_list
+            if not isinstance(message_list_json, str):
+                continue
+            msg_list = ModelMessagesTypeAdapter.validate_json(message_list_json)
+            status = _resolve_message_status(db_msg)
             render_metadata = _load_render_metadata(db_msg)
             assistant_responses: list[str] = []
             tool_names: list[str] = []
             user_text_emitted = False
+            message_id = _require_message_id(db_msg)
+            message_timestamp = _require_timestamp(
+                db_msg.created_at,
+                detail="Chat message missing created_at",
+            )
 
             for model_msg in msg_list:
                 if isinstance(model_msg, ModelRequest):
                     # Only show the first user-authored prompt for this stored turn.
                     # Hide tool-return/system parts and any later internal requests.
-                    for part in model_msg.parts:
+                    for request_part in model_msg.parts:
                         if user_text_emitted:
                             break
-                        if isinstance(part, UserPromptPart) and part.content:
+                        if isinstance(request_part, UserPromptPart) and request_part.content:
                             user_text_emitted = True
                             display_id += 1
                             messages.append(
                                 ChatMessageDto(
                                     id=display_id,  # Unique display ID
-                                    source_message_id=db_msg.id,
+                                    source_message_id=message_id,
                                     session_id=session_id_override or session_id,
                                     role=ChatMessageRole.USER,
-                                    timestamp=db_msg.created_at,
-                                    content=part.content,
+                                    timestamp=message_timestamp,
+                                    content=str(request_part.content),
                                     status=status,
                                     error=db_msg.error,
                                 )
                             )
                 elif isinstance(model_msg, ModelResponse):
                     response_text_parts: list[str] = []
-                    for part in model_msg.parts:
-                        if isinstance(part, TextPart) and part.content:
-                            response_text_parts.append(part.content)
-                        elif isinstance(part, ToolCallPart):
-                            tool_names.append(part.tool_name)
+                    for response_part in model_msg.parts:
+                        if isinstance(response_part, TextPart) and response_part.content:
+                            response_text_parts.append(response_part.content)
+                        elif isinstance(response_part, ToolCallPart):
+                            tool_names.append(response_part.tool_name)
 
                     if response_text_parts:
                         assistant_responses.append("\n\n".join(response_text_parts))
@@ -369,10 +423,10 @@ def _extract_messages_for_display(
                 messages.append(
                     ChatMessageDto(
                         id=display_id,
-                        source_message_id=db_msg.id,
+                        source_message_id=message_id,
                         session_id=session_id_override or session_id,
                         role=ChatMessageRole.TOOL,
-                        timestamp=db_msg.created_at,
+                        timestamp=message_timestamp,
                         content=process_summary_label,
                         display_type=ChatMessageDisplayType.PROCESS_SUMMARY,
                         process_label=process_summary_label,
@@ -386,10 +440,10 @@ def _extract_messages_for_display(
                 messages.append(
                     ChatMessageDto(
                         id=display_id,  # Unique display ID
-                        source_message_id=db_msg.id,
+                        source_message_id=message_id,
                         session_id=session_id_override or session_id,
                         role=ChatMessageRole.ASSISTANT,
-                        timestamp=db_msg.created_at,
+                        timestamp=message_timestamp,
                         content=latest_assistant_text,
                         display_type=ChatMessageDisplayType.MESSAGE,
                         status=status,
@@ -429,8 +483,9 @@ async def list_sessions(
     Returns sessions ordered by last_message_at (most recent first),
     falling back to created_at for sessions without messages.
     """
+    user_id = _require_user_id(current_user)
     query = db.query(ChatSession).filter(
-        ChatSession.user_id == current_user.id,
+        ChatSession.user_id == user_id,
         ChatSession.is_archived == False,  # noqa: E712
         ChatSession.is_hidden_from_history == False,  # noqa: E712
     )
@@ -460,16 +515,18 @@ async def list_sessions(
             .filter(ChatSession.is_hidden_from_history == True)  # noqa: E712
             .all()
         )
-        active_child_sessions = {child.id: child for child in active_child_rows}
+        active_child_sessions = {
+            child.id: child for child in active_child_rows if child.id is not None
+        }
 
     content_ids = [session.content_id for session in sessions if session.content_id is not None]
     contents_by_id: dict[int, Content] = {}
     if content_ids:
         content_rows = db.query(Content).filter(Content.id.in_(content_ids)).all()
-        contents_by_id = {content.id: content for content in content_rows}
+        contents_by_id = {content.id: content for content in content_rows if content.id is not None}
 
     # Get session IDs that have pending messages (for efficiency)
-    session_ids = [s.id for s in sessions]
+    session_ids = [s.id for s in sessions if s.id is not None]
     preview_session_ids = session_ids + active_child_ids
     pending_session_ids: set[int] = set()
     sessions_with_messages: set[int] = set()
@@ -485,7 +542,7 @@ async def list_sessions(
             .distinct()
             .all()
         )
-        pending_session_ids = {m.session_id for m in pending_messages}
+        pending_session_ids = {m.session_id for m in pending_messages if m.session_id is not None}
 
         # Check which sessions have any messages at all
         sessions_with_any_messages = (
@@ -494,7 +551,9 @@ async def list_sessions(
             .distinct()
             .all()
         )
-        sessions_with_messages = {m.session_id for m in sessions_with_any_messages}
+        sessions_with_messages = {
+            m.session_id for m in sessions_with_any_messages if m.session_id is not None
+        }
 
     # Batch-query the most recent message per session for previews
     last_message_map: dict[int, ChatMessage] = {}
@@ -514,7 +573,7 @@ async def list_sessions(
             .join(latest_msg_subq, ChatMessage.id == latest_msg_subq.c.max_id)
             .all()
         )
-        last_message_map = {m.session_id: m for m in latest_messages}
+        last_message_map = {m.session_id: m for m in latest_messages if m.session_id is not None}
 
     # Get knowledge-saved content IDs for this user
     knowledge_saved_content_ids: set[int] = set()
@@ -522,12 +581,14 @@ async def list_sessions(
         knowledge_saves = (
             db.query(ContentKnowledgeSave.content_id)
             .filter(
-                ContentKnowledgeSave.user_id == current_user.id,
+                ContentKnowledgeSave.user_id == user_id,
                 ContentKnowledgeSave.content_id.in_(content_ids),
             )
             .all()
         )
-        knowledge_saved_content_ids = {row.content_id for row in knowledge_saves}
+        knowledge_saved_content_ids = {
+            row.content_id for row in knowledge_saves if row.content_id is not None
+        }
 
     # Build response with article titles, URLs, summaries, and sources
     result = []
@@ -550,16 +611,18 @@ async def list_sessions(
             candidate_child = active_child_sessions.get(session.active_child_session_id)
             if candidate_child and candidate_child.parent_session_id == session.id:
                 preview_session = candidate_child
-        has_pending = preview_session.id in pending_session_ids
+        preview_session_id = _require_session_id(preview_session)
+        session_row_id = _require_session_id(session)
+        has_pending = preview_session_id in pending_session_ids
         is_saved_to_knowledge = (
             session.content_id in knowledge_saved_content_ids if session.content_id else False
         )
-        has_messages = session.id in sessions_with_messages
+        has_messages = session_row_id in sessions_with_messages
 
         # Extract last message preview
         last_preview: str | None = None
         last_role: str | None = None
-        last_msg = last_message_map.get(preview_session.id)
+        last_msg = last_message_map.get(preview_session_id)
         if last_msg:
             last_preview, last_role = _extract_last_message_preview(last_msg)
 
@@ -597,6 +660,7 @@ async def create_session(
     If content_id is provided, the session will be associated with that article
     and the article's context will be available to the chat agent.
     """
+    user_id = _require_user_id(current_user)
     # Resolve model
     provider, model_spec = resolve_model(request.llm_provider, request.llm_model_hint)
 
@@ -622,7 +686,7 @@ async def create_session(
         article_source = content.source
         context_snapshot = build_screen_context_snapshot(
             db,
-            user_id=current_user.id,
+            user_id=user_id,
             screen_context=AssistantScreenContext(
                 screen_type=KNOWLEDGE_SESSION_TYPE,
                 screen_title="Knowledge",
@@ -634,7 +698,7 @@ async def create_session(
     elif session_type == KNOWLEDGE_SESSION_TYPE:
         context_snapshot = build_screen_context_snapshot(
             db,
-            user_id=current_user.id,
+            user_id=user_id,
             screen_context=AssistantScreenContext(
                 screen_type=KNOWLEDGE_SESSION_TYPE,
                 screen_title="Knowledge",
@@ -657,7 +721,7 @@ async def create_session(
 
     # Create session
     session = ChatSession(
-        user_id=current_user.id,
+        user_id=user_id,
         content_id=request.content_id,
         title=title,
         session_type=session_type,
@@ -671,12 +735,13 @@ async def create_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+    session_row_id = _require_session_id(session)
 
     if request.content_id:
         try:
             sync_personal_markdown_for_content(
                 db,
-                user_id=current_user.id,
+                user_id=user_id,
                 content_id=request.content_id,
             )
         except Exception:
@@ -687,8 +752,8 @@ async def create_session(
                     operation="create_session",
                     event_name="chat.session.personal_markdown",
                     status="degraded",
-                    user_id=current_user.id,
-                    session_id=session.id,
+                    user_id=user_id,
+                    session_id=session_row_id,
                     content_id=request.content_id,
                 ),
             )
@@ -700,8 +765,8 @@ async def create_session(
             operation="create_session",
             event_name="chat.session",
             status="completed",
-            user_id=current_user.id,
-            session_id=session.id,
+            user_id=user_id,
+            session_id=session_row_id,
             content_id=request.content_id,
             context_data={"model": model_spec, "session_type": session_type},
         ),
@@ -733,12 +798,13 @@ async def update_session(
 
     Allows switching LLM provider mid-conversation while preserving chat history.
     """
+    user_id = _require_user_id(current_user)
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if session.user_id != current_user.id:
+    if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
     # Update provider if specified
@@ -755,8 +821,8 @@ async def update_session(
                 operation="update_session",
                 event_name="chat.session_provider_changed",
                 status="completed",
-                user_id=current_user.id,
-                session_id=session.id,
+                user_id=user_id,
+                session_id=_require_session_id(session),
                 context_data={"model": model_spec},
             ),
         )
@@ -798,12 +864,13 @@ async def get_session(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ChatSessionDetailDto:
     """Get chat session details with message history."""
+    user_id = _require_user_id(current_user)
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if session.user_id != current_user.id:
+    if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
     # Get article title and URL
@@ -826,8 +893,8 @@ async def get_session(
         if active_child_session is not None:
             branch_messages = _extract_messages_for_display(
                 db,
-                active_child_session.id,
-                session_id_override=session.id,
+                _require_session_id(active_child_session),
+                session_id_override=_require_session_id(session),
                 min_message_id_exclusive=active_child_session.branch_start_message_id,
             )
             messages.extend(branch_messages)
@@ -854,12 +921,13 @@ async def delete_session(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Response:
     """Archive a chat session for the current user."""
+    user_id = _require_user_id(current_user)
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if session.user_id != current_user.id:
+    if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
     if not session.is_archived:
@@ -886,8 +954,8 @@ async def delete_session(
             operation="delete_session",
             event_name="chat.session_deleted",
             status="completed",
-            user_id=current_user.id,
-            session_id=session.id,
+            user_id=user_id,
+            session_id=_require_session_id(session),
         ),
     )
 
@@ -915,12 +983,13 @@ async def send_message(
     Returns immediately with the user message and a message_id.
     Poll GET /messages/{message_id}/status for completion.
     """
+    user_id = _require_user_id(current_user)
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
 
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    if session.user_id != current_user.id:
+    if session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
 
     effective_session = session
@@ -929,6 +998,8 @@ async def send_message(
         if active_child_session is None:
             raise HTTPException(status_code=400, detail="No active council branch selected")
         effective_session = active_child_session
+    effective_session_id = _require_session_id(effective_session)
+    parent_session_id = _require_session_id(session)
 
     logger.info(
         "Chat message accepted",
@@ -937,14 +1008,15 @@ async def send_message(
             operation="send_message",
             event_name="chat.turn",
             status="started",
-            user_id=current_user.id,
-            session_id=effective_session.id,
+            user_id=user_id,
+            session_id=effective_session_id,
             context_data={"model": effective_session.llm_model},
         ),
     )
 
     # Create the processing message record immediately
-    db_message = create_processing_message(db, effective_session.id, request.message)
+    db_message = create_processing_message(db, effective_session_id, request.message)
+    message_id = _require_message_id(db_message)
     effective_session.last_message_at = datetime.now(UTC)
     effective_session.updated_at = datetime.now(UTC)
     if session.council_mode:
@@ -958,8 +1030,8 @@ async def send_message(
     logger.info(
         "[Chat:SEND] sid=%s mid=%s user=%s prompt='%s'",
         session_id,
-        db_message.id,
-        current_user.id,
+        message_id,
+        user_id,
         trimmed_msg,
     )
 
@@ -967,8 +1039,8 @@ async def send_message(
     if session.council_mode:
         background_tasks.add_task(
             process_message_async,
-            effective_session.id,
-            db_message.id,
+            effective_session_id,
+            message_id,
             request.message,
             source="council",
         )
@@ -976,13 +1048,13 @@ async def send_message(
         from app.services.deep_research import process_deep_research_message
 
         background_tasks.add_task(
-            process_deep_research_message, effective_session.id, db_message.id, request.message
+            process_deep_research_message, effective_session_id, message_id, request.message
         )
     elif effective_session.session_type in ASSISTANT_SESSION_TYPES:
         background_tasks.add_task(
             process_assistant_turn_async,
-            effective_session.id,
-            db_message.id,
+            effective_session_id,
+            message_id,
             request.message,
             screen_context=AssistantScreenContext(
                 screen_type=effective_session.session_type,
@@ -992,19 +1064,19 @@ async def send_message(
         )
     else:
         background_tasks.add_task(
-            process_message_async, effective_session.id, db_message.id, request.message
+            process_message_async, effective_session_id, message_id, request.message
         )
 
     user_message = _build_processing_user_message(
         db_message=db_message,
-        session_id=session.id,
+        session_id=parent_session_id,
         content=request.message,
     )
 
     return SendMessageResponse(
-        session_id=session.id,
+        session_id=parent_session_id,
         user_message=user_message,
-        message_id=db_message.id,
+        message_id=message_id,
         status=MessageProcessingStatusDto.PROCESSING,
     )
 
@@ -1021,34 +1093,39 @@ async def create_assistant_turn(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AssistantTurnResponse:
     """Create or continue an assistant-driven chat turn with screen context."""
+    user_id = _require_user_id(current_user)
     screen_context: AssistantScreenContext = request.screen_context
     session: ChatSession
 
     if request.session_id is not None:
-        session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
-        if session is None:
+        existing_session = (
+            db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+        )
+        if existing_session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        if session.user_id != current_user.id:
+        if existing_session.user_id != user_id:
             raise HTTPException(status_code=403, detail="Not authorized to access this session")
+        session = existing_session
         _refresh_assistant_session_context(
             db=db,
             session=session,
-            user_id=current_user.id,
+            user_id=user_id,
             screen_context=screen_context,
         )
     else:
         context_snapshot = build_screen_context_snapshot(
             db,
-            user_id=current_user.id,
+            user_id=user_id,
             screen_context=screen_context,
         )
         session = create_assistant_session(
             db,
-            user_id=current_user.id,
+            user_id=user_id,
             context_snapshot=context_snapshot,
             screen_context=screen_context,
             initial_message=request.message,
         )
+    session_row_id = _require_session_id(session)
 
     logger.info(
         "Assistant turn accepted",
@@ -1057,8 +1134,8 @@ async def create_assistant_turn(
             operation="create_turn",
             event_name="assistant.turn",
             status="started",
-            user_id=current_user.id,
-            session_id=session.id,
+            user_id=user_id,
+            session_id=session_row_id,
             content_id=screen_context.content_id,
             context_data={
                 "model": session.llm_model,
@@ -1067,11 +1144,12 @@ async def create_assistant_turn(
         ),
     )
 
-    db_message = create_processing_message(db, session.id, request.message)
+    db_message = create_processing_message(db, session_row_id, request.message)
+    message_id = _require_message_id(db_message)
     background_tasks.add_task(
         process_assistant_turn_async,
-        session.id,
-        db_message.id,
+        session_row_id,
+        message_id,
         request.message,
         screen_context=screen_context,
     )
@@ -1098,10 +1176,10 @@ async def create_assistant_turn(
         ),
         user_message=_build_processing_user_message(
             db_message=db_message,
-            session_id=session.id,
+            session_id=session_row_id,
             content=request.message,
         ),
-        message_id=db_message.id,
+        message_id=message_id,
         status=MessageProcessingStatusDto.PROCESSING,
     )
 
@@ -1124,6 +1202,7 @@ async def get_message_status(
     Returns the current status and assistant message if completed.
     Poll every 500ms-1s until status is 'completed' or 'failed'.
     """
+    user_id = _require_user_id(current_user)
     from pydantic_ai.messages import (
         ModelMessagesTypeAdapter,
         ModelResponse,
@@ -1138,10 +1217,10 @@ async def get_message_status(
     # Verify ownership via session
     session = db.query(ChatSession).filter(ChatSession.id == db_message.session_id).first()
 
-    if not session or session.user_id != current_user.id:
+    if not session or session.user_id != user_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this message")
 
-    status = MessageProcessingStatusDto(db_message.status)
+    status = _resolve_message_status(db_message)
 
     # If still processing, return status only
     if status == MessageProcessingStatusDto.PROCESSING:
@@ -1163,7 +1242,10 @@ async def get_message_status(
 
     # If completed, extract assistant message
     try:
-        msg_list = ModelMessagesTypeAdapter.validate_json(db_message.message_list)
+        message_list_json = db_message.message_list
+        if not isinstance(message_list_json, str):
+            raise HTTPException(status_code=500, detail="Message payload missing")
+        msg_list = ModelMessagesTypeAdapter.validate_json(message_list_json)
         render_metadata = _load_render_metadata(db_message)
 
         # Find the last assistant text response
@@ -1183,10 +1265,13 @@ async def get_message_status(
         assistant_message = ChatMessageDto(
             id=_build_async_assistant_display_id(message_id),
             source_message_id=message_id,
-            session_id=session.parent_session_id or db_message.session_id,
+            session_id=session.parent_session_id or _require_session_id(session),
             role=ChatMessageRole.ASSISTANT,
             content=assistant_content,
-            timestamp=db_message.created_at,
+            timestamp=_require_timestamp(
+                db_message.created_at,
+                detail="Chat message missing created_at",
+            ),
             status=MessageProcessingStatusDto.COMPLETED,
             feed_options=render_metadata.feed_options if render_metadata else [],
             council_candidates=render_metadata.council_candidates if render_metadata else [],

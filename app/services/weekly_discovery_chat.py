@@ -24,6 +24,14 @@ from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
 logger = get_logger(__name__)
 
 
+def _require_session_id(session: ChatSession) -> int:
+    """Return a persisted session ID or raise."""
+    session_id = session.id
+    if session_id is None:
+        raise ValueError("Chat session must be persisted before use")
+    return session_id
+
+
 @dataclass
 class WeeklyDiscoverySeed:
     """Seed material for a weekly discovery session."""
@@ -37,7 +45,7 @@ class WeeklyDiscoverySeed:
     suggestions: list[FeedDiscoverySuggestion]
 
 
-def _user_local_date(user: User, reference_time: datetime | None = None) -> datetime.date:
+def _user_local_date(user: User, reference_time: datetime | None = None) -> date:
     tz_name = "UTC"
     tz = ZoneInfo(tz_name)
     now = reference_time or datetime.now(UTC)
@@ -62,9 +70,7 @@ def _build_seed(db: Session, user: User) -> WeeklyDiscoverySeed:
         .all()
     )
     recent_reads = [
-        (row.id, (row.title or "Untitled").strip(), row.url)
-        for row in recent_rows
-        if row.url
+        (row.id, (row.title or "Untitled").strip(), row.url) for row in recent_rows if row.url
     ]
 
     onboarding_run = (
@@ -181,9 +187,7 @@ def ensure_weekly_discovery_session(
 ) -> ChatSession | None:
     """Create one fresh weekly discovery chat session for the current local week."""
     user = (
-        db.query(User)
-        .filter(User.id == user_id, User.has_completed_onboarding.is_(True))
-        .first()
+        db.query(User).filter(User.id == user_id, User.has_completed_onboarding.is_(True)).first()
     )
     if user is None:
         return None
@@ -219,7 +223,11 @@ def ensure_weekly_discovery_session(
     db.commit()
     db.refresh(session)
 
-    seed_assistant_message(db, session_id=session.id, assistant_text=_build_seed_message(seed))
+    seed_assistant_message(
+        db,
+        session_id=_require_session_id(session),
+        assistant_text=_build_seed_message(seed),
+    )
     session.last_message_at = datetime.now(UTC)
     db.commit()
     db.refresh(session)

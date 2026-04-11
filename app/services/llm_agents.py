@@ -16,7 +16,6 @@ def _build_agent(model_spec: str, output_type: type[Any], system_prompt: str) ->
     model, model_settings = build_pydantic_model(model_spec)
     return Agent(
         model,
-        deps_type=None,
         output_type=output_type,
         system_prompt=system_prompt,
         model_settings=model_settings,

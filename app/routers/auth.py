@@ -1,6 +1,7 @@
 """Authentication endpoints."""
 
 import secrets
+from collections.abc import Mapping, Sequence
 from typing import Annotated
 
 import jwt
@@ -72,8 +73,15 @@ router = APIRouter()
 admin_sessions = set()
 
 
+def _require_user_id(user: User) -> int:
+    user_id = user.id
+    if user_id is None:
+        raise ValueError("User is missing an id")
+    return user_id
+
+
 def _build_user_response(db: Session, user: User) -> UserResponse:
-    has_sync = has_active_x_connection(db, user.id)
+    has_sync = has_active_x_connection(db, _require_user_id(user))
     response = UserResponse.model_validate(user)
     return response.model_copy(
         update={
@@ -192,8 +200,9 @@ def apple_signin(
         is_new_user = True
 
     # Generate tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
+    user_id = _require_user_id(user)
+    access_token = create_access_token(user_id)
+    refresh_token = create_refresh_token(user_id)
     logger.info(
         "Apple sign-in completed",
         extra=build_log_extra(
@@ -201,7 +210,7 @@ def apple_signin(
             operation="apple_signin",
             event_name="auth.apple_signin",
             status="completed",
-            user_id=user.id,
+            user_id=user_id,
             context_data={
                 "auth_method": "apple",
                 "is_new_user": is_new_user,
@@ -258,8 +267,9 @@ def debug_create_user(
     db.commit()
     db.refresh(user)
 
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
+    user_id = _require_user_id(user)
+    access_token = create_access_token(user_id)
+    refresh_token = create_refresh_token(user_id)
 
     return TokenResponse(
         access_token=access_token,
@@ -300,10 +310,12 @@ def refresh_token(
 
     try:
         payload = verify_token(request.refresh_token)
-        user_id: str = payload.get("sub")
-        token_type: str = payload.get("type")
+        user_id = payload.get("sub")
+        token_type = payload.get("type")
 
-        if user_id is None or token_type != "refresh":
+        if not isinstance(user_id, str) or not isinstance(token_type, str):
+            raise credentials_exception
+        if token_type != "refresh":
             raise credentials_exception
 
     except jwt.InvalidTokenError:
@@ -316,8 +328,9 @@ def refresh_token(
         raise credentials_exception
 
     # Generate new access token AND new refresh token (token rotation)
-    access_token = create_access_token(user.id)
-    new_refresh_token = create_refresh_token(user.id)
+    current_user_id = _require_user_id(user)
+    access_token = create_access_token(current_user_id)
+    new_refresh_token = create_refresh_token(current_user_id)
 
     logger.info(
         "Token refresh completed",
@@ -326,7 +339,7 @@ def refresh_token(
             operation="refresh_token",
             event_name="auth.refresh_token",
             status="completed",
-            user_id=user.id,
+            user_id=current_user_id,
             context_data={"auth_method": "refresh_token"},
         ),
     )
@@ -403,15 +416,16 @@ def _is_email_validation_error(exc: ValidationError) -> bool:
 def _repair_invalid_email(
     db: Session,
     current_user: User,
-    errors: list[dict[str, object]],
+    errors: Sequence[Mapping[str, object]],
 ) -> User:
-    local_part = f"user{current_user.id}"
+    user_id = _require_user_id(current_user)
+    local_part = f"user{user_id}"
     email = (current_user.email or "").strip()
     original_email = email
     if email:
         local = email.split("@", 1)[0].strip()
         if local:
-            local_part = f"{local}+{current_user.id}"
+            local_part = f"{local}+{user_id}"
 
     current_user.email = f"{local_part}@example.com"
     db.commit()
@@ -484,7 +498,7 @@ def admin_login(request: AdminLoginRequest, response: Response) -> AdminLoginRes
 
 
 @router.post("/admin/logout")
-def admin_logout(response: Response) -> dict:
+def admin_logout(response: Response) -> dict[str, str]:
     """
     Admin logout.
 

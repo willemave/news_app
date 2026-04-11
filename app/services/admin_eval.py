@@ -9,7 +9,7 @@ import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 from sqlalchemy import desc
@@ -27,7 +27,10 @@ from app.models.schema import Content
 from app.services.content_bodies import get_content_body_resolver
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_prompts import generate_summary_prompt
-from app.services.llm_summarization import resolve_summarization_output_type
+from app.services.llm_summarization import (
+    SummarizationPromptType,
+    resolve_summarization_output_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,20 @@ EVAL_CALL_TIMEOUT_SECONDS = 15
 # observed when multiple pydantic-ai model clients run concurrently.
 EVAL_MAX_PARALLEL_MODEL_CALLS = 1
 ESTIMATED_CHARS_PER_TOKEN = 4
+
+
+def _require_content_id(content: Content) -> int:
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content is missing an id")
+    return int(content_id)
+
+
+def _require_eval_content_type(content: Content) -> EvalContentType:
+    content_type = content.content_type
+    if content_type not in {"article", "podcast", "news"}:
+        raise ValueError(f"Unsupported eval content_type: {content_type!r}")
+    return cast(EvalContentType, content_type)
 
 
 class EvalSourcePayload(BaseModel):
@@ -331,7 +348,9 @@ def build_eval_source_payload(content: Content) -> EvalSourcePayload | None:
     if session is not None:
         source_text = get_content_body_resolver().resolve_text(session, content=content)
 
-    input_text = _extract_input_text(content.content_type, metadata, source_text=source_text)
+    input_text = _extract_input_text(
+        _require_eval_content_type(content), metadata, source_text=source_text
+    )
     if not input_text:
         return None
 
@@ -344,8 +363,8 @@ def build_eval_source_payload(content: Content) -> EvalSourcePayload | None:
     )
 
     return EvalSourcePayload(
-        content_id=content.id,
-        content_type=content.content_type,
+        content_id=_require_content_id(content),
+        content_type=_require_eval_content_type(content),
         created_at=created_at,
         url=str(content.url),
         source_title=content.title,
@@ -404,7 +423,7 @@ def _run_single_model_eval(
     )
 
     try:
-        output_type = resolve_summarization_output_type(prompt_type)
+        output_type = resolve_summarization_output_type(cast(SummarizationPromptType, prompt_type))
         agent = get_basic_agent(model_spec, output_type, system_prompt)
         result = agent.run_sync(
             user_message,
@@ -536,7 +555,7 @@ def _resolve_prompt_settings(
     request: AdminEvalRunRequest,
 ) -> tuple[str, int, int]:
     if content_type == "news":
-        return "news_digest", 4, 0
+        return "news", 4, 0
 
     if request.longform_template == "interleaved_v2":
         return "interleaved", 8, 8
@@ -735,15 +754,16 @@ def _estimate_cost(
     if input_tokens is None or output_tokens is None:
         return None, "usage_not_available"
 
-    cost = (
-        (input_tokens / 1_000_000) * pricing.input_per_million_usd
-        + (output_tokens / 1_000_000) * pricing.output_per_million_usd
-    )
+    cost = (input_tokens / 1_000_000) * pricing.input_per_million_usd + (
+        output_tokens / 1_000_000
+    ) * pricing.output_per_million_usd
     return round(cost, 8), None
 
 
 def _coerce_int(value: object | None) -> int | None:
     if value is None:
+        return None
+    if not isinstance(value, (int, float, str, bytes, bytearray)):
         return None
     try:
         return int(value)
@@ -759,9 +779,7 @@ def _estimate_tokens_from_chars(char_count: int) -> int:
 
 def _build_aggregate_metrics(item_results: list[dict[str, Any]]) -> dict[str, Any]:
     cells = [
-        model_result
-        for item in item_results
-        for model_result in item.get("model_results", [])
+        model_result for item in item_results for model_result in item.get("model_results", [])
     ]
     successful = [cell for cell in cells if cell.get("status") == "ok"]
 

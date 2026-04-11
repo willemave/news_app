@@ -5,8 +5,7 @@ from contextlib import contextmanager
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
@@ -45,6 +44,7 @@ def get_engine() -> Engine:
     """Get the database engine, initializing if necessary."""
     if _engine is None:
         init_db()
+    assert _engine is not None
     return _engine
 
 
@@ -52,6 +52,7 @@ def get_session_factory() -> sessionmaker[Session]:
     """Get the session factory, initializing if necessary."""
     if _SessionLocal is None:
         init_db()
+    assert _SessionLocal is not None
     return _SessionLocal
 
 

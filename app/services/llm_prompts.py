@@ -3,7 +3,18 @@ Shared LLM prompt generation for content summarization.
 Used by both OpenAI and Anthropic LLM services to ensure consistency.
 """
 
-SPECIALIZED_EDITORIAL_TEMPLATE_CONFIGS = {
+from typing import TypedDict
+
+
+class SpecializedEditorialTemplateConfig(TypedDict):
+    source_name: str
+    template: str
+    source_fields: list[str]
+    source_guidelines: list[str]
+    user_message: str
+
+
+SPECIALIZED_EDITORIAL_TEMPLATE_CONFIGS: dict[str, SpecializedEditorialTemplateConfig] = {
     "editorial_podcast": {
         "source_name": "a podcast transcript or episode",
         "template": "podcast",
@@ -102,7 +113,7 @@ def generate_summary_prompt(
     - User message template is for variable content (not cached)
 
     Args:
-        content_type: Type of content ("article", "podcast", "news_digest", "hackernews", "interleaved", "long_bullets", "editorial_narrative", "editorial_podcast", "editorial_substack", "editorial_twitter", "editorial_research", "editorial_github")
+        content_type: Type of content ("article", "podcast", "news", "hackernews", "interleaved", "long_bullets", "editorial_narrative", "editorial_podcast", "editorial_substack", "editorial_twitter", "editorial_research", "editorial_github")
         max_bullet_points: Maximum number of bullet points to generate
         max_quotes: Maximum number of quotes to extract
 
@@ -116,7 +127,7 @@ def generate_summary_prompt(
     elif normalized_type == "podcast":
         normalized_type = "editorial_podcast"
     if normalized_type == "news":
-        normalized_type = "news_digest"
+        normalized_type = "news"
     content_type = normalized_type
 
     if content_type == "hackernews":
@@ -159,7 +170,7 @@ Classification Guidelines:
 
         user_message = "Analyze this content and discussion:\n\n{content}"
 
-    elif content_type == "news_digest":
+    elif content_type == "news":
         system_message = f"""You are an expert news editor. Read provided article content and any additional
 aggregator context, then produce a concise JSON object with the following fields:
 

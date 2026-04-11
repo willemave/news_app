@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.settings import get_settings
 from app.models.metadata import ContentStatus, ContentType
@@ -23,7 +24,7 @@ from app.services.news_feed import count_unread_news_items
 settings = get_settings()
 
 
-def _build_active_processing_filter(now_utc: datetime):
+def _build_active_processing_filter(now_utc: datetime) -> ColumnElement[bool]:
     active_task_exists = exists(
         select(ProcessingTask.id).where(
             ProcessingTask.content_id == Content.id,

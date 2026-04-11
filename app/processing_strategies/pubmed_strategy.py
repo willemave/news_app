@@ -74,9 +74,16 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
                 full_text_section = soup.find("aside", {"id": "full-text-links"})
             if not full_text_section:
                 # Try finding by heading text then parent
-                heading = soup.find(
-                    ["h3", "h4", "strong"], string=re.compile(r"Full.*text.*links", re.IGNORECASE)
-                )
+                heading = None
+                heading_pattern = re.compile(r"Full.*text.*links", re.IGNORECASE)
+                for tag_name in ("h3", "h4", "strong"):
+                    for candidate in soup.find_all(tag_name):
+                        heading_text = candidate.get_text(" ", strip=True)
+                        if heading_pattern.search(heading_text):
+                            heading = candidate
+                            break
+                    if heading is not None:
+                        break
                 if heading:
                     full_text_section = heading.find_parent("div")  # Common parent
 
@@ -89,7 +96,7 @@ class PubMedProcessorStrategy(UrlProcessorStrategy):
 
                 for link_tag in links:
                     href = link_tag.get("href")
-                    if not href:
+                    if not isinstance(href, str) or not href:
                         continue
 
                     # Resolve relative URLs

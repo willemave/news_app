@@ -1,6 +1,7 @@
 """Exa search client service for chat agent web search tool."""
 
 from dataclasses import dataclass
+from typing import Any, Literal
 
 from exa_py import Exa
 
@@ -296,7 +297,7 @@ def exa_get_contents(
     urls: list[str],
     *,
     max_characters: int | None = 4000,
-    livecrawl: str | None = None,
+    livecrawl: Literal["always", "fallback", "never", "auto", "preferred"] | None = None,
     max_age_hours: int | None = None,
     raise_on_error: bool = False,
 ) -> list[ExaContentResult]:
@@ -317,17 +318,16 @@ def exa_get_contents(
 
     try:
         logger.info("[Exa] Fetching contents for %d URLs", len(clean_urls))
-        request_kwargs: dict[str, object] = {}
-        if max_characters is None:
-            request_kwargs["text"] = True
-        else:
-            request_kwargs["text"] = {"max_characters": max_characters}
-        if livecrawl:
-            request_kwargs["livecrawl"] = livecrawl
-        if max_age_hours is not None:
-            request_kwargs["max_age_hours"] = max_age_hours
+        text_option: Any = True
+        if max_characters is not None:
+            text_option = {"max_characters": max_characters}
 
-        response = client.get_contents(clean_urls, **request_kwargs)
+        response = client.get_contents(
+            clean_urls,
+            text=text_option,
+            livecrawl=livecrawl,
+            max_age_hours=max_age_hours,
+        )
 
         results: list[ExaContentResult] = []
         for result in response.results:

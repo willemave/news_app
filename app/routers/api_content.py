@@ -2,18 +2,6 @@
 
 from fastapi import APIRouter
 
-from app.routers.api import (
-    chat,
-    content_actions,
-    content_detail,
-    content_list,
-    knowledge,
-    narration,
-    read_status,
-    scraper_configs,
-    stats,
-    submission,
-)
 from app.models.api.common import (
     BulkMarkReadRequest,
     ChatGPTUrlResponse,
@@ -26,6 +14,18 @@ from app.models.api.common import (
     RecordContentInteractionRequest,
     RecordContentInteractionResponse,
     UnreadCountsResponse,
+)
+from app.routers.api import (
+    chat,
+    content_actions,
+    content_detail,
+    content_list,
+    knowledge,
+    narration,
+    read_status,
+    scraper_configs,
+    stats,
+    submission,
 )
 
 router = APIRouter(

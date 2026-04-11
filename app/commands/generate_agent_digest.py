@@ -21,7 +21,7 @@ def execute(
     del db
     queue = get_task_queue_gateway()
     job_id = queue.enqueue(
-        TaskType.GENERATE_NEWS_DIGEST,
+        TaskType.GENERATE_AGENT_DIGEST,
         payload={
             "user_id": user_id,
             "local_date": payload.end_at.astimezone(UTC).date().isoformat(),

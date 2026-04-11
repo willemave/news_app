@@ -214,10 +214,14 @@ class FeedSubscriptionFlow:
                 "metadata": {"page_url": url},
             },
         )
+        title_value = validated_feed.get("title")
+        resolved_title = (
+            title_value if isinstance(title_value, str) and title_value else (page_title or "")
+        )
         return {
             "url": url,
             "type": classification.feed_type,
-            "title": validated_feed.get("title") or page_title,
+            "title": resolved_title,
             "format": validated_feed.get("feed_format", "rss"),
         }
 
@@ -356,10 +360,13 @@ class TwitterShareFlow:
         if not submitter_id:
             return
 
+        existing_id = existing.id
+        if existing_id is None:
+            return
         status_created = ensure_inbox_status(
             db,
             submitter_id,
-            existing.id,
+            existing_id,
             content_type=existing.content_type,
         )
         db.commit()
@@ -424,8 +431,7 @@ class TwitterShareFlow:
 
         if can_use_recent_search:
             query = (
-                f"conversation_id:{root_tweet.conversation_id} "
-                f"from:{root_tweet.author_username}"
+                f"conversation_id:{root_tweet.conversation_id} from:{root_tweet.author_username}"
             )
             try:
                 page = search_recent_tweets(query=query, access_token=access_token, max_results=100)
@@ -511,7 +517,9 @@ class TwitterShareFlow:
                             selected_article_url=linked_urls[0],
                             resolution_source="linked_tweet",
                             resolution_tweet_id=linked_tweet.id,
-                            thread_text=_build_thread_text([build_tweet_processing_text(root_tweet)]),
+                            thread_text=_build_thread_text(
+                                [build_tweet_processing_text(root_tweet)]
+                            ),
                             linked_tweet_ids=linked_tweet_ids,
                             thread_lookup_status="not_needed",
                         )
@@ -646,12 +654,18 @@ class TwitterShareFlow:
 
         tweet = fetch_result.tweet
         processing_text = build_tweet_processing_text(tweet)
+        content_id = content.id
+        if content_id is None:
+            raise ValueError("Twitter share flow requires persisted content")
         resolution = self._resolve_article_target(
             root_tweet=tweet,
             access_token=access_token,
-            content_id=content.id,
+            content_id=content_id,
         )
-        external_urls = self._normalize_candidate_urls(tweet.external_urls, content_id=content.id)
+        external_urls = self._normalize_candidate_urls(
+            tweet.external_urls,
+            content_id=content_id,
+        )
 
         metadata.update(
             {
