@@ -14,11 +14,14 @@ struct ShortFormView: View {
     @ObservedObject var viewModel: ShortNewsListViewModel
     let onSelect: (ContentDetailRoute) -> Void
     @StateObject private var processingCountService = ProcessingCountService.shared
+    private let chatService = ChatService.shared
 
     /// Track which items have already been marked as read to avoid duplicates
     @State private var markedAsReadIds: Set<Int> = []
     @State private var showMarkAllConfirmation = false
     @State private var topVisibleItemId: Int?
+    @State private var quickActionErrorMessage: String?
+    @State private var activeQuickActionId: String?
 
     var body: some View {
         let items = viewModel.currentItems()
@@ -44,7 +47,10 @@ struct ShortFormView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Spacing.screenHorizontal)
                         .padding(.top, 16)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 12)
+
+                    shortNewsQuickActions(items: items)
+                        .padding(.bottom, 20)
 
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         // Day delimiter: show when this item starts a new day
@@ -154,6 +160,113 @@ struct ShortFormView: View {
     }
 
     @ViewBuilder
+    private func shortNewsQuickActions(items: [ContentSummary]) -> some View {
+        let quickActions = makeQuickActions(items: items)
+
+        VStack(alignment: .leading, spacing: 10) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(quickActions) { action in
+                        Button {
+                            startQuickAction(action)
+                        } label: {
+                            ShortNewsQuickActionChip(
+                                action: action,
+                                isLoading: activeQuickActionId == action.id
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(activeQuickActionId != nil)
+                        .accessibilityIdentifier("short.quick_action.\(action.id)")
+                    }
+                }
+                .padding(.horizontal, Spacing.screenHorizontal)
+            }
+
+            if let quickActionErrorMessage {
+                Text(quickActionErrorMessage)
+                    .font(.terracottaBodySmall)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, Spacing.screenHorizontal)
+            }
+        }
+    }
+
+    private func makeQuickActions(items: [ContentSummary]) -> [ShortNewsQuickAction] {
+        let visibleItemIds = Array(items.prefix(15).map(\.id))
+
+        return [
+            ShortNewsQuickAction(
+                id: "summarize_top_15",
+                title: "Summarize Top 15",
+                systemImage: "text.alignleft",
+                prompt: "Summarize the top 15 news items in my short news feed right now.",
+                screenContext: AssistantScreenContext(
+                    screenType: "short_news_feed",
+                    screenTitle: "Fast Read",
+                    visibleContentIds: visibleItemIds,
+                    query: "top 15 news items in my short news feed",
+                    note: "Summarize the most important items from the fast news feed. Prefer the in-app short news feed over web search."
+                )
+            ),
+            ShortNewsQuickAction(
+                id: "latest_news",
+                title: "What's Latest",
+                systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90",
+                prompt: "What's the latest news in my short news feed right now?",
+                screenContext: AssistantScreenContext(
+                    screenType: "short_news_feed",
+                    screenTitle: "Fast Read",
+                    visibleContentIds: visibleItemIds,
+                    query: "latest news in my short news feed",
+                    note: "Focus on the newest important developments from the fast news feed."
+                )
+            ),
+            ShortNewsQuickAction(
+                id: "spicy_discussions",
+                title: "Spicy Discussions",
+                systemImage: "flame",
+                prompt: "What are the spiciest discussions in my short news feed right now?",
+                screenContext: AssistantScreenContext(
+                    screenType: "short_news_feed",
+                    screenTitle: "Fast Read",
+                    visibleContentIds: visibleItemIds,
+                    query: "spiciest discussions in my short news feed",
+                    note: "Pull out the sharpest disagreements, surprising takes, and most interesting discussion threads from the fast news feed."
+                )
+            ),
+        ]
+    }
+
+    private func startQuickAction(_ action: ShortNewsQuickAction) {
+        guard activeQuickActionId == nil else { return }
+
+        activeQuickActionId = action.id
+        quickActionErrorMessage = nil
+
+        Task { @MainActor in
+            defer { activeQuickActionId = nil }
+
+            do {
+                let response = try await chatService.createAssistantTurn(
+                    message: action.prompt,
+                    screenContext: action.screenContext
+                )
+                ChatNavigationCoordinator.shared.open(
+                    ChatSessionRoute(
+                        sessionId: response.session.id,
+                        initialUserMessageText: response.userMessage.content,
+                        initialUserMessageTimestamp: response.userMessage.timestamp,
+                        pendingMessageId: response.messageId
+                    )
+                )
+            } catch {
+                quickActionErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    @ViewBuilder
     private var shortFormEmptyState: some View {
         if processingCountService.newsProcessingCount > 0 {
             VStack(spacing: 16) {
@@ -172,6 +285,46 @@ struct ShortFormView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .containerRelativeFrame(.vertical)
+        }
+    }
+}
+
+private struct ShortNewsQuickAction: Identifiable {
+    let id: String
+    let title: String
+    let systemImage: String
+    let prompt: String
+    let screenContext: AssistantScreenContext
+}
+
+private struct ShortNewsQuickActionChip: View {
+    let action: ShortNewsQuickAction
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Color.terracottaPrimary)
+            } else {
+                Image(systemName: action.systemImage)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.terracottaPrimary)
+            }
+
+            Text(action.title)
+                .font(.terracottaBodyMedium.weight(.semibold))
+                .foregroundStyle(Color.onSurface)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.surfaceSecondary)
+        .clipShape(Capsule())
+        .overlay {
+            Capsule()
+                .stroke(Color.outlineVariant.opacity(0.3), lineWidth: 1)
         }
     }
 }

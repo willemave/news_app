@@ -1,0 +1,24 @@
+appId: "${APP_ID}"
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    arguments:
+      newslyE2EEnabled: true
+      newslyE2EAutoLogin: true
+      newslyE2EServerHost: "${SERVER_HOST}"
+      newslyE2EServerPort: "${SERVER_PORT}"
+      newslyE2EUseHTTPS: false
+      newslyE2EUserId: "${USER_ID}"
+      newslyE2ECompleteOnboarding: true
+      newslyE2ECompleteTutorial: true
+- tapOn:
+    text: Knowledge
+- assertVisible:
+    text: Quick Actions
+- tapOn:
+    id: knowledge.new_chat_mic
+- assertVisible:
+    id: knowledge.chat_input
+- assertVisible:
+    id: knowledge.chat_mic

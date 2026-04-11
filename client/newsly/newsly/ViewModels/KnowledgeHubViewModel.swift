@@ -15,6 +15,14 @@ protocol KnowledgeHubChatServicing: AnyObject {
         sessionId: Int?,
         screenContext: AssistantScreenContext
     ) async throws -> AssistantTurnResponse
+
+    func createSession(
+        contentId: Int?,
+        topic: String?,
+        provider: ChatModelProvider?,
+        modelHint: String?,
+        initialMessage: String?
+    ) async throws -> ChatSessionSummary
 }
 
 extension ChatService: KnowledgeHubChatServicing {}
@@ -44,6 +52,24 @@ class KnowledgeHubViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    func startNewChat() async -> ChatSessionRoute? {
+        guard !isCreatingSession else { return nil }
+        isCreatingSession = true
+        errorMessage = nil
+        defer { isCreatingSession = false }
+
+        do {
+            let session = try await chatService.createSession(
+                contentId: nil, topic: nil, provider: nil,
+                modelHint: nil, initialMessage: nil
+            )
+            return ChatSessionRoute(sessionId: session.id)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     func startSearchChat(message: String) async -> ChatSessionRoute? {

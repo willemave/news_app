@@ -128,7 +128,7 @@ struct SelectCouncilBranchRequest: Codable {
 }
 
 struct AssistantScreenContext: Codable, Equatable {
-    private static let maxVisibleContentIds = 12
+    private static let maxVisibleContentIds = 15
 
     let screenType: String
     let screenTitle: String?

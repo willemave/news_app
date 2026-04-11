@@ -214,16 +214,18 @@ struct QuickMicOverlay: View {
             }
         }
         .padding(18)
+        .environment(\.colorScheme, .light)
         .background(
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(.regularMaterial)
+                .environment(\.colorScheme, .light)
                 .overlay {
                     RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.white.opacity(0.58),
-                                    Color.white.opacity(0.18),
+                                    Color.white.opacity(0.28),
+                                    Color.white.opacity(0.06),
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -233,9 +235,9 @@ struct QuickMicOverlay: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .stroke(Color.white.opacity(0.55), lineWidth: 1)
+                .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.12), radius: 22, y: 12)
+        .shadow(color: .black.opacity(0.18), radius: 22, y: 12)
         .frame(maxWidth: 390)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("quick_mic.panel")
@@ -251,19 +253,29 @@ private struct QuickMicMessageBubble: View {
         message.role == .user
     }
 
+    private static func markdownText(_ string: String) -> Text {
+        if let attributed = try? AttributedString(
+            markdown: string,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            return Text(attributed)
+        }
+        return Text(string)
+    }
+
     var body: some View {
         HStack {
             if isUser {
                 Spacer(minLength: 42)
             }
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 5) {
                 Text(isUser ? "You" : "Newsly")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(isUser ? Color.accentColor.opacity(0.88) : .secondary)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(message.content)
+                    Self.markdownText(message.content)
                         .font(.system(size: 15, weight: .regular, design: .rounded))
                         .foregroundStyle(.primary)
                         .lineSpacing(2)
@@ -285,16 +297,15 @@ private struct QuickMicMessageBubble: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(isUser ? Color.accentColor.opacity(0.12) : Color.white.opacity(0.8))
+                    .fill(isUser ? Color.accentColor.opacity(0.1) : Color(white: 0.95))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(
-                        isUser ? Color.accentColor.opacity(0.18) : Color.black.opacity(0.05),
-                        lineWidth: 1
+                        isUser ? Color.accentColor.opacity(0.18) : Color.black.opacity(0.06),
+                        lineWidth: 0.5
                     )
             )
-            .shadow(color: .black.opacity(0.05), radius: 10, y: 4)
             .frame(maxWidth: 292, alignment: isUser ? .trailing : .leading)
             .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
 
@@ -314,8 +325,6 @@ private struct QuickMicStatusBubble: View {
 
     var body: some View {
         HStack {
-            Spacer(minLength: 42)
-
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -343,14 +352,15 @@ private struct QuickMicStatusBubble: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.72))
+                    .fill(Color(white: 0.95))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 0.5)
             )
             .frame(maxWidth: 292, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 42)
         }
     }
 }

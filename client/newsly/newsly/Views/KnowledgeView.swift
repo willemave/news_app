@@ -13,7 +13,6 @@ struct KnowledgeView: View {
     let onShowSessionHistory: (() -> Void)?
 
     @StateObject private var viewModel = KnowledgeHubViewModel()
-    @StateObject private var quickMicViewModel = QuickMicViewModel()
     @ObservedObject private var settings = AppSettings.shared
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
@@ -48,11 +47,6 @@ struct KnowledgeView: View {
         ),
     ]
 
-    private let hubContext = AssistantScreenContext(
-        screenType: "knowledge_hub",
-        screenTitle: "Knowledge"
-    )
-
     private var appTextSize: DynamicTypeSize {
         AppTextSize(index: settings.appTextSizeIndex).dynamicTypeSize
     }
@@ -68,7 +62,7 @@ struct KnowledgeView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     headerSection
@@ -82,22 +76,15 @@ struct KnowledgeView: View {
                 .padding(.bottom, 148)
             }
 
-            QuickMicOverlay(
-                viewModel: quickMicViewModel,
-                screenContext: hubContext,
-                isVisible: true,
-                onOpenChatSession: { sessionId in
-                    onSelectSession?(ChatSessionRoute(sessionId: sessionId))
-                }
-            )
+            newChatMicButton
+                .padding(.trailing, 20)
+                .padding(.bottom, 42)
         }
             .dynamicTypeSize(appTextSize)
             .background(Color.surfacePrimary.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .task {
-                async let loadHub: Void = viewModel.loadHub()
-                async let refreshMic: Void = quickMicViewModel.refreshAvailability()
-                _ = await (loadHub, refreshMic)
+                await viewModel.loadHub()
             }
             .refreshable {
                 await viewModel.loadHub()
@@ -330,6 +317,26 @@ struct KnowledgeView: View {
     }
 
     // MARK: - Actions
+
+    private var newChatMicButton: some View {
+        TapToTalkMicButton(
+            isEnabled: !viewModel.isCreatingSession,
+            isRecording: false,
+            isBusy: viewModel.isCreatingSession,
+            size: 60,
+            action: {
+                Task {
+                    if let route = await viewModel.startNewChat() {
+                        onSelectSession?(route)
+                    }
+                }
+            }
+        )
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 8)
+        .accessibilityIdentifier("knowledge.new_chat_mic")
+        .accessibilityLabel("New chat")
+        .accessibilityHint("Start a new chat session")
+    }
 
     private func sendSearchQuery() {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -399,6 +399,23 @@ def test_chat_mic_toggle_flow_uses_mocked_speech_and_sends_message(
     assert assistant_reply in (message.message_list or "")
 
 
+def test_knowledge_new_chat_mic_opens_full_chat_session(
+    run_ios_flow,
+    test_user,
+    db_session,
+) -> None:
+    """Tapping the Knowledge tab mic should create and open a new chat session."""
+    initial_count = (
+        db_session.query(ChatSession).filter(ChatSession.user_id == test_user.id).count()
+    )
+
+    run_ios_flow("knowledge_new_chat.yaml")
+
+    db_session.expire_all()
+    new_count = db_session.query(ChatSession).filter(ChatSession.user_id == test_user.id).count()
+    assert new_count == initial_count + 1
+
+
 def test_personalized_onboarding_flow_runs_live_audio_discovery_with_fake_mic(
     run_ios_flow,
     content_factory,
