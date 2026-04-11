@@ -163,6 +163,15 @@ struct ContentDetail: Codable, Identifiable {
     var primaryTimestamp: String {
         publicationDate ?? processedAt ?? createdAt
     }
+
+    var detailTypeLabel: String {
+        if contentTypeEnum == .news,
+           let name = newsMetadata?.aggregator?.name,
+           !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return name
+        }
+        return contentTypeEnum?.rawValue.capitalized ?? "Article"
+    }
     
     var articleMetadata: ArticleMetadata? {
         guard apiContentType == .article else { return nil }

@@ -228,7 +228,7 @@ struct ContentDetailView: View {
                         if content.contentTypeEnum == .news {
                             if let newsMetadata = content.newsMetadata {
                                 modernSectionPlain(isPadded: false) {
-                                    NewsDigestDetailView(
+                                    NewsItemDetailView(
                                         content: content,
                                         metadata: newsMetadata,
                                         onDiscussionTap: { url in
@@ -855,7 +855,7 @@ struct ContentDetailView: View {
                         HStack(spacing: 4) {
                             Image(systemName: contentTypeIcon(for: content))
                                 .font(.caption2)
-                            Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                            Text(content.detailTypeLabel)
                                 .font(.caption)
                                 .fontWeight(.medium)
                         }
@@ -910,7 +910,7 @@ struct ContentDetailView: View {
                         HStack(spacing: 4) {
                             Image(systemName: contentTypeIcon(for: content))
                                 .font(.caption2)
-                            Text(content.contentTypeEnum?.rawValue.capitalized ?? "Article")
+                            Text(content.detailTypeLabel)
                                 .font(.caption)
                                 .fontWeight(.medium)
                         }

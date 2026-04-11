@@ -20,6 +20,8 @@ final class KnowledgeHubViewModelTests: XCTestCase {
         XCTAssertEqual(chatService.receivedSessionIds, [nil])
         XCTAssertEqual(chatService.receivedScreenTypes, ["knowledge_hub"])
         XCTAssertEqual(chatService.receivedScreenTitles, ["Knowledge"])
+        XCTAssertEqual(chatService.receivedQueries, [nil])
+        XCTAssertEqual(chatService.receivedNotes, [nil])
     }
 
     func testSeededActionsUseExpectedPrompts() async {
@@ -41,10 +43,28 @@ final class KnowledgeHubViewModelTests: XCTestCase {
         XCTAssertEqual(
             chatService.receivedMessages,
             [
-                "Give me a summary of the last day's content. What are the key themes and most important takeaways?",
-                "What are the most interesting and insightful comments from the content I've received recently? Highlight any surprising perspectives or debates.",
+                "Give me a summary of the last day's content from my feed, including recent news items and articles. What are the key themes and most important takeaways?",
+                "What are the most interesting and insightful comments from the news items and articles in my feed recently? Highlight any surprising perspectives or debates.",
                 "Find a few new articles or sources I should read next based on what I've been reading.",
                 "Recommend a few feeds, newsletters, or podcasts I should add based on what I've been reading.",
+            ]
+        )
+        XCTAssertEqual(
+            chatService.receivedQueries,
+            [
+                "recent news items and articles from my feed",
+                nil,
+                nil,
+                nil,
+            ]
+        )
+        XCTAssertEqual(
+            chatService.receivedNotes,
+            [
+                "Summarize recent in-app feed content. Include both short-form news items and longer articles. Prefer in-app content before web search.",
+                nil,
+                nil,
+                nil,
             ]
         )
     }
@@ -139,6 +159,8 @@ private final class MockKnowledgeHubChatService: KnowledgeHubChatServicing {
     var receivedSessionIds: [Int?] = []
     var receivedScreenTypes: [String] = []
     var receivedScreenTitles: [String?] = []
+    var receivedQueries: [String?] = []
+    var receivedNotes: [String?] = []
 
     private let sessionsResult: Result<[ChatSessionSummary], Error>
     private var turnResponses: [Result<AssistantTurnResponse, Error>]
@@ -166,6 +188,8 @@ private final class MockKnowledgeHubChatService: KnowledgeHubChatServicing {
         receivedSessionIds.append(sessionId)
         receivedScreenTypes.append(screenContext.screenType)
         receivedScreenTitles.append(screenContext.screenTitle)
+        receivedQueries.append(screenContext.query)
+        receivedNotes.append(screenContext.note)
 
         guard !turnResponses.isEmpty else {
             XCTFail("Missing mock assistant turn response")

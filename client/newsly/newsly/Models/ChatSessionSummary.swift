@@ -197,9 +197,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         if let topic = topic, !topic.isEmpty {
             return topic
         }
-        if sessionType == "daily_digest_brain" || sessionType == "news_digest_brain" {
-            return "About your news digest"
-        }
         // For empty knowledge saves, show the source
         if isEmptyKnowledgeSave, let source = articleSource {
             return source
@@ -291,8 +288,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "calendar.badge.plus"
         case "topic":
             return "text.magnifyingglass"
-        case "daily_digest_brain", "news_digest_brain":
-            return "calendar.badge.clock"
         case "article_brain":
             return "doc.text.magnifyingglass"
         case "ad_hoc":
@@ -315,8 +310,6 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
             return "Weekly Discovery"
         case "topic":
             return "Search"
-        case "daily_digest_brain", "news_digest_brain":
-            return "Daily Digest"
         case "article_brain":
             return "Dig Deeper"
         case "ad_hoc":

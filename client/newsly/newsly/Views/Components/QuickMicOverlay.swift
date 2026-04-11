@@ -35,10 +35,10 @@ struct QuickMicOverlay: View {
 
             if showsIdleMic && isVisible && !viewModel.isModalPresented {
                 floatingMic
-                    .padding(.leading, 20)
+                    .padding(.trailing, 20)
                     .padding(.bottom, 42)
                     .transition(.scale.combined(with: .opacity))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -57,7 +57,7 @@ struct QuickMicOverlay: View {
         case .submittingTurn:
             return "Thinking through it"
         case .modalActive:
-            return "Hold the bottom mic to ask again"
+            return "Tap the mic to ask again"
         case .failed:
             return "Try that one more time"
         }
@@ -77,27 +77,20 @@ struct QuickMicOverlay: View {
     }
 
     private var floatingMic: some View {
-        HoldToTalkMicButton(
+        TapToTalkMicButton(
             isEnabled: viewModel.isAvailable,
             isRecording: viewModel.isRecording,
-            size: 74,
-            namespace: micNamespace,
-            matchedId: "quick-mic",
-            onPressStart: {
-                Task { await viewModel.beginHold(screenContext: screenContext) }
-            },
-            onPressEnd: {
-                Task { await viewModel.endHold() }
+            isBusy: false,
+            size: 60,
+            action: {
+                Task { await viewModel.toggleRecording(screenContext: screenContext) }
             }
         )
-        .shadow(color: .black.opacity(0.18), radius: 16, y: 10)
-        .overlay(
-            Circle()
-                .stroke(Color.white.opacity(0.85), lineWidth: 3)
-        )
+        .matchedGeometryEffect(id: "quick-mic", in: micNamespace)
+        .shadow(color: .black.opacity(0.22), radius: 12, y: 8)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Quick Assistant")
-        .accessibilityHint("Press and hold to record a quick assistant turn")
+        .accessibilityHint(viewModel.isRecording ? "Tap to stop recording and search" : "Tap to start voice search")
         .accessibilityIdentifier("quick_mic.tabbar")
     }
 
@@ -173,7 +166,7 @@ struct QuickMicOverlay: View {
                         QuickMicStatusBubble(
                             title: "Listening",
                             text: viewModel.activeTranscript.isEmpty
-                                ? "Keep holding the bottom mic and speak naturally."
+                                ? "Speak naturally. Tap the mic when done."
                                 : viewModel.activeTranscript,
                             systemImage: "waveform",
                             accentColor: .accentColor
@@ -215,7 +208,7 @@ struct QuickMicOverlay: View {
 
                 Spacer()
 
-                Text(viewModel.activeSession == nil ? "Press and hold to ask." : "Use the bottom mic to keep the same session going.")
+                Text(viewModel.activeSession == nil ? "Tap the mic to ask." : "Tap the mic to keep the same session going.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -362,61 +355,6 @@ private struct QuickMicStatusBubble: View {
     }
 }
 
-struct HoldToTalkMicButton: View {
-    let isEnabled: Bool
-    let isRecording: Bool
-    let size: CGFloat
-    let namespace: Namespace.ID
-    let matchedId: String
-    var tint: Color = .accentColor
-    let onPressStart: () -> Void
-    let onPressEnd: () -> Void
-
-    @State private var didStartPress = false
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: isEnabled
-                            ? [tint, tint.opacity(0.82)]
-                            : [Color.gray.opacity(0.5), Color.gray.opacity(0.42)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .matchedGeometryEffect(id: matchedId, in: namespace)
-
-            if isRecording {
-                WaveformGlyph()
-                    .frame(width: size * 0.46, height: size * 0.26)
-            } else {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: size * 0.34, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-        }
-        .frame(width: size, height: size)
-        .scaleEffect(isRecording ? 1.08 : 1.0)
-        .opacity(isEnabled ? 1.0 : 0.72)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard isEnabled else { return }
-                    guard !didStartPress else { return }
-                    didStartPress = true
-                    onPressStart()
-                }
-                .onEnded { _ in
-                    guard didStartPress else { return }
-                    didStartPress = false
-                    onPressEnd()
-                }
-        )
-    }
-}
-
 struct TapToTalkMicButton: View {
     let isEnabled: Bool
     let isRecording: Bool
@@ -472,18 +410,28 @@ struct TapToTalkMicButton: View {
 }
 
 struct WaveformGlyph: View {
+    @State private var animate = false
+
     var body: some View {
-        TimelineView(.animation) { context in
-            let time = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 4) {
-                ForEach(0..<5, id: \.self) { index in
-                    let amplitude = 0.32 + abs(sin(time * 3.6 + Double(index) * 0.45)) * 0.68
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: 4, height: 12 + amplitude * 22)
-                }
+        HStack(spacing: 3.5) {
+            ForEach(0..<5, id: \.self) { index in
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: 3.5, height: animate ? barHeight(for: index) : 6)
             }
-            .animation(.easeInOut(duration: 0.16), value: time)
         }
+        .onAppear { animate = true }
+        .onDisappear { animate = false }
+        .animation(
+            .easeInOut(duration: 0.45)
+                .repeatForever(autoreverses: true)
+                .delay(Double.random(in: 0...0.15)),
+            value: animate
+        )
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let heights: [CGFloat] = [14, 24, 18, 28, 16]
+        return heights[index]
     }
 }

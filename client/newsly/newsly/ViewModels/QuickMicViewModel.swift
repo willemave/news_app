@@ -72,7 +72,7 @@ final class QuickMicViewModel: ObservableObject {
     var statusText: String {
         switch state {
         case .idle:
-            return "Hold to ask"
+            return "Tap to ask"
         case .recordingWaveform:
             return "Recording..."
         case .finalizingTranscript:
@@ -80,7 +80,7 @@ final class QuickMicViewModel: ObservableObject {
         case .submittingTurn:
             return "Thinking..."
         case .modalActive:
-            return "Hold to ask again"
+            return "Tap to ask again"
         case .failed:
             return "Something went wrong"
         }
@@ -88,6 +88,14 @@ final class QuickMicViewModel: ObservableObject {
 
     func refreshAvailability() async {
         isAvailable = await OpenAIService.shared.refreshTranscriptionAvailability()
+    }
+
+    func toggleRecording(screenContext: AssistantScreenContext) async {
+        if isRecording {
+            await endHold()
+        } else {
+            await beginHold(screenContext: screenContext)
+        }
     }
 
     func beginHold(screenContext: AssistantScreenContext) async {

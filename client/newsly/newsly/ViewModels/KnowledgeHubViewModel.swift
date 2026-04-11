@@ -28,11 +28,6 @@ class KnowledgeHubViewModel: ObservableObject {
 
     private let chatService: any KnowledgeHubChatServicing
 
-    private let hubContext = AssistantScreenContext(
-        screenType: "knowledge_hub",
-        screenTitle: "Knowledge"
-    )
-
     init(chatService: any KnowledgeHubChatServicing = ChatService.shared) {
         self.chatService = chatService
     }
@@ -57,13 +52,28 @@ class KnowledgeHubViewModel: ObservableObject {
 
     func startSummaryChat() async -> ChatSessionRoute? {
         await startHubAssistantTurn(
-            message: "Give me a summary of the last day's content. What are the key themes and most important takeaways?"
+            message: (
+                "Give me a summary of the last day's content from my feed, "
+                + "including recent news items and articles. "
+                + "What are the key themes and most important takeaways?"
+            ),
+            screenContext: makeHubContext(
+                query: "recent news items and articles from my feed",
+                note: (
+                    "Summarize recent in-app feed content. Include both short-form news "
+                    + "items and longer articles. Prefer in-app content before web search."
+                )
+            )
         )
     }
 
     func startCommentsChat() async -> ChatSessionRoute? {
         await startHubAssistantTurn(
-            message: "What are the most interesting and insightful comments from the content I've received recently? Highlight any surprising perspectives or debates."
+            message: (
+                "What are the most interesting and insightful comments from the "
+                + "news items and articles in my feed recently? "
+                + "Highlight any surprising perspectives or debates."
+            )
         )
     }
 
@@ -79,7 +89,10 @@ class KnowledgeHubViewModel: ObservableObject {
         )
     }
 
-    private func startHubAssistantTurn(message: String) async -> ChatSessionRoute? {
+    private func startHubAssistantTurn(
+        message: String,
+        screenContext: AssistantScreenContext? = nil
+    ) async -> ChatSessionRoute? {
         guard !isCreatingSession else { return nil }
         isCreatingSession = true
         errorMessage = nil
@@ -89,7 +102,7 @@ class KnowledgeHubViewModel: ObservableObject {
             let response = try await chatService.createAssistantTurn(
                 message: message,
                 sessionId: nil,
-                screenContext: hubContext
+                screenContext: screenContext ?? makeHubContext()
             )
             return ChatSessionRoute(
                 sessionId: response.session.id,
@@ -101,5 +114,17 @@ class KnowledgeHubViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             return nil
         }
+    }
+
+    private func makeHubContext(
+        query: String? = nil,
+        note: String? = nil
+    ) -> AssistantScreenContext {
+        AssistantScreenContext(
+            screenType: "knowledge_hub",
+            screenTitle: "Knowledge",
+            query: query,
+            note: note
+        )
     }
 }
