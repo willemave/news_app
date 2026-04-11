@@ -52,6 +52,8 @@ MULTI_VIEW_WEIGHTS = {
 SEMANTIC_PREFILTER_MIN_TITLE_TOKEN_OVERLAP = 1
 SEMANTIC_PREFILTER_MAX_CANDIDATES = 12
 CLUSTER_RELATED_TITLE_LIMIT = 6
+DOMINANT_RERANK_VARIANT_GAP = 0.35
+DOMINANT_RERANK_MIN_TITLE_SIMILARITY = 0.55
 
 
 def _utcnow_naive() -> datetime:
@@ -192,36 +194,13 @@ def _candidate_title_similarity_scores(
 
 
 def reranker_query_text(item: NewsItem) -> str:
-    """Build a compact reranker query for one incoming item."""
-    parts: list[str] = []
     title = _relation_primary_title(item)
-    if title:
-        parts.append(f"Title: {title}")
-    domain = _clean_string(item.article_domain)
-    if domain:
-        parts.append(f"Domain: {domain}")
-    source = _clean_string(item.source_label)
-    if source:
-        parts.append(f"Source: {source}")
-    return "\n".join(parts)
+    return f"Title: {title}" if title else ""
 
 
-def reranker_candidate_text(item: NewsItem) -> str:
-    """Build a compact cluster document for reranking."""
-    titles = _cluster_related_titles(item)
-    parts: list[str] = []
-    if titles:
-        parts.append(f"Representative title: {titles[0]}")
-        if len(titles) > 1:
-            parts.append("Related titles:")
-            parts.extend(f"- {title}" for title in titles[1:])
-    domain = _clean_string(item.article_domain)
-    if domain:
-        parts.append(f"Domain: {domain}")
-    source = _clean_string(item.source_label)
-    if source:
-        parts.append(f"Source: {source}")
-    return "\n".join(parts)
+def reranker_candidate_text(title: str) -> str:
+    """Build one candidate document per cluster title variant."""
+    return f"Title: {title}"
 
 
 def _candidate_reranker_scores(
@@ -231,8 +210,52 @@ def _candidate_reranker_scores(
     query_text = reranker_query_text(item)
     if not query_text:
         return [0.0] * len(candidates)
-    candidate_texts = [reranker_candidate_text(candidate) for candidate in candidates]
-    return rerank_news_documents(query=query_text, documents=candidate_texts)
+
+    variant_texts: list[str] = []
+    variant_candidate_indexes: list[int] = []
+    for candidate_index, candidate in enumerate(candidates):
+        for title in _cluster_related_titles(candidate):
+            variant_texts.append(reranker_candidate_text(title))
+            variant_candidate_indexes.append(candidate_index)
+    if not variant_texts:
+        return [0.0] * len(candidates)
+
+    title_vectors = encode_news_texts([query_text, *variant_texts])
+    if title_vectors.size == 0:
+        return [0.0] * len(candidates)
+    title_variant_scores = [float(score) for score in title_vectors[0] @ title_vectors[1:].T]
+
+    variant_scores = rerank_news_documents(query=query_text, documents=variant_texts)
+    grouped_scores: list[list[tuple[float, float]]] = [[] for _ in candidates]
+    for index, rerank_score, title_score in zip(
+        variant_candidate_indexes,
+        variant_scores,
+        title_variant_scores,
+        strict=True,
+    ):
+        grouped_scores[index].append((float(rerank_score), float(title_score)))
+
+    aggregated_scores: list[float] = []
+    for scores in grouped_scores:
+        if not scores:
+            aggregated_scores.append(0.0)
+            continue
+        ordered = sorted(scores, key=lambda entry: entry[0], reverse=True)
+        if len(ordered) >= 2:
+            top_score, top_title_score = ordered[0]
+            second_score, _second_title_score = ordered[1]
+            if (
+                top_score - second_score >= DOMINANT_RERANK_VARIANT_GAP
+                and top_title_score >= DOMINANT_RERANK_MIN_TITLE_SIMILARITY
+            ):
+                aggregated_scores.append(top_score)
+                continue
+
+        support_count = min(2, len(ordered))
+        aggregated_scores.append(
+            sum(score for score, _title in ordered[:support_count]) / support_count
+        )
+    return aggregated_scores
 
 
 def _key_point_texts(item: NewsItem) -> list[str]:

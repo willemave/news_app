@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     news_list_reranker_max_candidates: int = Field(default=8, ge=1, le=32)
     news_list_reranker_batch_size: int = Field(default=4, ge=1, le=16)
     news_list_reranker_max_length: int = Field(default=2048, ge=256, le=8192)
-    news_list_reranker_similarity_threshold: float = Field(default=0.60, ge=0.0, le=1.0)
+    news_list_reranker_similarity_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
     news_group_model: str = "google:gemini-3.1-flash-lite-preview"
     news_header_model: str = "google:gemini-3.1-flash-lite-preview"
     news_list_warm_embeddings: bool = True
