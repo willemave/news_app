@@ -73,7 +73,7 @@ struct LandingView: View {
                 ZStack {
                     if isLoading {
                         ProgressView()
-                            .tint(.white)
+                            .tint(.watercolorBase)
                     } else {
                         HStack(spacing: 8) {
                             Image(systemName: "apple.logo")
@@ -81,7 +81,7 @@ struct LandingView: View {
                             Text("Continue with Apple")
                                 .font(.callout.weight(.semibold))
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.watercolorBase)
                     }
                 }
                 .frame(maxWidth: .infinity)

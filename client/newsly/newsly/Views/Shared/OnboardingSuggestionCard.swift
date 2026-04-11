@@ -51,10 +51,10 @@ struct OnboardingSuggestionCard: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(isSelected ? 0.6 : 0.35))
+            .background(Color.watercolorSlate.opacity(isSelected ? 0.1 : 0.05))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.editorialBorder, lineWidth: 1)
+                    .stroke(Color.watercolorSlate.opacity(0.15), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }

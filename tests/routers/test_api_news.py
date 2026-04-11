@@ -295,6 +295,44 @@ def test_get_news_item_detail_restores_key_points_when_summary_metadata_is_empty
     assert payload["metadata"]["summary"]["key_points"] == ["Point one", "Point two"]
 
 
+def test_news_item_responses_prefer_materialized_summary_metadata_title(
+    client,
+    db_session,
+) -> None:
+    news_item = _create_news_item(
+        db_session,
+        ingest_key="materialized-summary-title",
+        summary_title="This is a great discussion.",
+        article_title="This is a great discussion.",
+        raw_metadata={
+            "summary": {
+                "title": (
+                    "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+                ),
+                "summary": "Summary from metadata",
+                "key_points": ["Point one", "Point two"],
+            }
+        },
+    )
+    db_session.commit()
+
+    list_response = client.get("/api/news/items")
+    assert list_response.status_code == 200
+    assert list_response.json()["contents"][0]["title"] == (
+        "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+    )
+
+    detail_response = client.get(f"/api/news/items/{news_item.id}")
+    assert detail_response.status_code == 200
+    payload = detail_response.json()
+    assert payload["display_title"] == (
+        "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+    )
+    assert payload["metadata"]["summary"]["title"] == (
+        "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+    )
+
+
 def test_list_news_items_orders_by_published_at_before_ingested_at(
     client,
     db_session,

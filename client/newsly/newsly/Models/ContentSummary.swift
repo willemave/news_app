@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct ContentSummary: Codable, Identifiable {
-    struct TopComment: Codable {
+struct ContentSummary: Codable, Identifiable, Equatable {
+    struct TopComment: Codable, Equatable {
         let author: String
         let text: String
     }

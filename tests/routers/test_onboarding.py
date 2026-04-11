@@ -41,7 +41,7 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
                 {
                     "suggestion_type": "podcast_rss",
                     "title": "Example Podcast",
-                    "feed_url": "https://example.com/podcast/rss.xml",
+                    "feed_url": "https://feed.podbean.com/arthistoryhour/feed.xml",
                 },
             ],
             "selected_subreddits": ["MachineLearning"],
@@ -63,8 +63,9 @@ def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, te
     configs = (
         db_session.query(UserScraperConfig).filter(UserScraperConfig.user_id == test_user.id).all()
     )
-    assert len(configs) == 2
+    assert len(configs) == 3
     assert any(config.scraper_type == "substack" for config in configs)
+    assert any(config.scraper_type == "podcast_rss" for config in configs)
     assert any(config.scraper_type == "reddit" for config in configs)
 
     assert any(call[0] == TaskType.SCRAPE.value for call in calls)

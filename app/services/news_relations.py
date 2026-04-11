@@ -16,6 +16,12 @@ from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.schema import NewsItem
 from app.services.news_embeddings import encode_news_texts
 from app.services.news_reranker import rerank_news_documents
+from app.utils.news_titles import (
+    get_news_cluster_related_titles,
+    resolve_news_display_title,
+    set_news_article_title,
+    set_news_summary_title,
+)
 from app.utils.title_utils import clean_title
 from app.utils.url_utils import normalize_http_url
 
@@ -109,6 +115,9 @@ def matching_text(item: NewsItem) -> str:
 
 
 def _relation_primary_title(item: NewsItem) -> str | None:
+    cluster_titles = get_news_cluster_related_titles(item.raw_metadata)
+    if cluster_titles:
+        return cluster_titles[0]
     return clean_title(item.summary_title or item.article_title)
 
 
@@ -126,8 +135,6 @@ def _cluster_related_titles(item: NewsItem) -> list[str]:
         seen.add(key)
         titles.append(cleaned)
 
-    _append_title(item.summary_title or item.article_title)
-
     raw_cluster = dict(item.raw_metadata or {}).get("cluster")
     related_titles = raw_cluster.get("related_titles") if isinstance(raw_cluster, dict) else None
     if isinstance(related_titles, list):
@@ -135,6 +142,7 @@ def _cluster_related_titles(item: NewsItem) -> list[str]:
             _append_title(value)
             if len(titles) >= CLUSTER_RELATED_TITLE_LIMIT:
                 break
+    _append_title(item.summary_title or item.article_title)
 
     return titles
 
@@ -490,12 +498,21 @@ def list_cluster_members(db: Session, *, representative_id: int) -> list[NewsIte
     return rows
 
 
-def _cluster_payload(items: list[NewsItem]) -> dict[str, Any]:
+def _cluster_payload(
+    items: list[NewsItem],
+    *,
+    preferred_title: str | None = None,
+) -> dict[str, Any]:
     source_labels: list[str] = []
     domains: list[str] = []
     discussion_snippets: list[str] = []
     related_titles: list[str] = []
     latest_member_ingested_at: datetime | None = None
+
+    if preferred_title:
+        cleaned_preferred_title = clean_title(preferred_title)
+        if cleaned_preferred_title:
+            related_titles.append(cleaned_preferred_title)
 
     for item in items:
         source_label = _clean_string(item.source_label)
@@ -557,12 +574,15 @@ def recompute_representative_enrichment(
         raise ValueError(f"Representative news item {representative_id} not found")
 
     evidence_item = select_best_evidence_item(members)
-    cluster_payload = _cluster_payload(members)
+    evidence_display_title = resolve_news_display_title(
+        evidence_item.raw_metadata,
+        summary_text=evidence_item.summary_text,
+        fallback=f"News item {representative_id}",
+    )
+    cluster_payload = _cluster_payload(members, preferred_title=evidence_display_title)
 
-    representative.summary_title = evidence_item.summary_title or evidence_item.article_title
     representative.summary_text = evidence_item.summary_text or representative.summary_text
     representative.summary_key_points = list(evidence_item.summary_key_points or [])[:5]
-    representative.article_title = evidence_item.article_title or representative.article_title
     representative.article_url = evidence_item.article_url or representative.article_url
     representative.canonical_story_url = (
         evidence_item.canonical_story_url or representative.canonical_story_url
@@ -572,6 +592,14 @@ def recompute_representative_enrichment(
     representative.enrichment_updated_at = _utcnow_naive()
 
     representative_metadata = dict(representative.raw_metadata or {})
+    representative_metadata = set_news_summary_title(
+        representative_metadata,
+        representative.summary_title,
+    )
+    representative_metadata = set_news_article_title(
+        representative_metadata,
+        representative.article_title,
+    )
     representative_metadata["cluster"] = cluster_payload
     representative.raw_metadata = representative_metadata
 

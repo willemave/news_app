@@ -271,7 +271,8 @@ def test_content_detail_falls_back_to_visible_news_item_when_legacy_content_is_m
     assert payload["content_type"] == "news"
     assert payload["display_title"] == "Visible news summary"
     assert payload["summary"] == "Visible short-form summary"
-    assert payload["metadata"]["article"]["title"] == "Visible news summary"
+    assert payload["metadata"]["article"]["title"] == "Visible news story"
+    assert payload["metadata"]["summary"]["title"] == "Visible news summary"
 
 
 def test_content_detail_rewrites_placeholder_news_metadata_titles(

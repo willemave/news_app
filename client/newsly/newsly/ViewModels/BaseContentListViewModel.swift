@@ -73,13 +73,19 @@ class BaseContentListViewModel: ObservableObject {
         pagination = Pagination(nextCursor: nil, hasMore: true, isLoading: true)
         items.removeAll()
         state = .initialLoading
-        requestPage(cursor: nil)
+        requestPage(cursor: nil, replaceItems: false)
+    }
+
+    func refreshInBackground() {
+        guard !pagination.isLoading else { return }
+        pagination.isLoading = true
+        requestPage(cursor: nil, replaceItems: true)
     }
 
     func loadNextPage() {
         guard !pagination.isLoading, pagination.hasMore else { return }
         state = .loadingMore
-        requestPage(cursor: pagination.nextCursor)
+        requestPage(cursor: pagination.nextCursor, replaceItems: false)
     }
 
     func updateReadFilter(_ newValue: ReadFilter) {
@@ -140,9 +146,7 @@ class BaseContentListViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func requestPage(cursor: String?) {
-        pagination.isLoading = true
-
+    private func requestPage(cursor: String?, replaceItems: Bool) {
         repository
             .loadPage(
                 contentTypes: contentTypes,
@@ -168,7 +172,11 @@ class BaseContentListViewModel: ObservableObject {
                 guard let self else { return }
                 pagination.hasMore = response.hasMore
                 pagination.nextCursor = response.nextCursor
-                items.append(contentsOf: response.contents)
+                if replaceItems {
+                    items = response.contents
+                } else {
+                    items.append(contentsOf: response.contents)
+                }
             }
             .store(in: &cancellables)
     }

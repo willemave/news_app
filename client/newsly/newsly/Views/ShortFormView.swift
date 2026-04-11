@@ -21,21 +21,23 @@ struct ShortFormView: View {
     @State private var topVisibleItemId: Int?
 
     var body: some View {
+        let items = viewModel.currentItems()
+        let isEmpty = items.isEmpty
+        let hasUnreadItems = items.contains(where: { !$0.isRead })
+
         ScrollView {
             LazyVStack(spacing: 0) {
-                if case .error(let error) = viewModel.state, viewModel.currentItems().isEmpty {
+                if case .error(let error) = viewModel.state, isEmpty {
                     ErrorView(message: error.localizedDescription) {
                         viewModel.refreshTrigger.send(())
                     }
                     .padding(.top, 48)
-                } else if viewModel.state == .initialLoading, viewModel.currentItems().isEmpty {
+                } else if viewModel.state == .initialLoading, isEmpty {
                     ProgressView("Loading")
                         .padding(.top, 48)
-                } else if viewModel.currentItems().isEmpty {
+                } else if isEmpty {
                     shortFormEmptyState
                 } else {
-                    let items = viewModel.currentItems()
-
                     Text("Fast Read")
                         .font(.terracottaDisplayLarge)
                         .foregroundStyle(Color.onSurface)
@@ -48,9 +50,11 @@ struct ShortFormView: View {
                         // Day delimiter: show when this item starts a new day
                         if index == 0 || item.calendarDayKey != items[index - 1].calendarDayKey {
                             DayDelimiter(item: item, isFirst: index == 0)
+                                .equatable()
                         }
 
                         ShortNewsRow(item: item)
+                            .equatable()
                             .accessibilityIdentifier("short.row.\(item.id)")
                             .id(item.id)
                             .onTapGesture {
@@ -69,7 +73,7 @@ struct ShortFormView: View {
                             }
                     }
 
-                    if viewModel.currentItems().contains(where: { !$0.isRead }) {
+                    if hasUnreadItems {
                         Button {
                             showMarkAllConfirmation = true
                         } label: {
@@ -95,7 +99,9 @@ struct ShortFormView: View {
         }
         .accessibilityIdentifier("short.screen")
         .screenContainer()
-        .scrollPosition(id: $topVisibleItemId, anchor: .top)
+        .onScrollTargetVisibilityChange(idType: Int.self) { visibleIds in
+            topVisibleItemId = visibleIds.first
+        }
         .onChange(of: topVisibleItemId) { _, _ in
             markItemsAboveAsRead()
         }
@@ -172,7 +178,7 @@ struct ShortFormView: View {
 
 // MARK: - Short News Row
 
-private struct ShortNewsRow: View {
+private struct ShortNewsRow: View, Equatable {
     let item: ContentSummary
 
     private var titleWeight: Font.Weight {
@@ -278,7 +284,7 @@ private struct ShortNewsRow: View {
 
 // MARK: - Day Delimiter
 
-private struct DayDelimiter: View {
+private struct DayDelimiter: View, Equatable {
     let item: ContentSummary
     let isFirst: Bool
 

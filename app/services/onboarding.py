@@ -87,12 +87,12 @@ DISCOVERY_PROMPT_SNIPPET_CHARS = 280
 DISCOVERY_PROMPT_MAX_FILL_IN_FEEDS = 8
 DISCOVERY_PROMPT_MAX_FILL_IN_PODCASTS = 6
 DISCOVERY_PROMPT_MAX_FILL_IN_REDDIT = 8
-ONBOARDING_FEED_SUGGESTION_LIMIT = 10
+ONBOARDING_FEED_SUGGESTION_LIMIT = 5
 EXA_DISCOVERY_MAX_WORKERS = 8
 
 DEFAULT_SOURCE_LIMITS = {
     "substack": 8,
-    "podcast_rss": 6,
+    "podcast_rss": 5,
     "atom": 6,
     "reddit": 8,
 }
@@ -574,9 +574,6 @@ def complete_onboarding(
         selections = _defaults_to_selected_sources(curated)
 
     for selection in selections:
-        if selection.suggestion_type == "podcast_rss":
-            created_types.add(selection.suggestion_type)
-            continue
         config_payload = {**(selection.config or {})}
         if not config_payload.get("feed_url"):
             config_payload["feed_url"] = selection.feed_url
@@ -1676,7 +1673,7 @@ def _fast_discover_from_defaults(
 ) -> OnboardingFastDiscoverResponse:
     feed_defaults = curated.get("substack", []) + curated.get("atom", [])
     response = OnboardingFastDiscoverResponse(
-        recommended_pods=curated.get("podcast_rss", []),
+        recommended_pods=curated.get("podcast_rss", [])[: DEFAULT_SOURCE_LIMITS["podcast_rss"]],
         recommended_substacks=feed_defaults[:ONBOARDING_FEED_SUGGESTION_LIMIT],
         recommended_subreddits=curated.get("reddit", []),
     )

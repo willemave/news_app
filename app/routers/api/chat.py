@@ -265,8 +265,10 @@ def _refresh_assistant_session_context(
     title = screen_context.screen_title or session.title or "Knowledge Chat"
     if screen_context.content_id is not None:
         content = db.query(Content).filter(Content.id == screen_context.content_id).first()
-        if content is not None and content.title:
-            title = content.title
+        if content is not None:
+            resolved_title = _resolve_article_title(content)
+            if resolved_title:
+                title = resolved_title
     session.title = title[:500]
     session.updated_at = datetime.now(UTC)
     db.commit()
@@ -275,9 +277,6 @@ def _refresh_assistant_session_context(
 
 def _resolve_article_title(content: Content) -> str | None:
     """Resolve a chat-friendly title from content, falling back to display_title."""
-    if content.title:
-        return content.title
-
     try:
         domain_content = content_to_domain(content)
         return domain_content.display_title

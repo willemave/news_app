@@ -24,8 +24,12 @@ from app.models.contracts import (
 )
 from app.models.pagination import PaginationMetadata
 from app.models.schema import NewsItem, NewsItemReadStatus
+from app.utils.news_titles import (
+    get_news_article_title,
+    resolve_news_display_title,
+    resolve_news_summary_title,
+)
 from app.utils.pagination import PaginationCursor
-from app.utils.title_utils import resolve_display_title, resolve_title_candidate
 from app.utils.url_utils import normalize_http_url
 
 
@@ -152,9 +156,8 @@ def _content_classification(item: NewsItem) -> ContentClassification | None:
 
 def _news_item_display_title(item: NewsItem) -> str:
     """Resolve a news-item title that avoids placeholder source labels."""
-    return resolve_display_title(
-        item.summary_title,
-        item.article_title,
+    return resolve_news_display_title(
+        item.raw_metadata,
         summary_text=item.summary_text,
         fallback=f"News item {item.id}",
     )
@@ -213,12 +216,7 @@ def _present_detail(
     if not isinstance(article, dict):
         article = {}
     article.setdefault("url", item.article_url or item.canonical_story_url)
-    article["title"] = resolve_display_title(
-        article.get("title"),
-        display_title,
-        summary_text=item.summary_text,
-        fallback=display_title,
-    )
+    article["title"] = get_news_article_title(metadata) or display_title
     article.setdefault("source_domain", item.article_domain)
     metadata["article"] = article
 
@@ -227,11 +225,7 @@ def _present_detail(
         summary = {}
     raw_summary_text = summary.get("summary")
     summary_text = raw_summary_text if isinstance(raw_summary_text, str) else item.summary_text
-    summary_title = resolve_title_candidate(
-        summary.get("title"),
-        display_title,
-        summary_text=summary_text,
-    )
+    summary_title = resolve_news_summary_title(metadata, summary_text=summary_text)
     article_url = item.article_url or item.canonical_story_url
     summary_key_points = list(item.summary_key_points or [])
     if summary_title:

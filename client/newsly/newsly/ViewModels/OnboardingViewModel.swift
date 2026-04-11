@@ -7,6 +7,13 @@
 
 import Foundation
 
+private let defaultNewsListPreferencePrompt =
+    "Curate a high-signal news list across all sources using these principles: "
+    + "prefer original reporting over commentary; prioritize concrete developments, technical insight, "
+    + "firsthand company or product updates, meaningful data, and strong analysis; reward pieces that "
+    + "add context, synthesis, or clear implications; avoid memes, engagement bait, vague reactions, "
+    + "spammy vendor copy, repetitive hype, and low-context chatter unless they contain genuinely new information."
+
 enum OnboardingStep: Int {
     case intro
     case choice
@@ -62,7 +69,11 @@ final class OnboardingViewModel: ObservableObject {
         self.user = user
         self.dictationService = SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.twitterUsername = user.twitterUsername ?? ""
-        self.newsListPreferencePrompt = user.newsListPreferencePrompt
+        let trimmedPrompt = user.newsListPreferencePrompt.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        self.newsListPreferencePrompt =
+            trimmedPrompt.isEmpty ? defaultNewsListPreferencePrompt : user.newsListPreferencePrompt
     }
 
     deinit {

@@ -92,6 +92,14 @@ final class LongContentListViewModel: BaseContentListViewModel {
         refresh()
     }
 
+    func refreshUnreadFeedInBackground() {
+        let previousFilter = currentReadFilter()
+        setReadFilter(.unread)
+
+        guard previousFilter == .unread else { return }
+        refreshInBackground()
+    }
+
     func setReadFilter(_ filter: ReadFilter) {
         logger.info("[LongContentList] setReadFilter | filter=\(String(describing: filter), privacy: .public)")
         updateReadFilter(filter)

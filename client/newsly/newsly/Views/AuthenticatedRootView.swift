@@ -19,6 +19,7 @@ struct AuthenticatedRootView: View {
     let user: User
 
     @State private var presentationState: AuthenticatedPresentationState = .deciding
+    @State private var onboardingFeedCount: Int = 0
 
     private let onboardingService = OnboardingService.shared
 
@@ -38,13 +39,14 @@ struct AuthenticatedRootView: View {
                         }
                     }
                     if !response.hasCompletedNewUserTutorial {
+                        onboardingFeedCount = response.inboxCountEstimate
                         presentationState = .tutorial
                     } else {
                         presentationState = .content
                     }
                 }
             case .tutorial:
-                HowItWorksModal {
+                HowItWorksModal(feedCount: onboardingFeedCount) {
                     Task { await completeTutorial() }
                 }
             case .content:

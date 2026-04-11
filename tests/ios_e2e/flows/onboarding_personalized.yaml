@@ -13,7 +13,7 @@ appId: "${APP_ID}"
       newslyE2ECompleteOnboarding: false
       newslyE2ECompleteTutorial: false
       newslyE2EFakeSpeechEnabled: true
-      newslyE2EOnboardingFixture: "${ONBOARDING_FIXTURE}"
+      newslyE2EFakeSpeechTranscript: "${TRANSCRIPT}"
 - assertVisible:
     text: Set up your feeds
 - tapOn:
@@ -25,24 +25,34 @@ appId: "${APP_ID}"
 - tapOn:
     text: Recording. Tap to stop.
 - assertVisible:
+    text: NEWSLETTERS
+- assertVisible:
     text: Your picks
 - assertVisible:
-    text: Lenny's Newsletter
+    text: Stratechery
 - assertVisible:
     text: Latent Space
 - tapOn:
-    id: onboarding.input.twitter_username
-- inputText: "@willem_aw"
-- tapOn:
-    id: onboarding.input.news_preferences
-- inputText: "Prefer chips and AI infra."
-- tapOn:
-    text: Your picks
+    text: Latent Space
 - tapOn:
     text: Start reading
 - assertVisible:
-    text: How Newsly works
+    text: What to expect
 - tapOn:
-    text: Got it
+    text: Let's go
+- tapOn:
+    text: Long Form
 - assertVisible:
-    id: tab.long_form
+    text: Your long-form feed is being assembled
+- assertVisible:
+    text: 2 items are still processing across 5 sources.
+- assertVisible:
+    text: Check back in a minute.
+- assertVisible:
+    text: Selected Sources
+- assertVisible:
+    text: Decoder
+- assertVisible:
+    text: Stratechery
+- assertVisible:
+    text: 1 processing item

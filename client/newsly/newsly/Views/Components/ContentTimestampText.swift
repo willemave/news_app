@@ -56,6 +56,12 @@ enum ContentTimestampFormatter {
         return formatter
     }()
 
+    private static let relativeShortFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter
+    }()
+
     static func parse(_ rawValue: String?) -> Date? {
         guard let rawValue = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
               !rawValue.isEmpty else {
@@ -82,9 +88,7 @@ enum ContentTimestampFormatter {
 
         let interval = now.timeIntervalSince(date)
         if interval >= 0, interval < 7 * 24 * 60 * 60 {
-            let formatter = RelativeDateTimeFormatter()
-            formatter.unitsStyle = .short
-            return formatter.localizedString(for: date, relativeTo: now)
+            return relativeShortFormatter.localizedString(for: date, relativeTo: now)
         }
 
         let calendar = Calendar.current

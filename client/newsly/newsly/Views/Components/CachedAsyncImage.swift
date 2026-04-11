@@ -38,13 +38,9 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     var body: some View {
         Group {
             if let image = loadedImage {
-                // Show full image
                 content(Image(uiImage: image))
             } else if let thumbnail = thumbnailImage {
-                // Show thumbnail while loading full image
                 content(Image(uiImage: thumbnail))
-            } else if isLoading {
-                placeholder()
             } else {
                 placeholder()
             }
@@ -72,16 +68,12 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
         }
 
         guard let url = url else {
-            print("CachedAsyncImage: No URL provided")
             await MainActor.run {
                 isLoading = false
             }
             return
         }
 
-        print("CachedAsyncImage: Loading image from \(url)")
-
-        // Try to load from cache first
         if let cached = await ImageCacheService.shared.image(for: url) {
             if Task.isCancelled { return }
             await MainActor.run {
@@ -93,20 +85,15 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
             return
         }
 
-        // If we have a thumbnail URL and no cached full image, try thumbnail first
         if let thumbnailUrl = thumbnailUrl {
-            // Try cached thumbnail
             if let cachedThumb = await ImageCacheService.shared.image(for: thumbnailUrl) {
                 if Task.isCancelled { return }
                 await MainActor.run {
                     thumbnailImage = cachedThumb
                 }
             } else {
-                // Download thumbnail
-                if let thumbData = try? await URLSession.shared.data(from: thumbnailUrl).0,
-                   let thumbImage = UIImage(data: thumbData) {
+                if let thumbImage = await loadRemoteImage(from: thumbnailUrl) {
                     if Task.isCancelled { return }
-                    await ImageCacheService.shared.cache(thumbImage, for: thumbnailUrl)
                     await MainActor.run {
                         thumbnailImage = thumbImage
                     }
@@ -116,33 +103,28 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
 
         if Task.isCancelled { return }
 
-        // Download full image
-        do {
-            print("CachedAsyncImage: Downloading from \(url)")
-            let (data, response) = try await URLSession.shared.data(from: url)
-            print("CachedAsyncImage: Got \(data.count) bytes, status: \((response as? HTTPURLResponse)?.statusCode ?? -1)")
-            if let image = UIImage(data: data) {
-                print("CachedAsyncImage: Successfully decoded image")
-                await ImageCacheService.shared.cache(image, for: url)
-                if Task.isCancelled { return }
-                await MainActor.run {
-                    withAnimation(.easeIn(duration: 0.2)) {
-                        loadedImage = image
-                        isLoading = false
-                    }
-                }
-            } else {
-                print("CachedAsyncImage: Failed to decode image data")
-                await MainActor.run {
+        if let image = await loadRemoteImage(from: url) {
+            if Task.isCancelled { return }
+            await MainActor.run {
+                withAnimation(.easeIn(duration: 0.2)) {
+                    loadedImage = image
                     isLoading = false
                 }
             }
-        } catch {
-            if Task.isCancelled { return }
-            print("CachedAsyncImage: Download error: \(error)")
+        } else {
             await MainActor.run {
                 isLoading = false
             }
+        }
+    }
+
+    private func loadRemoteImage(from remoteURL: URL) async -> UIImage? {
+        do {
+            let (data, _) = try await URLSession.shared.data(from: remoteURL)
+            if Task.isCancelled { return nil }
+            return await ImageCacheService.shared.cacheImageData(data, for: remoteURL)
+        } catch {
+            return nil
         }
     }
 }

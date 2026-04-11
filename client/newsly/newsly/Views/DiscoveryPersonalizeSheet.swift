@@ -249,7 +249,7 @@ struct DiscoveryPersonalizeSheet: View {
                         .font(.callout.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .foregroundColor(.white)
+                        .foregroundColor(.watercolorBase)
                         .background(Color.watercolorSlate)
                         .clipShape(RoundedRectangle(cornerRadius: 24))
                 }

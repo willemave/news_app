@@ -557,3 +557,80 @@ def test_upsert_news_item_matches_existing_row_by_stable_identity(db_session) ->
     assert len(news_items) == 1
     assert updated_record.ingest_key != "old-volatile-key"
     assert updated_record.summary_title == "David Silver raises $1B"
+
+
+def test_upsert_news_item_preserves_materialized_summary_title_on_rescrape(db_session) -> None:
+    existing = NewsItem(
+        ingest_key="twitter-reingest-regression",
+        visibility_scope=NewsItemVisibilityScope.GLOBAL.value,
+        owner_user_id=None,
+        platform="twitter",
+        source_type="Twitter",
+        source_label="solve.it.com",
+        source_external_id="tweet-123",
+        canonical_item_url="https://x.com/i/status/tweet-123",
+        canonical_story_url="https://solve.it.com/",
+        article_url="https://solve.it.com/",
+        article_title="This is a great discussion.",
+        article_domain="solve.it.com",
+        discussion_url="https://x.com/i/status/tweet-123",
+        summary_title="Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship",
+        summary_key_points=["Point"],
+        summary_text="Summary text",
+        raw_metadata={
+            "article": {
+                "url": "https://solve.it.com/",
+                "title": "This is a great discussion.",
+                "source_domain": "solve.it.com",
+            },
+            "summary": {
+                "title": (
+                    "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+                ),
+                "summary": "Summary text",
+                "key_points": ["Point"],
+            },
+        },
+        status=NewsItemStatus.READY.value,
+        ingested_at=datetime.now(UTC).replace(tzinfo=None),
+        processed_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    payload = build_news_item_upsert_input_from_scraped_item(
+        {
+            "url": "https://solve.it.com/",
+            "title": "This is a great discussion.",
+            "content_type": ContentType.NEWS,
+            "visibility_scope": NewsItemVisibilityScope.GLOBAL,
+            "metadata": {
+                "platform": "twitter",
+                "source": "solve.it.com",
+                "source_type": "Twitter",
+                "source_label": "solve.it.com",
+                "aggregator": {
+                    "name": "Twitter",
+                    "title": (
+                        "This is a great discussion.\n\nWe've spent 2 years building a solution..."
+                    ),
+                    "external_id": "tweet-123",
+                },
+                "article": {
+                    "url": "https://solve.it.com/",
+                    "title": "This is a great discussion.",
+                    "source_domain": "solve.it.com",
+                },
+                "discussion_url": "https://x.com/i/status/tweet-123",
+            },
+        }
+    )
+
+    updated_record, was_created = upsert_news_item(db_session, payload)
+    db_session.commit()
+
+    assert was_created is False
+    assert updated_record.id == existing.id
+    assert updated_record.summary_title == (
+        "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+    )

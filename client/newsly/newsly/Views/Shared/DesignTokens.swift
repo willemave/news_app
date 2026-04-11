@@ -214,13 +214,49 @@ extension Color {
         })
     }
 
-    // Watercolor palette (Landing & Onboarding)
-    static var watercolorBase: Color { Color(red: 0.973, green: 0.980, blue: 0.988) }           // #f8fafc
-    static var watercolorMistyBlue: Color { Color(red: 0.580, green: 0.680, blue: 0.820) }      // #94ADD1
-    static var watercolorDiffusedPeach: Color { Color(red: 0.960, green: 0.620, blue: 0.580) }   // #F59E94
-    static var watercolorPaleEmerald: Color { Color(red: 0.400, green: 0.820, blue: 0.640) }     // #66D1A3
-    static var watercolorSoftSky: Color { Color(red: 0.500, green: 0.780, blue: 0.960) }         // #80C7F5
-    static var watercolorSlate: Color { Color(red: 0.200, green: 0.255, blue: 0.333) }           // #334155
+    // Watercolor palette (Landing & Onboarding) — adaptive for dark mode
+    static var watercolorBase: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.047, green: 0.059, blue: 0.078, alpha: 1.0)  // #0c0f14
+                : UIColor(red: 0.973, green: 0.980, blue: 0.988, alpha: 1.0)  // #f8fafc
+        })
+    }
+    static var watercolorMistyBlue: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.227, green: 0.353, blue: 0.549, alpha: 1.0)  // #3A5A8C
+                : UIColor(red: 0.580, green: 0.680, blue: 0.820, alpha: 1.0)  // #94ADD1
+        })
+    }
+    static var watercolorDiffusedPeach: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.549, green: 0.290, blue: 0.259, alpha: 1.0)  // #8C4A42
+                : UIColor(red: 0.960, green: 0.620, blue: 0.580, alpha: 1.0)  // #F59E94
+        })
+    }
+    static var watercolorPaleEmerald: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.165, green: 0.478, blue: 0.322, alpha: 1.0)  // #2A7A52
+                : UIColor(red: 0.400, green: 0.820, blue: 0.640, alpha: 1.0)  // #66D1A3
+        })
+    }
+    static var watercolorSoftSky: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.165, green: 0.416, blue: 0.612, alpha: 1.0)  // #2A6A9C
+                : UIColor(red: 0.500, green: 0.780, blue: 0.960, alpha: 1.0)  // #80C7F5
+        })
+    }
+    static var watercolorSlate: Color {
+        Color(UIColor { tc in
+            tc.userInterfaceStyle == .dark
+                ? UIColor(red: 0.886, green: 0.910, blue: 0.941, alpha: 1.0)  // #e2e8f0
+                : UIColor(red: 0.200, green: 0.255, blue: 0.333, alpha: 1.0)  // #334155
+        })
+    }
 }
 
 // MARK: - Typography

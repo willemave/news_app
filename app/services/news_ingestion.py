@@ -16,7 +16,8 @@ from app.core.logging import get_logger
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.metadata import ContentType
 from app.models.schema import Content, NewsItem
-from app.utils.title_utils import clean_title
+from app.utils.news_titles import merge_news_metadata, normalize_news_metadata_titles
+from app.utils.title_utils import clean_title, resolve_title_candidate
 from app.utils.url_utils import normalize_http_url
 
 logger = get_logger(__name__)
@@ -365,7 +366,8 @@ def build_news_item_upsert_input_from_scraped_item(item: dict[str, Any]) -> News
     article_domain = _clean_string(article_meta.get("source_domain")) or _clean_string(
         metadata.get("source")
     )
-    summary_title = _clean_title(summary_meta.get("title")) or article_title
+    materialized_summary_title = _clean_title(summary_meta.get("title"))
+    summary_title = materialized_summary_title or article_title
     summary_key_points = _normalize_key_points(summary_meta.get("key_points"))
     summary_text = _clean_string(summary_meta.get("summary"))
     source_external_id = _clean_string(item.get("source_external_id")) or _clean_string(
@@ -379,6 +381,12 @@ def build_news_item_upsert_input_from_scraped_item(item: dict[str, Any]) -> News
     has_materialized_summary = _has_materialized_summary(
         summary_key_points=summary_key_points,
         summary_text=summary_text,
+    )
+
+    normalized_metadata = normalize_news_metadata_titles(
+        metadata,
+        article_title=article_title,
+        summary_title=materialized_summary_title,
     )
 
     return NewsItemUpsertInput(
@@ -401,7 +409,7 @@ def build_news_item_upsert_input_from_scraped_item(item: dict[str, Any]) -> News
         summary_title=summary_title,
         summary_key_points=summary_key_points,
         summary_text=summary_text,
-        raw_metadata=metadata,
+        raw_metadata=normalized_metadata,
         status=NewsItemStatus.READY if has_materialized_summary else NewsItemStatus.NEW,
         published_at=_normalize_datetime(
             item.get("published_at")
@@ -430,7 +438,8 @@ def build_news_item_upsert_input_from_content(content: Content) -> NewsItemUpser
 
     summary_text = _clean_string(summary_meta.get("summary"))
     summary_key_points = _normalize_key_points(summary_meta.get("key_points"))
-    summary_title = _clean_title(summary_meta.get("title")) or _clean_title(content.title)
+    materialized_summary_title = _clean_title(summary_meta.get("title"))
+    summary_title = materialized_summary_title or _clean_title(content.title)
     has_materialized_summary = _has_materialized_summary(
         summary_key_points=summary_key_points,
         summary_text=summary_text,
@@ -439,6 +448,12 @@ def build_news_item_upsert_input_from_content(content: Content) -> NewsItemUpser
         NewsItemStatus.READY
         if content.status == "completed" and has_materialized_summary
         else NewsItemStatus.NEW
+    )
+
+    normalized_metadata = normalize_news_metadata_titles(
+        metadata,
+        article_title=(_clean_title(article_meta.get("title")) or _clean_title(content.title)),
+        summary_title=materialized_summary_title,
     )
 
     return NewsItemUpsertInput(
@@ -479,7 +494,7 @@ def build_news_item_upsert_input_from_content(content: Content) -> NewsItemUpser
         summary_title=summary_title,
         summary_key_points=summary_key_points,
         summary_text=summary_text,
-        raw_metadata=metadata,
+        raw_metadata=normalized_metadata,
         status=status,
         published_at=_normalize_datetime(content.publication_date)
         or _normalize_datetime(metadata.get("tweet_created_at")),
@@ -502,6 +517,35 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
     existing = _find_existing_news_item(db, payload)
 
     if existing is not None:
+        merged_raw_metadata = merge_news_metadata(existing.raw_metadata, payload.raw_metadata)
+        article_metadata = merged_raw_metadata.get("article")
+        summary_metadata = merged_raw_metadata.get("summary")
+        resolved_article_title = resolve_title_candidate(
+            article_metadata.get("title") if isinstance(article_metadata, dict) else None,
+            payload.article_title,
+        )
+        resolved_summary_title = resolve_title_candidate(
+            summary_metadata.get("title") if isinstance(summary_metadata, dict) else None,
+            summary_text=(
+                payload.summary_text
+                or existing.summary_text
+                or (
+                    _clean_string(summary_metadata.get("summary"))
+                    if isinstance(summary_metadata, dict)
+                    else None
+                )
+            ),
+        )
+        merged_raw_metadata = normalize_news_metadata_titles(
+            merged_raw_metadata,
+            article_title=resolved_article_title,
+            summary_title=(
+                resolved_summary_title
+                if isinstance(summary_metadata, dict) and summary_metadata.get("title") is not None
+                else existing.summary_title
+            ),
+        )
+
         existing.ingest_key = ingest_key
         existing.visibility_scope = payload.visibility_scope.value
         existing.owner_user_id = payload.owner_user_id
@@ -514,14 +558,12 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
         existing.canonical_item_url = payload.canonical_item_url or existing.canonical_item_url
         existing.canonical_story_url = payload.canonical_story_url or existing.canonical_story_url
         existing.article_url = payload.article_url or existing.article_url
-        existing.article_title = payload.article_title or existing.article_title
         existing.article_domain = payload.article_domain or existing.article_domain
         existing.discussion_url = payload.discussion_url or existing.discussion_url
-        existing.summary_title = payload.summary_title or existing.summary_title
         if payload.summary_key_points:
             existing.summary_key_points = payload.summary_key_points
         existing.summary_text = payload.summary_text or existing.summary_text
-        existing.raw_metadata = {**dict(existing.raw_metadata or {}), **payload.raw_metadata}
+        existing.raw_metadata = merged_raw_metadata
         if existing.status != NewsItemStatus.READY.value or payload.status == NewsItemStatus.READY:
             existing.status = payload.status.value
         existing.published_at = payload.published_at or existing.published_at
@@ -531,6 +573,10 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
         db.flush()
         return existing, False
 
+    record_raw_metadata = normalize_news_metadata_titles(
+        payload.raw_metadata,
+        article_title=payload.article_title,
+    )
     record = NewsItem(
         ingest_key=ingest_key,
         visibility_scope=payload.visibility_scope.value,
@@ -544,13 +590,11 @@ def upsert_news_item(db: Session, payload: NewsItemUpsertInput) -> tuple[NewsIte
         canonical_item_url=payload.canonical_item_url,
         canonical_story_url=payload.canonical_story_url,
         article_url=payload.article_url,
-        article_title=payload.article_title,
         article_domain=payload.article_domain,
         discussion_url=payload.discussion_url,
-        summary_title=payload.summary_title,
         summary_key_points=payload.summary_key_points,
         summary_text=payload.summary_text,
-        raw_metadata=payload.raw_metadata,
+        raw_metadata=record_raw_metadata,
         status=payload.status.value,
         legacy_content_id=payload.legacy_content_id,
         published_at=payload.published_at,

@@ -33,6 +33,10 @@ _BLOCKED_TITLE_PREFIXES = (
     "verification required",
 )
 _BARE_DOMAIN_TITLE_PATTERN = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,63}/?", re.IGNORECASE)
+_URLISH_TOKEN_PATTERN = re.compile(
+    r"(?:https?://\S+|www\.\S+|(?:[a-z0-9-]+\.)+[a-z]{2,63}(?:/\S*)?)",
+    re.IGNORECASE,
+)
 
 
 def _is_blocked_page_title(title: str) -> bool:
@@ -42,6 +46,12 @@ def _is_blocked_page_title(title: str) -> bool:
     if any(normalized.startswith(prefix) for prefix in _BLOCKED_TITLE_PREFIXES):
         return True
     return " " not in normalized and bool(_BARE_DOMAIN_TITLE_PATTERN.fullmatch(normalized))
+
+
+def _is_url_only_title(title: str) -> bool:
+    stripped = _URLISH_TOKEN_PATTERN.sub(" ", title)
+    stripped = re.sub(r"[\s\W_]+", "", stripped, flags=re.UNICODE)
+    return not stripped
 
 
 def clean_title(value: Any) -> str | None:
@@ -62,6 +72,8 @@ def clean_title(value: Any) -> str | None:
     if any(pattern.fullmatch(title) for pattern in _PLACEHOLDER_TITLE_PATTERNS):
         return None
     if _is_blocked_page_title(title):
+        return None
+    if _is_url_only_title(title):
         return None
 
     if len(title) > MAX_TITLE_CHARS:

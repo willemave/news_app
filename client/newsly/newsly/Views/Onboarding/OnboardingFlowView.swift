@@ -99,7 +99,7 @@ struct OnboardingFlowView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .foregroundColor(.white)
+                    .foregroundColor(.watercolorBase)
                     .background(Color.watercolorSlate)
                     .clipShape(RoundedRectangle(cornerRadius: 24))
                 }
@@ -278,12 +278,6 @@ struct OnboardingFlowView: View {
                             .padding(.vertical, 20)
                     }
 
-                    twitterUsernameCard
-                        .padding(.bottom, 12)
-
-                    newsListPreferencePromptCard
-                        .padding(.bottom, 8)
-
                     if !viewModel.substackSuggestions.isEmpty {
                         suggestionSection(
                             title: "NEWSLETTERS",
@@ -334,8 +328,16 @@ struct OnboardingFlowView: View {
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.vertical, 16)
-            .glassCard(cornerRadius: 0)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+            .background(
+                LinearGradient(
+                    colors: [.clear, Color.watercolorBase.opacity(0.8), Color.watercolorBase],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .bottom)
+            )
         }
         .accessibilityIdentifier("onboarding.suggestions.screen")
     }
@@ -380,50 +382,10 @@ struct OnboardingFlowView: View {
                 .font(.callout.weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .foregroundColor(.white)
+                .foregroundColor(.watercolorBase)
                 .background(Color.watercolorSlate)
                 .clipShape(RoundedRectangle(cornerRadius: 24))
         }
         .buttonStyle(.plain)
-    }
-
-    private var twitterUsernameCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("X USERNAME (OPTIONAL)")
-                .font(.system(size: 9, weight: .medium))
-                .tracking(1.5)
-                .foregroundColor(.watercolorSlate.opacity(0.5))
-
-            TextField("@username", text: $viewModel.twitterUsername)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .accessibilityIdentifier("onboarding.input.twitter_username")
-        }
-    }
-
-    private var newsListPreferencePromptCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("NEWS LIST PREFERENCES")
-                .font(.system(size: 9, weight: .medium))
-                .tracking(1.5)
-                .foregroundColor(.watercolorSlate.opacity(0.5))
-
-            Text("Used to tune the news list across feeds, Reddit, and X.")
-                .font(.caption)
-                .foregroundColor(.watercolorSlate.opacity(0.65))
-
-            TextEditor(text: $viewModel.newsListPreferencePrompt)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 108)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .accessibilityIdentifier("onboarding.input.news_preferences")
-        }
     }
 }

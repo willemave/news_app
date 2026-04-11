@@ -53,7 +53,7 @@ private enum DetailDesign {
 
     // Hero
     static let heroHeight: CGFloat = 220
-    static let parallaxHeroHeight: CGFloat = 300
+    static let parallaxHeroHeight: CGFloat = 280
     static let parallaxRate: CGFloat = 0.25
 }
 
@@ -296,6 +296,7 @@ struct ContentDetailView: View {
             }
         }
         .coordinateSpace(name: "detailScroll")
+        .scrollClipDisabled()
         .textSelection(.enabled)
         .accessibilityIdentifier("content.detail.screen")
         .overlay(alignment: .leading) {
@@ -831,9 +832,10 @@ struct ContentDetailView: View {
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: .clear, location: 0.0),
-                        .init(color: .clear, location: 0.34),
-                        .init(color: Color.black.opacity(0.22), location: 0.56),
-                        .init(color: Color.black.opacity(0.72), location: 0.86),
+                        .init(color: .clear, location: 0.20),
+                        .init(color: Color.black.opacity(0.35), location: 0.45),
+                        .init(color: Color.black.opacity(0.75), location: 0.72),
+                        .init(color: Color.black.opacity(0.88), location: 0.90),
                         .init(color: Color.surfacePrimary, location: 1.0)
                     ]),
                     startPoint: .top,
@@ -889,7 +891,7 @@ struct ContentDetailView: View {
                 .padding(.bottom, 10)
             }
             .frame(height: DetailDesign.parallaxHeroHeight)
-            .clipped()
+            .mask(Rectangle().padding(.top, -200))
             .fullScreenCover(item: $selectedImageAsset) { asset in
                 FullImageView(imageURL: asset.imageURL, thumbnailURL: asset.thumbnailURL)
             }

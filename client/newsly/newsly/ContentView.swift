@@ -60,6 +60,7 @@ struct ContentView: View {
             NavigationStack(path: $longFormPath) {
                 LongFormView(
                     viewModel: tabCoordinator.longContentVM,
+                    isActive: tabCoordinator.selectedTab == .longContent,
                     onSelect: { route in
                         longFormPath.append(route)
                     }

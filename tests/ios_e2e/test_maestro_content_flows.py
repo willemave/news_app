@@ -7,17 +7,123 @@ from datetime import UTC, datetime
 import pytest
 from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
 
+from app.models.contracts import TaskType
 from app.models.schema import (
     ChatMessage,
     ChatSession,
     ContentKnowledgeSave,
     ContentReadStatus,
     NewsItem,
+    OnboardingDiscoveryLane,
+    OnboardingDiscoveryRun,
+    ProcessingTask,
     UserScraperConfig,
 )
 from app.services.chat_agent import ChatRunResult, save_messages
+from app.services.onboarding import (
+    _AudioLane,
+    _AudioPlanOutput,
+    _DiscoverOutput,
+    _DiscoverSuggestion,
+    _DiscoveryWebResult,
+    run_audio_discovery,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.ios_e2e]
+
+
+def _personalized_onboarding_plan() -> _AudioPlanOutput:
+    return _AudioPlanOutput(
+        topic_summary="Semiconductors, AI infrastructure, and engineering management.",
+        inferred_topics=["semiconductors", "AI infrastructure", "engineering management"],
+        lanes=[
+            _AudioLane(
+                name="AI Newsletters",
+                goal="Find newsletters about AI infra, semis, and software teams.",
+                target="feeds",
+                queries=["AI infrastructure newsletters", "semiconductor substack"],
+            ),
+            _AudioLane(
+                name="Podcasts",
+                goal="Find podcasts about company strategy and technical systems.",
+                target="podcasts",
+                queries=["AI infrastructure podcast", "semiconductor podcast rss"],
+            ),
+            _AudioLane(
+                name="Reddit",
+                goal="Find active communities for model builders and practitioners.",
+                target="reddit",
+                queries=["AI infrastructure subreddit", "semiconductor reddit"],
+            ),
+        ],
+    )
+
+
+def _personalized_onboarding_output() -> _DiscoverOutput:
+    return _DiscoverOutput(
+        substacks=[
+            _DiscoverSuggestion(
+                title="Stratechery",
+                site_url="https://stratechery.com",
+                feed_url="https://stratechery.com/feed",
+                rationale="High-signal strategy analysis on large tech companies.",
+                score=0.97,
+            ),
+            _DiscoverSuggestion(
+                title="Latent Space",
+                site_url="https://www.latent.space",
+                feed_url="https://www.latent.space/feed",
+                rationale="Dense AI builder coverage with technical signal.",
+                score=0.95,
+            ),
+        ],
+        podcasts=[
+            _DiscoverSuggestion(
+                title="Hard Fork",
+                site_url="https://www.nytimes.com/column/hard-fork",
+                feed_url="https://feeds.simplecast.com/54nAGcIl",
+                rationale="Timely discussion of major AI and tech developments.",
+                score=0.94,
+            ),
+            _DiscoverSuggestion(
+                title="Decoder",
+                site_url="https://www.theverge.com/decoder-podcast-with-nilay-patel",
+                feed_url="https://feeds.megaphone.fm/vergecast",
+                rationale="Founder and operator interviews around tech strategy.",
+                score=0.93,
+            ),
+            _DiscoverSuggestion(
+                title="Software Engineering Daily",
+                site_url="https://softwareengineeringdaily.com",
+                feed_url="https://softwareengineeringdaily.com/feed/podcast/",
+                rationale="Reliable technical interviews on infra and software systems.",
+                score=0.91,
+            ),
+            _DiscoverSuggestion(
+                title="Invest Like the Best",
+                site_url="https://www.joincolossus.com/episodes",
+                feed_url="https://feeds.megaphone.fm/colossus",
+                rationale="Strong operator and investor conversations on market shifts.",
+                score=0.90,
+            ),
+        ],
+        subreddits=[
+            _DiscoverSuggestion(
+                title="LocalLLaMA",
+                site_url="https://reddit.com/r/LocalLLaMA",
+                subreddit="LocalLLaMA",
+                rationale="Active discussion of open model tooling and infra.",
+                score=0.89,
+            ),
+            _DiscoverSuggestion(
+                title="MachineLearning",
+                site_url="https://reddit.com/r/MachineLearning",
+                subreddit="MachineLearning",
+                rationale="Broad research and industry discussion with useful links.",
+                score=0.88,
+            ),
+        ],
+    )
 
 
 def test_long_form_detail_flow_uses_seeded_fixture_data(
@@ -293,29 +399,187 @@ def test_chat_mic_toggle_flow_uses_mocked_speech_and_sends_message(
     assert assistant_reply in (message.message_list or "")
 
 
-def test_personalized_onboarding_flow_uses_seeded_fixture_data(
+def test_personalized_onboarding_flow_runs_live_audio_discovery_with_fake_mic(
     run_ios_flow,
+    content_factory,
     db_session,
-    ios_onboarding_personalized_fixture,
+    db_session_factory,
+    monkeypatch,
+    status_entry_factory,
     test_user,
 ) -> None:
-    """Personalized onboarding should cover mocked mic capture through persisted completion."""
-    run_ios_flow(
-        "onboarding_personalized.yaml",
-        extra_env={"ONBOARDING_FIXTURE": ios_onboarding_personalized_fixture},
+    """Personalized onboarding should use the real API flow with deterministic discovery output."""
+
+    transcript = (
+        "I follow semiconductors, AI infrastructure, engineering leadership, and product strategy."
+    )
+    expected_substacks = {"Stratechery"}
+    expected_podcasts = {
+        "Hard Fork",
+        "Decoder",
+        "Software Engineering Daily",
+        "Invest Like the Best",
+    }
+    expected_reddits = {"LocalLLaMA", "MachineLearning"}
+
+    class ImmediateOnboardingQueueGateway:
+        def __init__(self) -> None:
+            self.calls: list[tuple[TaskType, dict | None]] = []
+            self._next_task_id = 0
+
+        def enqueue(self, task_type, payload=None, **_kwargs) -> int:
+            self._next_task_id += 1
+            normalized_payload = payload or {}
+            self.calls.append((task_type, normalized_payload))
+
+            if task_type == TaskType.ONBOARDING_DISCOVER and "run_id" in normalized_payload:
+                worker_db = db_session_factory()
+                try:
+                    run_audio_discovery(worker_db, int(normalized_payload["run_id"]))
+                finally:
+                    worker_db.close()
+
+            return self._next_task_id
+
+    async def _fake_build_audio_lane_plan(transcript: str, locale: str | None) -> _AudioPlanOutput:
+        del transcript, locale
+        return _personalized_onboarding_plan()
+
+    def _fake_run_discovery_exa_queries(
+        queries,
+        *,
+        num_results,
+        include_social=False,
+        lane_name=None,
+        lane_target=None,
+    ):
+        del num_results, include_social
+        return [
+            _DiscoveryWebResult(
+                title=f"{lane_name or 'Discovery'} result {index + 1}",
+                url=f"https://example.com/{lane_target or 'feeds'}/{index + 1}",
+                snippet=f"Result for {query}",
+                query=query,
+                lane_name=lane_name,
+                lane_target=lane_target,
+            )
+            for index, query in enumerate(queries)
+        ]
+
+    def _fake_run_discover_output_with_fallback(**_kwargs) -> _DiscoverOutput:
+        return _personalized_onboarding_output()
+
+    empty_curated_defaults: dict[str, list[object]] = {
+        "substack": [],
+        "atom": [],
+        "podcast_rss": [],
+        "reddit": [],
+    }
+    queue_gateway = ImmediateOnboardingQueueGateway()
+
+    processing_article = content_factory(
+        content_type="article",
+        title="Stratechery Queue Item",
+        url="https://example.com/stratechery-queue-item",
+        source="Stratechery",
+        status="processing",
+        content_metadata={"feed_url": "https://stratechery.com/feed"},
+    )
+    processing_podcast = content_factory(
+        content_type="podcast",
+        title="Decoder Queue Item",
+        url="https://example.com/decoder-queue-item",
+        source="Decoder",
+        status="processing",
+        content_metadata={
+            "feed_url": "https://feeds.megaphone.fm/vergecast",
+            "audio_url": "https://example.com/audio/decoder-queue-item.mp3",
+        },
+    )
+    status_entry_factory(user=test_user, content=processing_article, status="inbox")
+    status_entry_factory(user=test_user, content=processing_podcast, status="inbox")
+    db_session.add_all(
+        [
+            ProcessingTask(
+                task_type="process_content",
+                content_id=processing_article.id,
+                status="pending",
+                queue_name="content",
+            ),
+            ProcessingTask(
+                task_type="process_content",
+                content_id=processing_podcast.id,
+                status="pending",
+                queue_name="content",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.models.internal.scraper_configs.FEED_VALIDATOR.validate_feed_url",
+        lambda url: {"feed_url": url},
+    )
+    monkeypatch.setattr(
+        "app.services.onboarding._build_audio_lane_plan",
+        _fake_build_audio_lane_plan,
+    )
+    monkeypatch.setattr(
+        "app.services.onboarding._run_discovery_exa_queries",
+        _fake_run_discovery_exa_queries,
+    )
+    monkeypatch.setattr(
+        "app.services.onboarding._run_discover_output_with_fallback",
+        _fake_run_discover_output_with_fallback,
+    )
+    monkeypatch.setattr(
+        "app.services.onboarding._load_curated_defaults",
+        lambda: empty_curated_defaults,
+    )
+    monkeypatch.setattr(
+        "app.services.onboarding.get_task_queue_gateway",
+        lambda: queue_gateway,
     )
 
+    run_ios_flow(
+        "onboarding_personalized.yaml",
+        extra_env={"TRANSCRIPT": transcript},
+    )
+
+    db_session.expire_all()
     db_session.refresh(test_user)
     assert test_user.has_completed_onboarding is True
     assert test_user.has_completed_new_user_tutorial is True
-    assert test_user.twitter_username == "willem_aw"
     assert test_user.news_list_preference_prompt is not None
-    assert "Prefer chips and AI infra." in test_user.news_list_preference_prompt
 
-    scraper_types = {
-        row.scraper_type
-        for row in db_session.query(UserScraperConfig)
-        .filter(UserScraperConfig.user_id == test_user.id)
+    configs = (
+        db_session.query(UserScraperConfig).filter(UserScraperConfig.user_id == test_user.id).all()
+    )
+    configs_by_type: dict[str, set[str]] = {}
+    for row in configs:
+        configs_by_type.setdefault(row.scraper_type, set()).add(row.display_name or "")
+
+    assert configs_by_type["substack"] == expected_substacks
+    assert configs_by_type["podcast_rss"] == expected_podcasts
+    assert configs_by_type["reddit"] == expected_reddits
+
+    audio_discovery_runs = (
+        db_session.query(OnboardingDiscoveryRun)
+        .filter(OnboardingDiscoveryRun.user_id == test_user.id)
         .all()
-    }
-    assert scraper_types == {"reddit", "substack"}
+    )
+    assert len(audio_discovery_runs) == 1
+    assert audio_discovery_runs[0].status == "completed"
+
+    lanes = (
+        db_session.query(OnboardingDiscoveryLane)
+        .filter(OnboardingDiscoveryLane.run_id == audio_discovery_runs[0].id)
+        .all()
+    )
+    assert {lane.status for lane in lanes} == {"completed"}
+
+    assert any(
+        task_type == TaskType.ONBOARDING_DISCOVER and payload is not None and "run_id" in payload
+        for task_type, payload in queue_gateway.calls
+    )
+    assert any(task_type == TaskType.SCRAPE for task_type, _ in queue_gateway.calls)

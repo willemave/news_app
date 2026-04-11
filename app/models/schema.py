@@ -30,6 +30,12 @@ from app.models.metadata import (
 )
 from app.models.summary_contracts import is_structured_summary_payload
 from app.models.user import User  # noqa: F401
+from app.utils.news_titles import (
+    get_news_article_title,
+    get_news_summary_title,
+    set_news_article_title,
+    set_news_summary_title,
+)
 from app.utils.summary_utils import extract_short_summary
 
 logger = get_logger(__name__)
@@ -291,10 +297,8 @@ class NewsItem(Base):
     canonical_item_url = Column(String(2048), nullable=True)
     canonical_story_url = Column(String(2048), nullable=True, index=True)
     article_url = Column(String(2048), nullable=True)
-    article_title = Column(String(500), nullable=True)
     article_domain = Column(String(255), nullable=True)
     discussion_url = Column(String(2048), nullable=True)
-    summary_title = Column(Text, nullable=True)
     summary_key_points = Column(JSON, default=list, nullable=False)
     summary_text = Column(Text, nullable=True)
     raw_metadata = Column(JSON, default=dict, nullable=False)
@@ -326,6 +330,31 @@ class NewsItem(Base):
             "ingested_at",
         ),
     )
+
+    def __init__(self, **kwargs: Any) -> None:
+        article_title = kwargs.pop("article_title", None)
+        summary_title = kwargs.pop("summary_title", None)
+        super().__init__(**kwargs)
+        if article_title is not None and self.article_title is None:
+            self.article_title = article_title
+        if summary_title is not None and self.summary_title is None:
+            self.summary_title = summary_title
+
+    @property
+    def article_title(self) -> str | None:
+        return get_news_article_title(self.raw_metadata)
+
+    @article_title.setter
+    def article_title(self, value: Any) -> None:
+        self.raw_metadata = set_news_article_title(self.raw_metadata, value)
+
+    @property
+    def summary_title(self) -> str | None:
+        return get_news_summary_title(self.raw_metadata)
+
+    @summary_title.setter
+    def summary_title(self, value: Any) -> None:
+        self.raw_metadata = set_news_summary_title(self.raw_metadata, value)
 
 
 class NewsItemReadStatus(Base):

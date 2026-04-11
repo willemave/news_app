@@ -35,6 +35,7 @@ from app.models.schema import ChatSession, Content, NewsItem, NewsItemReadStatus
 from app.models.user import User
 from app.repositories import knowledge_repository, read_status_repository
 from app.repositories.content_feed_query import build_user_feed_query
+from app.repositories.news_search_backend import get_news_search_backend
 from app.repositories.search_backend import get_search_backend
 from app.services.admin_conversational_agent import search_knowledge
 from app.services.assistant_feed_finder import find_feed_options as find_feed_options_service
@@ -60,6 +61,7 @@ from app.services.sandbox_runtime import (
     SandboxRuntimeUnavailableError,
     create_personal_library_sandbox_session,
 )
+from app.utils.news_titles import resolve_news_display_title
 
 logger = get_logger(__name__)
 
@@ -190,36 +192,6 @@ CONTENT_SEARCH_HINTS = (
     "recent articles",
     "recent posts",
 )
-NEWS_ITEM_QUERY_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "article",
-    "articles",
-    "content",
-    "day",
-    "feed",
-    "from",
-    "give",
-    "important",
-    "in",
-    "including",
-    "item",
-    "items",
-    "key",
-    "last",
-    "me",
-    "most",
-    "my",
-    "news",
-    "of",
-    "recent",
-    "summary",
-    "takeaways",
-    "the",
-    "themes",
-    "what",
-}
 WEB_HINTS = (
     "latest",
     "recent",
@@ -529,7 +501,11 @@ def _format_content_hits(
             lines.append("Recent News Items:")
 
         for idx, (item, is_read) in enumerate(news_item_rows, start=1):
-            title = (item.summary_title or item.article_title or f"News item {item.id}").strip()
+            title = resolve_news_display_title(
+                item.raw_metadata,
+                summary_text=item.summary_text,
+                fallback=f"News item {item.id}",
+            )
             source = item.source_label or item.platform or "unknown"
             url = (
                 item.article_url
@@ -591,24 +567,6 @@ def _format_content_hits(
     return "\n".join(lines)
 
 
-def _significant_news_item_tokens(value: str | None) -> list[str]:
-    """Return de-duplicated news-item search tokens."""
-
-    if not value:
-        return []
-
-    seen: set[str] = set()
-    tokens: list[str] = []
-    for token in re.findall(r"[a-z0-9]+", value.lower()):
-        if len(token) < 3 or token in NEWS_ITEM_QUERY_STOPWORDS:
-            continue
-        if token in seen:
-            continue
-        seen.add(token)
-        tokens.append(token)
-    return tokens
-
-
 def _visible_news_item_query(
     db: Session,
     *,
@@ -659,23 +617,23 @@ def _find_visible_news_item_matches(
         NewsItem.created_at,
     )
     base_query = _visible_news_item_query(db, user_id=user_id)
-    query_tokens = _significant_news_item_tokens(normalized_query)
-
     matched_query = base_query
-    if query_tokens:
-        token_filters = [
-            or_(
-                func.lower(func.coalesce(NewsItem.summary_title, "")).like(f"%{token}%"),
-                func.lower(func.coalesce(NewsItem.article_title, "")).like(f"%{token}%"),
-                func.lower(func.coalesce(NewsItem.summary_text, "")).like(f"%{token}%"),
-                func.lower(func.coalesce(NewsItem.source_label, "")).like(f"%{token}%"),
-                func.lower(func.coalesce(NewsItem.article_domain, "")).like(f"%{token}%"),
-            )
-            for token in query_tokens
-        ]
-        matched_query = matched_query.filter(and_(*token_filters))
+    if normalized_query:
+        search_context: dict[str, Any] = {}
+        search_backend = get_news_search_backend(db)
+        matched_query = search_backend.apply_search(
+            matched_query,
+            normalized_query,
+            context=search_context,
+        )
         total_matches = matched_query.order_by(None).count()
-        rows = matched_query.order_by(sort_expr.desc(), NewsItem.id.desc()).limit(limit).all()
+        rank_expr = search_context.get("rank_expr")
+        order_exprs = (
+            [rank_expr.desc(), sort_expr.desc(), NewsItem.id.desc()]
+            if rank_expr is not None
+            else [sort_expr.desc(), NewsItem.id.desc()]
+        )
+        rows = matched_query.order_by(*order_exprs).limit(limit).all()
         if rows:
             return rows, total_matches
 

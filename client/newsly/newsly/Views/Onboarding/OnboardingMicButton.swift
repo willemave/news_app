@@ -50,8 +50,8 @@ struct OnboardingMicButton: View {
                         )
                     )
                     .frame(width: 128, height: 128)
-                    .shadow(color: Color.watercolorSlate.opacity(0.2), radius: 12, x: 8, y: 8)
-                    .shadow(color: Color.white.opacity(0.8), radius: 12, x: -8, y: -8)
+                    .shadow(color: Color.watercolorSlate.opacity(0.15), radius: 12, x: 8, y: 8)
+                    .shadow(color: Color.watercolorSlate.opacity(0.06), radius: 12, x: -8, y: -8)
 
                 iconContent
             }

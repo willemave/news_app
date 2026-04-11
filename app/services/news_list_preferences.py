@@ -5,12 +5,12 @@ from __future__ import annotations
 from app.models.user import User
 
 DEFAULT_NEWS_LIST_PREFERENCE_PROMPT = (
-    "Curate a high-signal technology and business news list across all sources. "
-    "Prefer original reporting, firsthand product or company updates, technical insight, "
-    "important market structure changes, meaningful data points, strong analysis, and clear "
-    "synthesis. Exclude memes, vague reactions, engagement bait, low-context social chatter, "
-    "blocked galleries, spammy vendor copy, repetitive hype, and thin anecdotal posts unless "
-    "they add concrete new information."
+    "Curate a high-signal news list across all sources using these principles: "
+    "prefer original reporting over commentary; prioritize concrete developments, "
+    "technical insight, firsthand company or product updates, meaningful data, and "
+    "strong analysis; reward pieces that add context, synthesis, or clear implications; "
+    "avoid memes, engagement bait, vague reactions, spammy vendor copy, repetitive "
+    "hype, and low-context chatter unless they contain genuinely new information."
 )
 
 

@@ -37,6 +37,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     let lastMessageRole: String?
     let councilMode: Bool?
     let activeChildSessionId: Int?
+    private let cachedLastActivityDate: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -106,6 +107,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         self.lastMessageRole = lastMessageRole
         self.councilMode = councilMode
         self.activeChildSessionId = activeChildSessionId
+        self.cachedLastActivityDate = Self.parseDate(lastMessageAt ?? createdAt)
     }
 
     init(from decoder: Decoder) throws {
@@ -131,6 +133,7 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         lastMessageRole = try container.decodeIfPresent(String.self, forKey: .lastMessageRole)
         councilMode = try container.decodeIfPresent(Bool.self, forKey: .councilMode)
         activeChildSessionId = try container.decodeIfPresent(Int.self, forKey: .activeChildSessionId)
+        cachedLastActivityDate = Self.parseDate(lastMessageAt ?? createdAt)
     }
 
     private static let iso8601WithFractionalFormatter: ISO8601DateFormatter = {
@@ -211,12 +214,15 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
     }
 
     var formattedDate: String {
-        let dateString = lastMessageAt ?? createdAt
-        guard let date = Self.parseDate(dateString) else {
+        guard let date = cachedLastActivityDate else {
             return "Date unknown"
         }
 
         return Self.displayDateFormatter.string(from: date)
+    }
+
+    var lastActivityDate: Date? {
+        cachedLastActivityDate
     }
 
     var providerDisplayName: String {

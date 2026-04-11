@@ -10,15 +10,7 @@ struct ChatSessionCard: View {
 
     /// Whether this session was recently active (within last 5 minutes)
     private var isRecentlyActive: Bool {
-        guard let dateStr = session.lastMessageAt else { return false }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        var date = formatter.date(from: dateStr)
-        if date == nil {
-            formatter.formatOptions = [.withInternetDateTime]
-            date = formatter.date(from: dateStr)
-        }
-        guard let date else { return false }
+        guard let date = session.lastActivityDate else { return false }
         return Date().timeIntervalSince(date) < 300
     }
 

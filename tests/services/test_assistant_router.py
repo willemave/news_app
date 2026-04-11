@@ -253,6 +253,46 @@ def test_find_visible_news_item_matches_returns_recent_visible_rows(
     assert [item.id for item, _is_read in rows[:2]] == [newer_item.id, older_item.id]
 
 
+def test_find_visible_news_item_matches_uses_metadata_titles(
+    db_session,
+    test_user,
+    news_item_factory,
+) -> None:
+    """News-item search should match canonical titles stored in raw metadata."""
+
+    matched_item = news_item_factory(
+        article_title="This is a great discussion.",
+        summary_title="This is a great discussion.",
+        raw_metadata={
+            "summary": {
+                "title": (
+                    "Jeremy Howard Launches SolveIt Method to Promote AI-Assisted Craftsmanship"
+                )
+            }
+        },
+        summary_text="Summary about SolveIt and AI-assisted craftsmanship.",
+        visibility_scope="user",
+        owner_user_id=test_user.id,
+    )
+    news_item_factory(
+        summary_title="Completely unrelated story",
+        summary_text="Summary about semiconductors.",
+        visibility_scope="user",
+        owner_user_id=test_user.id,
+    )
+    db_session.commit()
+
+    rows, total_matches = assistant_router._find_visible_news_item_matches(
+        db_session,
+        user_id=test_user.id,
+        query="SolveIt craftsmanship",
+        limit=5,
+    )
+
+    assert total_matches == 1
+    assert [item.id for item, _is_read in rows] == [matched_item.id]
+
+
 def test_build_assistant_personal_library_runtime_skips_sync_when_sandbox_disabled(
     db_session,
     monkeypatch,

@@ -23,8 +23,6 @@ actor ImageCacheService {
     private let memoryCache = NSCache<NSString, UIImage>()
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
-    private let diskCacheQueue = DispatchQueue(label: "com.newsly.imagecache.disk", qos: .utility)
-    
     // MARK: - Initialization
     
     private init() {
@@ -58,9 +56,7 @@ actor ImageCacheService {
         
         // Check disk cache
         if let diskImage = await loadFromDisk(key: key) {
-            // Promote to memory cache
-            let cost = diskImage.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-            memoryCache.setObject(diskImage, forKey: key as NSString, cost: cost)
+            storeInMemory(diskImage, forKey: key)
             return diskImage
         }
         
@@ -70,13 +66,21 @@ actor ImageCacheService {
     /// Cache an image in both memory and disk.
     func cache(_ image: UIImage, for url: URL) async {
         let key = cacheKey(for: url)
-        
-        // Add to memory cache
-        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-        memoryCache.setObject(image, forKey: key as NSString, cost: cost)
-        
-        // Save to disk asynchronously
+
+        storeInMemory(image, forKey: key)
         await saveToDisk(image: image, key: key)
+    }
+
+    /// Decode downloaded image data off the view task and cache the original bytes.
+    func cacheImageData(_ data: Data, for url: URL) async -> UIImage? {
+        guard let image = UIImage(data: data) else {
+            return nil
+        }
+
+        let key = cacheKey(for: url)
+        storeInMemory(image, forKey: key)
+        await saveDataToDisk(data, key: key)
+        return image
     }
     
     /// Prefetch multiple images in the background.
@@ -117,6 +121,11 @@ actor ImageCacheService {
         let hash = SHA256.hash(data: data)
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
+
+    private func storeInMemory(_ image: UIImage, forKey key: String) {
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        memoryCache.setObject(image, forKey: key as NSString, cost: cost)
+    }
     
     private func diskCacheURL(for key: String) -> URL {
         cacheDirectory.appendingPathComponent("\(key).png")
@@ -147,23 +156,23 @@ actor ImageCacheService {
     }
     
     private func saveToDisk(image: UIImage, key: String) async {
-        let fileURL = diskCacheURL(for: key)
-        
         guard let data = image.pngData() else { return }
-        
+
+        await saveDataToDisk(data, key: key)
+    }
+
+    private func saveDataToDisk(_ data: Data, key: String) async {
+        let fileURL = diskCacheURL(for: key)
+
         do {
             try data.write(to: fileURL)
-        } catch {
-            print("ImageCacheService: Failed to save to disk: \(error)")
-        }
+        } catch {}
     }
     
     private func downloadAndCache(url: URL) async {
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            if let image = UIImage(data: data) {
-                await cache(image, for: url)
-            }
+            _ = await cacheImageData(data, for: url)
         } catch {
             // Silently fail for prefetch operations
         }
