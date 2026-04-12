@@ -20,6 +20,7 @@ from app.models.schema import (
 from app.models.user import User
 from app.services.assistant_router import seed_assistant_message
 from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
+from app.utils.title_utils import resolve_content_display_title
 
 logger = get_logger(__name__)
 
@@ -62,7 +63,7 @@ def _build_seed(db: Session, user: User) -> WeeklyDiscoverySeed:
     week_start = _sunday_week_start(local_date_value)
     local_date = local_date_value.isoformat()
     recent_rows = (
-        db.query(Content.id, Content.title, Content.url)
+        db.query(Content)
         .join(ContentReadStatus, ContentReadStatus.content_id == Content.id)
         .filter(ContentReadStatus.user_id == user.id)
         .order_by(ContentReadStatus.read_at.desc())
@@ -70,7 +71,17 @@ def _build_seed(db: Session, user: User) -> WeeklyDiscoverySeed:
         .all()
     )
     recent_reads = [
-        (row.id, (row.title or "Untitled").strip(), row.url) for row in recent_rows if row.url
+        (
+            row.id,
+            resolve_content_display_title(
+                title=row.title,
+                metadata=row.content_metadata,
+                fallback="Untitled",
+            ),
+            row.url,
+        )
+        for row in recent_rows
+        if row.url
     ]
 
     onboarding_run = (

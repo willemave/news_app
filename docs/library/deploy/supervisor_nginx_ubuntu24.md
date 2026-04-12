@@ -147,9 +147,11 @@ Current production cadence:
 0 3 * * 1 flock -n /tmp/news_app_feed_discovery.lock /bin/bash -lc 'cd /opt/news_app && /opt/news_app/.venv/bin/python scripts/run_feed_discovery.py' >> /var/log/news_app/feed-discovery-cron.log 2>&1
 ```
 
-On SQLite-backed hosts, keep `news_app_workers_content` and
-`news_app_workers_transcribe` at `numprocs=1`. That limits concurrent writers
-while cron jobs are also active.
+Historical note: older SQLite-backed hosts kept `news_app_workers_content` and
+`news_app_workers_transcribe` at `numprocs=1` to limit writer contention.
+SQLite is deprecated and unsupported as a Newsly runtime dialect. Current
+deployments should run PostgreSQL and size worker concurrency around Postgres
+capacity instead.
 
 Each cron-managed job uses `flock -n` to prevent a new run from overlapping a
 previous still-running instance of the same job.
@@ -158,16 +160,13 @@ The dedicated Twitter scheduler runs every 15 minutes. It runs the public
 Twitter list scraper and enqueues per-user bookmark/timeline/list refresh tasks when
 `X_BOOKMARK_SYNC_ENABLED=true`.
 
-SQLite defaults shipped in the repo:
+Retired SQLite-only defaults:
 - `SQLITE_BUSY_TIMEOUT_MS=30000`
 - `SQLITE_ENABLE_WAL=true`
 - `SQLITE_WRITE_RETRY_ATTEMPTS=3`
-- `QUEUE_BACKPRESSURE_MAX_PENDING_CONTENT=150`
-- `QUEUE_BACKPRESSURE_MAX_PENDING_PROCESS_NEWS_ITEM=75`
-- `QUEUE_BACKPRESSURE_MAX_PENDING_GENERATE_AGENT_DIGEST=5`
 
-Production should keep `SQLITE_ENABLE_WAL=true` so SQLite-backed queues use WAL
-mode when the runtime allows it.
+These are legacy references for old migrations only. Active deployments should
+use the PostgreSQL queue settings documented elsewhere in the repo.
 
 ## 6) GitHub Actions deploy behavior
 

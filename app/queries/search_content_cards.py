@@ -14,8 +14,8 @@ from app.models.content_display import is_ready_for_list, resolve_image_urls
 from app.models.content_mapper import content_to_domain
 from app.models.metadata import ContentType
 from app.models.pagination import PaginationMetadata
-from app.repositories.content_card_repository import list_content_types, search_contents
-from app.repositories.search_backend import get_search_backend
+from app.repositories.content_card_repository import list_content_types
+from app.repositories.search_repository import search_content_page
 from app.routers.api.content_responses import build_content_summary_response
 from app.utils.pagination import PaginationCursor
 
@@ -42,8 +42,6 @@ def _encode_search_cursor(
 
 def _row_search_rank(row) -> float | None:
     """Return the optional search rank attached to a result row."""
-    if len(row) < 4:
-        return None
     rank = row[3]
     if rank is None:
         return None
@@ -81,12 +79,11 @@ def execute(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    rows = search_contents(
+    rows = search_content_page(
         db,
         user_id=user_id,
         query_text=q,
         content_type=content_type,
-        search_backend=get_search_backend(db),
         cursor=(last_id, last_created_at, last_rank),
         limit=limit,
         offset=offset,

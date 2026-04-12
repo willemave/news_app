@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.settings import get_settings
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import ChatMessage, ChatSession, Content
-from app.services.chat_agent import ChatRunResult, save_messages
+from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
+from app.services.chat_agent import ChatRunResult, create_processing_message, save_messages
 
 TEST_COUNCIL_EXPERTS = [
     {
@@ -592,6 +592,77 @@ def test_start_council_chat_runs_branches_in_parallel(
 
     assert response.status_code == 200
     assert branch_started == expert_count
+
+
+def test_start_council_chat_after_parent_turn_begins_skips_processing_placeholder(
+    client: TestClient,
+    db_session: Session,
+    test_user,
+    monkeypatch,
+) -> None:
+    """Council branches should not inherit the parent's in-flight processing row."""
+    test_user.council_personas = TEST_COUNCIL_EXPERTS
+    db_session.commit()
+
+    parent = ChatSession(
+        user_id=test_user.id,
+        title="Council With Pending Parent Turn",
+        session_type="knowledge_chat",
+        context_snapshot="Parent context",
+        llm_model="openai:gpt-5.4",
+        llm_provider="openai",
+    )
+    db_session.add(parent)
+    db_session.commit()
+    db_session.refresh(parent)
+
+    _seed_turn(db_session, parent.id, "Completed turn", "Completed answer.")
+    create_processing_message(db_session, parent.id, "Still thinking about this one")
+
+    async def _fake_run_chat_turn(db, session, user_prompt, source="chat"):
+        del source
+        assistant_text = f"{session.council_persona_name} branch on: {user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(content=user_prompt)]),
+            ModelResponse(parts=[TextPart(content=assistant_text)]),
+        ]
+        save_messages(db, session.id, messages, display_user_prompt=user_prompt)
+        return ChatRunResult(
+            output_text=assistant_text,
+            new_messages=messages,
+            all_messages=messages,
+            tool_calls=[],
+        )
+
+    monkeypatch.setattr("app.services.council_chat.run_chat_turn", _fake_run_chat_turn)
+
+    response = client.post(
+        f"/api/content/chat/sessions/{parent.id}/council/start",
+        json={"message": "Give me the council version."},
+    )
+
+    assert response.status_code == 200
+
+    db_session.expire_all()
+    child_sessions = (
+        db_session.query(ChatSession)
+        .filter(ChatSession.parent_session_id == parent.id)
+        .order_by(ChatSession.id)
+        .all()
+    )
+    assert len(child_sessions) == 3
+
+    for child in child_sessions:
+        child_messages = (
+            db_session.query(ChatMessage)
+            .filter(ChatMessage.session_id == child.id)
+            .order_by(ChatMessage.id)
+            .all()
+        )
+        assert [message.status for message in child_messages] == [
+            MessageProcessingStatus.COMPLETED.value,
+            MessageProcessingStatus.COMPLETED.value,
+        ]
 
 
 def test_delete_chat_session_archives_council_children(

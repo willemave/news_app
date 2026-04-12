@@ -6,6 +6,8 @@ import re
 from html import unescape
 from typing import Any
 
+from app.utils.summary_utils import extract_short_summary, extract_summary_text
+
 MAX_TITLE_CHARS = 500
 MAX_SUMMARY_EXCERPT_CHARS = 120
 
@@ -101,6 +103,45 @@ def summarize_text_as_title(value: Any) -> str | None:
     if len(text) > MAX_SUMMARY_EXCERPT_CHARS:
         return f"{excerpt}…"
     return excerpt
+
+
+def mapping(value: Any) -> dict[str, Any]:
+    """Return a plain mapping for dict-like metadata values."""
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def get_section_title(metadata: Any, section_name: str) -> str | None:
+    """Return a cleaned nested title from one metadata section."""
+    section = mapping(mapping(metadata).get(section_name))
+    return clean_title(section.get("title"))
+
+
+def get_summary_title(metadata: Any) -> str | None:
+    """Return the canonical summary title from metadata when available."""
+    return get_section_title(metadata, "summary")
+
+
+def get_summary_text(metadata: Any) -> str | None:
+    """Return the best compact summary text available in metadata."""
+    summary = mapping(mapping(metadata).get("summary"))
+    if not summary:
+        return None
+    return extract_short_summary(summary) or extract_summary_text(summary)
+
+
+def resolve_content_display_title(
+    *,
+    title: Any,
+    metadata: Any,
+    fallback: str = "Untitled",
+) -> str:
+    """Resolve the best display title for persisted content backed by metadata."""
+    return resolve_display_title(
+        get_summary_title(metadata),
+        title,
+        summary_text=get_summary_text(metadata),
+        fallback=fallback,
+    )
 
 
 def resolve_title_candidate(

@@ -33,7 +33,7 @@ from app.models.contracts import (
     ContentType,
 )
 from app.utils.summary_utils import extract_short_summary, extract_summary_text
-from app.utils.title_utils import clean_title, resolve_display_title
+from app.utils.title_utils import clean_title, resolve_content_display_title
 
 
 # Structured summary components from app/schemas/metadata.py
@@ -1033,9 +1033,7 @@ class ContentData(BaseModel):
     @property
     def display_title(self) -> str:
         """Get title to display - prefer summary title over content title."""
-        summary_data = self.metadata.get("summary")
-        summary_title = summary_data.get("title") if isinstance(summary_data, dict) else None
-        return resolve_display_title(summary_title, self.title, summary_text=self.summary)
+        return resolve_content_display_title(title=self.title, metadata=self.metadata)
 
     @property
     def short_summary(self) -> str | None:

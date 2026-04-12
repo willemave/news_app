@@ -174,27 +174,24 @@ def compute_content_excerpt(metadata: dict[str, Any], source_text: str | None) -
     return None
 
 
-def build_search_text(
+def build_search_corpus(
     *,
     content: Content,
     metadata: dict[str, Any],
     excerpt: str | None,
 ) -> str:
-    """Build the compact DB search corpus for one content item."""
+    """Build the compact materialized search corpus for one content item."""
     parts: list[str] = []
-    for candidate in (
-        content.title,
-        content.source,
-        metadata.get("source"),
-        excerpt,
-    ):
+    metadata_source = _clean_text(metadata.get("source"))
+    stored_source = _clean_text(content.source)
+    for candidate in (metadata_source if metadata_source != stored_source else None, excerpt):
         text = _clean_text(candidate)
         if text:
             parts.append(text)
 
     summary = metadata.get("summary")
     if isinstance(summary, dict):
-        for key in ("title", "overview", "summary", "hook", "takeaway"):
+        for key in ("overview", "summary", "hook", "takeaway"):
             text = _clean_text(summary.get(key))
             if text:
                 parts.append(text)
@@ -349,7 +346,7 @@ def sync_content_body_storage(
     if content_type == "podcast" and source_text:
         metadata["has_transcript"] = True
 
-    content.search_text = build_search_text(content=content, metadata=metadata, excerpt=excerpt)
+    content.search_text = build_search_corpus(content=content, metadata=metadata, excerpt=excerpt)
     content.content_metadata = strip_legacy_body_fields(metadata)
     return content.content_metadata
 

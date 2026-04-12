@@ -7,6 +7,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from pydantic import AliasChoices, Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 def _resolve_env_file() -> Path:
@@ -238,12 +239,24 @@ class Settings(BaseSettings):
     crawl4ai_table_max_parallel_chunks: int = 5
     crawl4ai_table_verbose: bool = False
 
-    @field_validator("database_url")
+    @field_validator("database_url", mode="before")
     @classmethod
-    def validate_database_url(cls, v: PostgresDsn) -> PostgresDsn:
-        if not v:
+    def validate_database_url(cls, v: str | PostgresDsn | None) -> str | PostgresDsn:
+        if v is None or not str(v).strip():
             raise ValueError("DATABASE_URL must be set")
-        return v
+        raw_value = str(v).strip()
+        try:
+            url = make_url(raw_value)
+        except Exception:
+            return raw_value
+        if url.drivername.startswith("sqlite"):
+            raise ValueError(
+                "SQLite has been deprecated as a Newsly runtime dialect. "
+                "Configure DATABASE_URL with PostgreSQL."
+            )
+        if url.drivername != "postgres" and not url.drivername.startswith("postgresql"):
+            raise ValueError("DATABASE_URL must use a PostgreSQL SQLAlchemy dialect")
+        return raw_value
 
     @field_validator("pdf_gemini_model")
     @classmethod

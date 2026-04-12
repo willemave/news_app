@@ -408,7 +408,7 @@ class SequentialTaskProcessor:
             }
         except OperationalError as exc:
             logger.exception(
-                "Task finalization hit SQLite contention",
+                "Task finalization hit a database write error",
                 extra=_task_extra(
                     task,
                     processor=self,

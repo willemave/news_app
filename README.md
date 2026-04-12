@@ -351,7 +351,7 @@ Production deploys are handled via GitHub Actions with Docker image build + Rack
 | **CLI** | Go, Cobra, `newsly-agent` binary |
 | **iOS** | SwiftUI, Apple Sign In, Share Extension |
 | **Frontend** | Jinja2 templates, Tailwind CSS v4 |
-| **Infrastructure** | SQLite (Postgres-ready), Alembic, uv, GitHub Actions |
+| **Infrastructure** | PostgreSQL, Alembic, uv, GitHub Actions |
 
 <br>
 

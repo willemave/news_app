@@ -731,15 +731,15 @@ def _build_turn_context(
         "Tool results for the latest user message.",
         f"Latest user message: {user_text.strip()}",
         "Priority rules:",
-        "- SearchKnowledge entries are trusted records from THIS USER'S saved knowledge.",
-        "- If SearchKnowledge has entries, you DO have access to user-specific saved articles.",
+        "- search_knowledge entries are trusted records from THIS USER'S saved knowledge.",
+        "- If search_knowledge has entries, you DO have access to user-specific saved articles.",
         (
             "- For questions about saved history/last read item, prioritize "
-            "SearchKnowledge over SearchWeb."
+            "search_knowledge over search_web."
         ),
-        "- Do not claim you lack access to saved knowledge when SearchKnowledge contains hits.",
+        "- Do not claim you lack access to saved knowledge when search_knowledge contains hits.",
         "",
-        "SearchKnowledge results:",
+        "search_knowledge results:",
     ]
 
     if not knowledge_hits:
@@ -756,7 +756,7 @@ def _build_turn_context(
         lines.append("Interpretation hint: [K1] is the most recent saved item in this result set.")
 
     lines.append("")
-    lines.append("SearchWeb results:")
+    lines.append("search_web results:")
     if not web_hits:
         lines.append("- none")
     else:
@@ -791,9 +791,9 @@ def _build_enriched_user_message(
     )
     lines = [
         "Follow these instructions before answering:",
-        "- Treat SearchKnowledge entries as available user saved knowledge.",
-        "- If the question references saved knowledge/history, answer from SearchKnowledge first.",
-        "- Do not claim you lack access when SearchKnowledge entries are present.",
+        "- Treat search_knowledge entries as available user saved knowledge.",
+        "- If the question references saved knowledge/history, answer from search_knowledge first.",
+        "- Do not claim you lack access when search_knowledge entries are present.",
         "",
         context_block,
         "",

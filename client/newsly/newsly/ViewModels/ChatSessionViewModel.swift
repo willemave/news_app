@@ -14,7 +14,8 @@ private let logger = Logger(subsystem: "com.newsly", category: "ChatSessionViewM
 @MainActor
 class ChatSessionViewModel: ObservableObject {
     @Published var session: ChatSessionSummary?
-    @Published var messages: [ChatMessage] = []
+    @Published private(set) var transcriptMessages: [ChatMessage] = []
+    @Published private(set) var activeTurnMessages: [ChatMessage] = []
     @Published var isLoading = false
     @Published var isSending = false
     @Published var errorMessage: String?
@@ -50,7 +51,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingUserMessage = initialPendingUserMessage
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.messages = initialPendingUserMessage.map { [$0] } ?? []
+        self.transcriptMessages = []
+        self.activeTurnMessages = initialPendingUserMessage.map { [$0] } ?? []
         self.voiceDictationAvailable = initialVoiceDictationAvailable
         let resolvedService = transcriptionService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.transcriptionService = resolvedService
@@ -69,7 +71,8 @@ class ChatSessionViewModel: ObservableObject {
         self.initialPendingUserMessage = initialPendingUserMessage
         self.initialPendingMessageId = initialPendingMessageId
         self.pendingCouncilPrompt = pendingCouncilPrompt?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.messages = initialPendingUserMessage.map { [$0] } ?? []
+        self.transcriptMessages = []
+        self.activeTurnMessages = initialPendingUserMessage.map { [$0] } ?? []
         self.voiceDictationAvailable = initialVoiceDictationAvailable
         let resolvedService = transcriptionService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
         self.transcriptionService = resolvedService
@@ -88,13 +91,13 @@ class ChatSessionViewModel: ObservableObject {
         do {
             let detail = try await chatService.getSession(id: sessionId)
             applyDetail(detail)
-            let assistantPreview = messages.last(where: { $0.isAssistant })?.content.prefix(160) ?? ""
+            let assistantPreview = allMessages.last(where: { $0.isAssistant })?.content.prefix(160) ?? ""
             logger.debug(
-                "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.messages.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
+                "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.allMessages.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
             )
 
             // Check if there's a processing message we need to poll for
-            if let processingMessage = messages.first(where: { $0.isProcessing }) {
+            if let processingMessage = activeTurnMessages.first(where: { $0.isProcessing }) {
                 let pollingMessageId = processingMessage.sourceMessageId ?? processingMessage.id
                 await pollForMessageCompletion(messageId: pollingMessageId)
             }
@@ -132,7 +135,29 @@ class ChatSessionViewModel: ObservableObject {
     }
 
     var latestProcessSummary: String? {
-        messages.last(where: \.isProcessSummary)?.processSummaryText
+        activeTurnMessages.last(where: \.isProcessSummary)?.processSummaryText
+    }
+
+    var allMessages: [ChatMessage] {
+        transcriptMessages + activeTurnMessages
+    }
+
+    var councilCandidates: [CouncilCandidate] {
+        latestCouncilMessage?.councilCandidates.sorted { $0.order < $1.order } ?? []
+    }
+
+    var activeCouncilChildSessionId: Int? {
+        session?.activeChildSessionId ?? latestCouncilMessage?.activeCouncilChildSessionId
+    }
+
+    var activeCouncilCandidate: CouncilCandidate? {
+        let candidates = councilCandidates
+        guard !candidates.isEmpty else { return nil }
+        if let activeCouncilChildSessionId,
+           let candidate = candidates.first(where: { $0.childSessionId == activeCouncilChildSessionId }) {
+            return candidate
+        }
+        return candidates.first
     }
 
     /// Poll for a processing message to complete
@@ -197,7 +222,7 @@ class ChatSessionViewModel: ObservableObject {
             }
             do {
                 let assistant = try await chatService.getInitialSuggestions(sessionId: sessionId)
-                messages.append(assistant)
+                transcriptMessages.append(assistant)
             } catch {
                 logger.error("[ViewModel] loadInitialSuggestions error | error=\(error.localizedDescription)")
             }
@@ -221,26 +246,19 @@ class ChatSessionViewModel: ObservableObject {
                 stopThinkingTimer()
             }
             logger.info("[ViewModel] sendMessage started | sessionId=\(self.sessionId)")
-            let userMessage = ChatMessage(
-                id: (messages.last?.id ?? 0) + 1,
-                role: .user,
-                timestamp: ISO8601DateFormatter().string(from: Date()),
-                content: resolvedText
-            )
-            messages.append(userMessage)
-
             do {
-                let assistant = try await chatService.sendMessage(
+                let response = try await chatService.sendMessageAsync(
                     sessionId: sessionId,
                     message: resolvedText
                 )
-                messages.append(assistant)
+                activeTurnMessages = [response.userMessage]
+                _ = try await pollUntilComplete(messageId: response.messageId)
+                try await refreshTranscriptAfterPolling()
             } catch {
+                activeTurnMessages = []
                 errorMessage = error.localizedDescription
                 logger.error("[ViewModel] sendMessage error | error=\(error.localizedDescription)")
             }
-
-            isSending = false
         }
     }
 
@@ -291,14 +309,9 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         return session.sessionType != "deep_research"
     }
 
-    /// All messages including any streaming message
-    var allMessages: [ChatMessage] {
-        return messages
-    }
-
     private func seedInitialPendingMessageIfNeeded() {
-        guard messages.isEmpty, let initialPendingUserMessage else { return }
-        messages = [initialPendingUserMessage]
+        guard allMessages.isEmpty, let initialPendingUserMessage else { return }
+        activeTurnMessages = [initialPendingUserMessage]
     }
 
     private func visibleMessages(from detail: ChatSessionDetail) -> [ChatMessage] {
@@ -310,7 +323,28 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     private func applyDetail(_ detail: ChatSessionDetail) {
         session = detail.session
-        messages = visibleMessages(from: detail)
+        let visibleMessages = visibleMessages(from: detail)
+        let pendingSourceIds = Set(
+            visibleMessages.compactMap { message -> Int? in
+                guard message.isProcessing else { return nil }
+                return message.sourceMessageId ?? message.id
+            }
+        )
+
+        if pendingSourceIds.isEmpty {
+            transcriptMessages = visibleMessages
+            activeTurnMessages = []
+            return
+        }
+
+        transcriptMessages = visibleMessages.filter { message in
+            let sourceId = message.sourceMessageId ?? message.id
+            return !pendingSourceIds.contains(sourceId)
+        }
+        activeTurnMessages = visibleMessages.filter { message in
+            let sourceId = message.sourceMessageId ?? message.id
+            return pendingSourceIds.contains(sourceId)
+        }
     }
 
     private func refreshTranscriptSnapshot() async {
@@ -325,7 +359,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     private func refreshTranscriptAfterPolling() async throws {
         let detail = try await chatService.getSession(id: sessionId)
         applyDetail(detail)
-        guard !messages.isEmpty else {
+        guard !allMessages.isEmpty else {
             logger.error("[ViewModel] refreshTranscriptAfterPolling failed | no transcript messages returned")
             throw ChatServiceError.missingAssistantMessage
         }
@@ -400,6 +434,10 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         thinkingTimer?.invalidate()
         thinkingTimer = nil
         thinkingElapsedSeconds = 0
+    }
+
+    private var latestCouncilMessage: ChatMessage? {
+        allMessages.last(where: \.hasCouncilCandidates)
     }
 
     // MARK: - Voice Dictation

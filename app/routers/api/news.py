@@ -29,6 +29,7 @@ from app.services.news_feed import (
     get_visible_news_item_detail,
     list_visible_news_items,
 )
+from app.utils.news_titles import get_news_article_title
 from app.utils.url_utils import is_http_url, normalize_http_url
 
 router = APIRouter(tags=["news"], responses={404: {"description": "Not found"}})
@@ -176,7 +177,7 @@ def convert_news_item_to_article(
     article, already_exists = convert_article_url_to_content(
         db,
         article_url=canonical_article_url,
-        title=item.article_title,
+        title=get_news_article_title(item.raw_metadata) or item.article_title,
         source=item.article_domain,
     )
     if item.id is None or article.id is None:

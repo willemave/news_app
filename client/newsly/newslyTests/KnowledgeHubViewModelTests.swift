@@ -198,4 +198,39 @@ private final class MockKnowledgeHubChatService: KnowledgeHubChatServicing {
 
         return try turnResponses.removeFirst().get()
     }
+
+    func createSession(
+        contentId: Int?,
+        topic: String?,
+        provider: ChatModelProvider?,
+        modelHint: String?,
+        initialMessage: String?
+    ) async throws -> ChatSessionSummary {
+        XCTAssertNil(contentId)
+        XCTAssertNil(topic)
+        XCTAssertNil(provider)
+        XCTAssertNil(modelHint)
+        XCTAssertNil(initialMessage)
+        return ChatSessionSummary(
+            id: 999,
+            contentId: nil,
+            title: "New Session",
+            sessionType: "knowledge_chat",
+            topic: nil,
+            llmProvider: "openai",
+            llmModel: "gpt-5.4-mini",
+            createdAt: "2026-03-21T18:00:00Z",
+            updatedAt: nil,
+            lastMessageAt: nil,
+            articleTitle: nil,
+            articleUrl: nil,
+            articleSummary: nil,
+            articleSource: nil,
+            hasPendingMessage: false,
+            isSavedToKnowledge: false,
+            hasMessages: false,
+            lastMessagePreview: nil,
+            lastMessageRole: nil
+        )
+    }
 }

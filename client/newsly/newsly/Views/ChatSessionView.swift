@@ -239,17 +239,19 @@ struct SelectableAttributedText: UIViewRepresentable {
 }
 
 struct ChatSessionView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel: ChatSessionViewModel
     let onShowHistory: (() -> Void)?
     private let resetsScrollStateOnOpen: Bool
     @FocusState private var isInputFocused: Bool
-    @State private var showingModelPicker = false
     @State private var navigateToNewSessionId: Int?
     @State private var shareContent: ShareContent?
     @State private var scrolledMessageId: String?
     @State private var storedScrollState: ChatScrollState?
     @State private var hasRestoredScroll = false
     @State private var isAtBottom = false
+    @State private var followLatest = true
+    @State private var isContextPanelPresented = false
 
     init(
         session: ChatSessionSummary,
@@ -305,10 +307,6 @@ struct ChatSessionView: View {
         self.resetsScrollStateOnOpen = false
     }
 
-    private var titleMaxWidth: CGFloat {
-        min(UIScreen.main.bounds.width * 0.6, 260)
-    }
-
     private var thinkingIndicatorScrollId: String {
         "__thinking__|\(viewModel.sessionId)"
     }
@@ -332,12 +330,28 @@ struct ChatSessionView: View {
         return Int(components[1])
     }
 
+    private var usesSplitContextLayout: Bool {
+        horizontalSizeClass == .regular
+    }
+
+    private var lastRenderableAnchorId: String? {
+        if viewModel.isSending {
+            return thinkingIndicatorScrollId
+        }
+        if let lastMessage = viewModel.allMessages.last {
+            return messageScrollId(for: lastMessage)
+        }
+        return nil
+    }
+
     var body: some View {
-        messageListView
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                inputBar
-            }
-            .scrollDismissesKeyboard(.interactively)
+        GeometryReader { geometry in
+            chatShell(width: geometry.size.width)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomDock
+        }
+        .scrollDismissesKeyboard(.interactively)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: viewModel.sessionId) {
             if resetsScrollStateOnOpen {
@@ -345,6 +359,7 @@ struct ChatSessionView: View {
                 storedScrollState = nil
                 hasRestoredScroll = false
                 scrolledMessageId = nil
+                followLatest = true
             }
             await viewModel.loadSession()
             await viewModel.checkAndRefreshVoiceDictation()
@@ -385,27 +400,6 @@ struct ChatSessionView: View {
                             Image(systemName: "clock.arrow.circlepath")
                         }
                         .accessibilityIdentifier("knowledge.chat_history")
-                    }
-                }
-
-                if viewModel.canStartCouncil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button {
-                            Task {
-                                await viewModel.startCouncil(message: defaultCouncilPrompt)
-                            }
-                        } label: {
-                            Group {
-                                if viewModel.isStartingCouncil {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Image(systemName: "person.3.sequence.fill")
-                                }
-                            }
-                        }
-                        .disabled(viewModel.isStartingCouncil)
-                        .accessibilityIdentifier("knowledge.start_council")
                     }
                 }
 
@@ -457,6 +451,34 @@ struct ChatSessionView: View {
         .sheet(item: $shareContent) { content in
             ShareSheet(content: content)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { isContextPanelPresented && !usesSplitContextLayout },
+                set: { isContextPanelPresented = $0 }
+            )
+        ) {
+            secondaryPanel(isCompact: true)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    @ViewBuilder
+    private func chatShell(width: CGFloat) -> some View {
+        if usesSplitContextLayout && isContextPanelPresented {
+            HStack(spacing: 0) {
+                messageListView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Divider()
+
+                secondaryPanel(isCompact: false)
+                    .frame(width: min(360, max(280, width * 0.34)))
+                    .background(Color.surfacePrimary)
+            }
+        } else {
+            messageListView
+        }
     }
 
     /// Switch to a different provider without restarting the chat
@@ -487,7 +509,7 @@ struct ChatSessionView: View {
                         ChatLoadingView()
                             .frame(maxWidth: .infinity)
                             .padding(.top, 40)
-                    } else if let error = viewModel.errorMessage, viewModel.messages.isEmpty {
+                    } else if let error = viewModel.errorMessage, viewModel.allMessages.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle")
                                 .font(.largeTitle)
@@ -553,26 +575,13 @@ struct ChatSessionView: View {
                         }
                         .padding(.top, 40)
                     } else {
-                        ForEach(viewModel.allMessages, id: \.uiIdentity) { message in
-                            MessageBubble(
-                                message: message,
-                                articleTitle: viewModel.session?.articleTitle,
-                                articleUrl: viewModel.session?.articleUrl,
-                                selectingCouncilChildSessionId: viewModel.selectingCouncilChildSessionId,
-                                onDigDeeper: { selectedText in
-                                    Task { await viewModel.digDeeper(into: selectedText) }
-                                },
-                                onSelectCouncilCandidate: { childSessionId in
-                                    Task { await viewModel.selectCouncilBranch(childSessionId: childSessionId) }
-                                },
-                                onShare: { content in
-                                    shareContent = ShareContent(
-                                        messageContent: content,
-                                        articleTitle: viewModel.session?.articleTitle,
-                                        articleUrl: viewModel.session?.articleUrl
-                                    )
-                                }
-                            )
+                        ForEach(viewModel.transcriptMessages, id: \.uiIdentity) { message in
+                            messageRow(message)
+                            .id(messageScrollId(for: message))
+                        }
+
+                        ForEach(viewModel.activeTurnMessages, id: \.uiIdentity) { message in
+                            messageRow(message)
                             .id(messageScrollId(for: message))
                         }
 
@@ -597,12 +606,15 @@ struct ChatSessionView: View {
             }
             .onChange(of: viewModel.allMessages.count) { _, _ in
                 restoreScrollPositionIfNeeded(proxy: proxy)
-                if isAtBottom {
+                if followLatest {
                     scrollToBottom(proxy: proxy, animated: true)
                 }
             }
             .onChange(of: viewModel.isSending) { _, isSending in
-                if isSending, isAtBottom {
+                if isSending {
+                    followLatest = true
+                }
+                if isSending, followLatest {
                     scrollToBottom(proxy: proxy, animated: true)
                 }
             }
@@ -615,6 +627,7 @@ struct ChatSessionView: View {
                 storedScrollState = resetsScrollStateOnOpen
                     ? nil
                     : ChatScrollStateStore.load(sessionId: viewModel.sessionId)
+                followLatest = storedScrollState?.wasAtBottom ?? true
                 restoreScrollPositionIfNeeded(proxy: proxy)
             }
             .onDisappear {
@@ -623,10 +636,29 @@ struct ChatSessionView: View {
         }
     }
 
+    @ViewBuilder
+    private func messageRow(_ message: ChatMessage) -> some View {
+        MessageBubble(
+            message: message,
+            onDigDeeper: { selectedText in
+                Task { await viewModel.digDeeper(into: selectedText) }
+            },
+            onShare: { content in
+                presentShareSheet(for: content)
+            }
+        )
+    }
+
+    private func presentShareSheet(for content: String) {
+        shareContent = ShareContent(
+            messageContent: content,
+            articleTitle: viewModel.session?.articleTitle,
+            articleUrl: viewModel.session?.articleUrl
+        )
+    }
+
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
-        let targetId = viewModel.isSending
-            ? thinkingIndicatorScrollId
-            : viewModel.allMessages.last.map(messageScrollId(for:))
+        let targetId = lastRenderableAnchorId
         guard let targetId else { return }
         if animated {
             withAnimation(.easeOut(duration: 0.2)) {
@@ -638,14 +670,15 @@ struct ChatSessionView: View {
     }
 
     private func updateIsAtBottom(anchorId: String?) {
-        guard let lastMessage = viewModel.allMessages.last else {
+        guard let lastAnchorId = lastRenderableAnchorId else {
             isAtBottom = false
+            followLatest = false
             return
         }
-        let lastId = messageScrollId(for: lastMessage)
         isAtBottom =
-            anchorId == lastId ||
+            anchorId == lastAnchorId ||
             (viewModel.isSending && anchorId == thinkingIndicatorScrollId)
+        followLatest = isAtBottom
     }
 
     private func restoreScrollPositionIfNeeded(proxy: ScrollViewProxy) {
@@ -751,8 +784,65 @@ struct ChatSessionView: View {
 
     // MARK: - Input Bar
 
-    private var inputBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private var bottomDock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !viewModel.councilCandidates.isEmpty {
+                councilBranchSwitcher
+                    .padding(.horizontal, 16)
+            }
+
+            composerDock
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: Color.surfacePrimary.opacity(0), location: 0),
+                    .init(color: Color.surfacePrimary.opacity(0.96), location: 0.18),
+                    .init(color: Color.surfacePrimary, location: 1.0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+    }
+
+    private var composerDock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                dockActionButton(
+                    title: usesSplitContextLayout && isContextPanelPresented ? "Hide Context" : "Context",
+                    systemImage: "sidebar.right",
+                    isActive: isContextPanelPresented
+                ) {
+                    toggleContextPanel()
+                }
+
+                if viewModel.canStartCouncil {
+                    dockActionButton(
+                        title: viewModel.isStartingCouncil ? "Starting Council" : "Council",
+                        systemImage: "person.3.sequence.fill",
+                        isActive: viewModel.isStartingCouncil,
+                        isDisabled: viewModel.isStartingCouncil || viewModel.isSending
+                    ) {
+                        Task {
+                            followLatest = true
+                            await viewModel.startCouncil(message: defaultCouncilPrompt)
+                        }
+                    }
+                    .accessibilityIdentifier("knowledge.start_council")
+                }
+
+                Spacer(minLength: 0)
+
+                if let providerName = viewModel.session?.providerDisplayName {
+                    Text(providerName)
+                        .font(.terracottaBodySmall)
+                        .foregroundStyle(Color.onSurfaceSecondary)
+                }
+            }
+
             HStack(alignment: .center, spacing: 10) {
                 HStack(spacing: 8) {
                     TextField("Message", text: $viewModel.inputText, axis: .vertical)
@@ -764,10 +854,10 @@ struct ChatSessionView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(Color.surfaceContainerHighest)
-                .clipShape(Capsule())
+                .background(Color.surfaceContainerHighest.opacity(0.92))
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(
                             viewModel.isRecording ? Color.statusDestructive.opacity(0.6) : Color.outlineVariant.opacity(0.3),
                             lineWidth: 1
@@ -844,19 +934,17 @@ struct ChatSessionView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
+        .padding(.vertical, 12)
         .background(
-            LinearGradient(
-                stops: [
-                    .init(color: Color.surfacePrimary.opacity(0), location: 0),
-                    .init(color: Color.surfacePrimary, location: 0.15),
-                    .init(color: Color.surfacePrimary, location: 1.0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color.surfacePrimary.opacity(0.96))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 26, style: .continuous)
+                        .stroke(Color.outlineVariant.opacity(0.22), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.04), radius: 10, y: 2)
         )
+        .padding(.horizontal, 12)
     }
 
     private var sendButtonDisabled: Bool {
@@ -865,17 +953,88 @@ struct ChatSessionView: View {
         viewModel.isRecording ||
         viewModel.isTranscribing
     }
+
+    @ViewBuilder
+    private func dockActionButton(
+        title: String,
+        systemImage: String,
+        isActive: Bool = false,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.terracottaBodySmall)
+                .foregroundStyle(isActive ? Color.chatAccent : Color.onSurfaceSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isActive ? Color.chatAccent.opacity(0.14) : Color.surfaceSecondary.opacity(0.72))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            isActive ? Color.chatAccent.opacity(0.28) : Color.outlineVariant.opacity(0.18),
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+    }
+
+    private var councilBranchSwitcher: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(viewModel.councilCandidates) { candidate in
+                    CouncilCandidateTab(
+                        candidate: candidate,
+                        isSelected: viewModel.activeCouncilChildSessionId == candidate.childSessionId,
+                        isActive: viewModel.activeCouncilChildSessionId == candidate.childSessionId,
+                        isSelecting: viewModel.selectingCouncilChildSessionId == candidate.childSessionId,
+                        isInteractionDisabled: viewModel.selectingCouncilChildSessionId != nil
+                    ) {
+                        guard viewModel.activeCouncilChildSessionId != candidate.childSessionId else { return }
+                        followLatest = true
+                        Task { await viewModel.selectCouncilBranch(childSessionId: candidate.childSessionId) }
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .accessibilityIdentifier("knowledge.council_switcher")
+    }
+
+    private func toggleContextPanel() {
+        if usesSplitContextLayout {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isContextPanelPresented.toggle()
+            }
+        } else {
+            isContextPanelPresented = true
+        }
+    }
+
+    @ViewBuilder
+    private func secondaryPanel(isCompact: Bool) -> some View {
+        ChatSecondaryPanel(
+            session: viewModel.session,
+            activeCouncilCandidate: viewModel.activeCouncilCandidate,
+            onOpenArticle: { urlString in
+                guard let url = URL(string: urlString) else { return }
+                UIApplication.shared.open(url)
+            }
+        )
+        .padding(isCompact ? 0 : 16)
+    }
 }
 
 // MARK: - Message Bubble
 
 struct MessageBubble: View {
     let message: ChatMessage
-    let articleTitle: String?
-    let articleUrl: String?
-    let selectingCouncilChildSessionId: Int?
     var onDigDeeper: ((String) -> Void)?
-    var onSelectCouncilCandidate: ((Int) -> Void)?
     var onShare: ((String) -> Void)?
     @Environment(\.openURL) private var openURL
     @StateObject private var feedOptionActionModel = AssistantFeedOptionActionModel()
@@ -980,9 +1139,7 @@ struct MessageBubble: View {
                 if message.isAssistant && message.hasCouncilCandidates {
                     CouncilCandidatesBubble(
                         message: message,
-                        textColor: textColor,
-                        selectingChildSessionId: selectingCouncilChildSessionId,
-                        onSelectCouncilCandidate: onSelectCouncilCandidate
+                        textColor: textColor
                     )
                 } else if message.isUser {
                     Text(message.content)
@@ -1018,21 +1175,16 @@ struct MessageBubble: View {
 private struct CouncilCandidatesBubble: View {
     let message: ChatMessage
     let textColor: UIColor
-    let selectingChildSessionId: Int?
-    let onSelectCouncilCandidate: ((Int) -> Void)?
-
-    @State private var selectedChildSessionId: Int?
 
     private var candidates: [CouncilCandidate] {
         message.councilCandidates.sorted { $0.order < $1.order }
     }
 
-    private var selectedCandidate: CouncilCandidate? {
-        if let selectedChildSessionId,
-           let candidate = candidates.first(where: { $0.childSessionId == selectedChildSessionId }) {
+    private var activeCandidate: CouncilCandidate? {
+        if let activeChildSessionId,
+           let candidate = candidates.first(where: { $0.childSessionId == activeChildSessionId }) {
             return candidate
         }
-
         return candidates.first
     }
 
@@ -1042,65 +1194,22 @@ private struct CouncilCandidatesBubble: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    ForEach(candidates) { candidate in
-                        CouncilCandidateTab(
-                            candidate: candidate,
-                            isSelected: selectedChildSessionId == candidate.childSessionId,
-                            isActive: activeChildSessionId == candidate.childSessionId,
-                            isSelecting: selectingChildSessionId == candidate.childSessionId,
-                            isInteractionDisabled: selectingChildSessionId != nil
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                selectedChildSessionId = candidate.childSessionId
-                            }
-                            guard activeChildSessionId != candidate.childSessionId else { return }
-                            onSelectCouncilCandidate?(candidate.childSessionId)
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-            .scrollIndicators(.hidden)
-
-            if let selectedCandidate {
+            if let activeCandidate {
                 CouncilCandidateCard(
-                    candidate: selectedCandidate,
+                    candidate: activeCandidate,
                     textColor: textColor,
-                    isSelected: true,
-                    isActive: activeChildSessionId == selectedCandidate.childSessionId,
-                    isSelecting: selectingChildSessionId == selectedCandidate.childSessionId
+                    isActive: activeChildSessionId == activeCandidate.childSessionId
                 )
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .onAppear {
-            selectedChildSessionId = activeChildSessionId
-        }
-        .onChange(of: message.activeCouncilChildSessionId) { _, newValue in
-            if let newValue {
-                selectedChildSessionId = newValue
-                return
-            }
-
-            selectedChildSessionId = candidates.first?.childSessionId
-        }
-        .onChange(of: selectingChildSessionId) { _, newValue in
-            guard newValue == nil else { return }
-            guard selectedChildSessionId != activeChildSessionId else { return }
-            selectedChildSessionId = activeChildSessionId
-        }
-        .animation(.easeInOut(duration: 0.2), value: selectedChildSessionId)
     }
 }
 
 private struct CouncilCandidateCard: View {
     let candidate: CouncilCandidate
     let textColor: UIColor
-    let isSelected: Bool
     let isActive: Bool
-    let isSelecting: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1114,12 +1223,8 @@ private struct CouncilCandidateCard: View {
                         Text("Current branch")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.chatAccent)
-                    } else if isSelecting {
-                        Text("Switching branch")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.chatAccent)
                     } else {
-                        Text("Select a tab to switch")
+                        Text("Use the branch switcher below to change perspectives")
                             .font(.caption2)
                             .foregroundStyle(Color.onSurfaceSecondary)
                     }
@@ -1127,10 +1232,7 @@ private struct CouncilCandidateCard: View {
 
                 Spacer(minLength: 0)
 
-                if isSelecting {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if isActive {
+                if isActive {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(Color.chatAccent)
@@ -1152,7 +1254,7 @@ private struct CouncilCandidateCard: View {
                 bottomTrailingRadius: 16,
                 topTrailingRadius: 16
             )
-            .fill(isSelected ? Color.surfaceContainer : Color.surfaceSecondary.opacity(0.92))
+            .fill(Color.surfaceContainer)
         )
         .overlay(
             UnevenRoundedRectangle(
@@ -1162,7 +1264,7 @@ private struct CouncilCandidateCard: View {
                 topTrailingRadius: 16
             )
             .stroke(
-                isSelected ? Color.chatAccent.opacity(0.35) : Color.outlineVariant.opacity(0.18),
+                Color.chatAccent.opacity(0.35),
                 lineWidth: 1
             )
         )
@@ -1216,27 +1318,124 @@ private struct CouncilCandidateTab: View {
 
 struct ProcessSummaryRow: View {
     let message: ChatMessage
+    @State private var isExpanded = false
 
     var body: some View {
-        HStack {
-            Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .font(.caption2)
-                Text(message.processSummaryText)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+        VStack(alignment: .center, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.caption2)
+                    Text(message.processSummaryText)
+                        .lineLimit(isExpanded ? nil : 1)
+                        .truncationMode(.tail)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                }
+                .font(.terracottaBodySmall)
+                .foregroundColor(Color.onSurfaceSecondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.surfaceContainer.opacity(0.8))
+                .clipShape(Capsule())
             }
-            .font(.terracottaBodySmall)
-            .foregroundColor(Color.onSurfaceSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.surfaceContainer.opacity(0.8))
-            .clipShape(Capsule())
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Text(message.processSummaryText)
+                    .font(.caption)
+                    .foregroundStyle(Color.onSurfaceSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityLabel(message.processSummaryText)
+    }
+}
+
+private struct ChatSecondaryPanel: View {
+    let session: ChatSessionSummary?
+    let activeCouncilCandidate: CouncilCandidate?
+    let onOpenArticle: (String) -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Context")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.onSurface)
+
+                if let session {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let articleTitle = session.articleTitle {
+                            Text(articleTitle)
+                                .font(.headline)
+                                .foregroundStyle(Color.onSurface)
+                        } else {
+                            Text(session.displayTitle)
+                                .font(.headline)
+                                .foregroundStyle(Color.onSurface)
+                        }
+
+                        if let source = session.articleSource {
+                            Text(source)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                        }
+
+                        if let summary = session.articleSummary, !summary.isEmpty {
+                            Text(summary)
+                                .font(.subheadline)
+                                .foregroundStyle(Color.onSurfaceSecondary)
+                        }
+
+                        if let articleUrl = session.articleUrl {
+                            Button {
+                                onOpenArticle(articleUrl)
+                            } label: {
+                                Label("Open article", systemImage: "arrow.up.right.square")
+                                    .font(.terracottaBodySmall)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Color.chatAccent)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.surfaceSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+
+                if let activeCouncilCandidate {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Active Council Branch")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color.chatAccent)
+
+                        Text(activeCouncilCandidate.personaName)
+                            .font(.headline)
+                            .foregroundStyle(Color.onSurface)
+
+                        Text(activeCouncilCandidate.content)
+                            .font(.subheadline)
+                            .foregroundStyle(Color.onSurfaceSecondary)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.surfaceSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color.surfacePrimary)
     }
 }
 

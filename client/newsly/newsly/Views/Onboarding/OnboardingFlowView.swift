@@ -232,7 +232,7 @@ struct OnboardingFlowView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                Text("Usually takes under a minute")
+                Text("Usually takes one to two minutes")
                     .font(.caption)
                     .foregroundColor(.watercolorSlate.opacity(0.5))
 
@@ -240,6 +240,26 @@ struct OnboardingFlowView: View {
                     Text(message)
                         .font(.caption)
                         .foregroundColor(.orange)
+                }
+
+                if viewModel.shouldOfferContinueWaiting {
+                    Button("Keep waiting") {
+                        viewModel.continueWaitingForDiscovery()
+                    }
+                    .font(.callout.weight(.semibold))
+                    .foregroundColor(.watercolorSlate)
+                    .accessibilityIdentifier("onboarding.loading.keep_waiting")
+                }
+
+                if viewModel.shouldOfferRetryFromLoading {
+                    Button("Try again") {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            viewModel.retryPersonalization()
+                        }
+                    }
+                    .font(.callout)
+                    .foregroundColor(.watercolorSlate.opacity(0.7))
+                    .accessibilityIdentifier("onboarding.loading.retry")
                 }
 
                 Button("Use defaults instead") {
@@ -262,17 +282,17 @@ struct OnboardingFlowView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Your picks")
+                        Text(viewModel.isShowingDefaultConfirmation ? "Start with defaults" : "Your picks")
                             .font(.title2.bold())
                             .foregroundColor(.watercolorSlate)
-                        Text("Deselect any you don't want.")
+                        Text(suggestionsSubtitle)
                             .font(.callout)
                             .foregroundColor(.watercolorSlate.opacity(0.6))
                     }
                     .padding(.bottom, 20)
 
                     if viewModel.substackSuggestions.isEmpty && viewModel.podcastSuggestions.isEmpty && viewModel.subredditSuggestions.isEmpty {
-                        Text("No matches found — we'll start you with defaults.")
+                        Text(emptyStateMessage)
                             .font(.callout)
                             .foregroundColor(.watercolorSlate.opacity(0.6))
                             .padding(.vertical, 20)
@@ -315,11 +335,31 @@ struct OnboardingFlowView: View {
 
             // Sticky bottom button
             VStack(spacing: 8) {
-                primaryButton("Start reading") {
+                primaryButton(viewModel.isShowingDefaultConfirmation ? "Start with defaults" : "Start reading") {
                     Task { await viewModel.completeOnboarding() }
                 }
                 .disabled(viewModel.isLoading)
                 .accessibilityIdentifier("onboarding.complete")
+
+                if viewModel.shouldOfferRetryFromSuggestions {
+                    Button("Try again") {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            viewModel.retryPersonalization()
+                        }
+                    }
+                    .font(.callout)
+                    .foregroundColor(.watercolorSlate.opacity(0.7))
+                    .accessibilityIdentifier("onboarding.suggestions.retry")
+                } else if viewModel.isShowingDefaultConfirmation {
+                    Button("Personalize instead") {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            viewModel.retryPersonalization()
+                        }
+                    }
+                    .font(.callout)
+                    .foregroundColor(.watercolorSlate.opacity(0.7))
+                    .accessibilityIdentifier("onboarding.suggestions.personalize")
+                }
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -387,5 +427,19 @@ struct OnboardingFlowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 24))
         }
         .buttonStyle(.plain)
+    }
+
+    private var suggestionsSubtitle: String {
+        if viewModel.isShowingDefaultConfirmation {
+            return "Review the defaults or personalize instead."
+        }
+        return "Deselect any you don't want."
+    }
+
+    private var emptyStateMessage: String {
+        if viewModel.isShowingDefaultConfirmation {
+            return "We'll set up a solid default feed, and you can personalize it later."
+        }
+        return "No matches found yet. You can try again or continue with defaults."
     }
 }

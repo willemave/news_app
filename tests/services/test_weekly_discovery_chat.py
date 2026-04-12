@@ -135,3 +135,51 @@ def test_ensure_weekly_discovery_session_uses_onboarding_fallback_without_sugges
     refreshed = db_session.query(ChatSession).filter(ChatSession.id == session.id).first()
     assert refreshed is not None
     assert "Onboarding summary:" in (refreshed.context_snapshot or "")
+
+
+def test_ensure_weekly_discovery_session_uses_summary_display_titles_for_recent_reads(
+    db_session: Session,
+    test_user,
+    monkeypatch,
+) -> None:
+    """Recent read seed context should prefer summary titles over stored content titles."""
+    test_user.has_completed_onboarding = True
+    db_session.commit()
+
+    content = Content(
+        url="https://example.com/robotics",
+        content_type=ContentType.ARTICLE.value,
+        status=ContentStatus.COMPLETED.value,
+        title="Stored page title",
+        source="Example",
+        content_metadata={
+            "summary": {
+                "title": "Canonical summary title",
+                "overview": "Robotics summary",
+            }
+        },
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+
+    db_session.add(
+        ContentReadStatus(
+            user_id=test_user.id,
+            content_id=content.id,
+            read_at=datetime(2026, 3, 8, 18, 0, tzinfo=UTC),
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.weekly_discovery_chat._user_local_date",
+        lambda user, reference_time=None: date(2026, 3, 8),
+    )
+
+    session = ensure_weekly_discovery_session(db_session, user_id=test_user.id)
+
+    assert session is not None
+    assert session.context_snapshot is not None
+    assert "Canonical summary title" in session.context_snapshot
+    assert "Stored page title" not in session.context_snapshot

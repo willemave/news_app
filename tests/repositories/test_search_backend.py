@@ -1,4 +1,4 @@
-"""Tests for database search backend selection and ranking."""
+"""Tests for content search ranking."""
 
 from __future__ import annotations
 
@@ -6,12 +6,21 @@ from datetime import UTC, datetime
 
 from app.models.contracts import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
-from app.repositories.content_card_repository import search_contents
-from app.repositories.search_backend import get_search_backend
+from app.repositories.search_repository import (
+    search_content_page,
+)
 
 
-def _add_inbox_content(db_session, user_id: int, *, title: str, search_text: str) -> Content:
+def _add_inbox_content(
+    db_session,
+    user_id: int,
+    *,
+    title: str,
+    search_text: str,
+    summary_title: str | None = None,
+) -> Content:
     """Create a searchable inbox item."""
+    resolved_summary_title = summary_title or title
     content = Content(
         url=f"https://example.com/{title.lower().replace(' ', '-')}",
         title=title,
@@ -20,7 +29,7 @@ def _add_inbox_content(db_session, user_id: int, *, title: str, search_text: str
         search_text=search_text,
         content_metadata={
             "summary": {
-                "title": title,
+                "title": resolved_summary_title,
                 "overview": f"{title} overview",
                 "bullet_points": [],
                 "quotes": [],
@@ -47,12 +56,6 @@ def _add_inbox_content(db_session, user_id: int, *, title: str, search_text: str
     return content
 
 
-def test_get_search_backend_prefers_postgres_for_postgres_bind(db_session) -> None:
-    """The active test harness should resolve to the native Postgres backend."""
-    backend = get_search_backend(db_session)
-    assert backend.supports_full_text() is True
-
-
 def test_postgres_search_ranks_title_matches_before_body_matches(db_session, test_user) -> None:
     """Title matches should outrank body-only matches under the native backend."""
     title_match = _add_inbox_content(
@@ -68,12 +71,11 @@ def test_postgres_search_ranks_title_matches_before_body_matches(db_session, tes
         search_text="framework release notes with implementation detail",
     )
 
-    rows = search_contents(
+    rows = search_content_page(
         db_session,
         user_id=test_user.id,
         query_text="framework",
         content_type="all",
-        search_backend=get_search_backend(db_session),
         cursor=(None, None, None),
         limit=10,
         offset=0,
@@ -94,12 +96,11 @@ def test_postgres_search_handles_typo_with_trigram_when_available(db_session, te
         search_text="brief update",
     )
 
-    rows = search_contents(
+    rows = search_content_page(
         db_session,
         user_id=test_user.id,
         query_text="framwork",
         content_type="all",
-        search_backend=get_search_backend(db_session),
         cursor=(None, None, None),
         limit=10,
         offset=0,
@@ -107,3 +108,27 @@ def test_postgres_search_handles_typo_with_trigram_when_available(db_session, te
 
     assert rows
     assert rows[0][0].id == typo_match.id
+
+
+def test_postgres_search_matches_summary_title_metadata(db_session, test_user) -> None:
+    """Summary metadata titles should be searchable even when the stored title differs."""
+    metadata_match = _add_inbox_content(
+        db_session,
+        test_user.id,
+        title="Original page headline",
+        summary_title="Canonical AI systems overview",
+        search_text="brief update",
+    )
+
+    rows = search_content_page(
+        db_session,
+        user_id=test_user.id,
+        query_text="canonical systems",
+        content_type="all",
+        cursor=(None, None, None),
+        limit=10,
+        offset=0,
+    )
+
+    assert rows
+    assert rows[0][0].id == metadata_match.id

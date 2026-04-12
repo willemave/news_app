@@ -29,6 +29,10 @@ from app.services.gateways.task_queue_gateway import get_task_queue_gateway
 from app.services.http import NonRetryableError, get_http_service
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.queue import TaskType, get_queue_service
+from app.services.youtube_equivalent_resolver import (
+    YouTubeEquivalentResolution,
+    resolve_youtube_equivalent,
+)
 from app.utils.dates import parse_date_with_tz
 from app.utils.summarization_inputs import (
     build_summarization_payload,
@@ -933,6 +937,67 @@ class ContentWorker:
                 return strategy
         return None
 
+    def _apply_youtube_resolution_metadata(
+        self,
+        *,
+        content: ContentData,
+        original_youtube_url: str,
+        resolution: YouTubeEquivalentResolution,
+    ) -> None:
+        metadata = content.metadata
+        if resolution.metadata:
+            if resolution.metadata.title and not content.title:
+                content.title = resolution.metadata.title
+            if resolution.metadata.author_name:
+                metadata.setdefault("channel_name", resolution.metadata.author_name)
+            if resolution.metadata.thumbnail_url:
+                metadata.setdefault("thumbnail_url", resolution.metadata.thumbnail_url)
+
+        metadata["youtube_video"] = True
+        metadata["video_url"] = original_youtube_url
+        metadata["resolved_from_youtube_url"] = original_youtube_url
+        metadata["youtube_equivalent_resolution"] = resolution.reason
+        if resolution.search_query:
+            metadata["youtube_equivalent_query"] = resolution.search_query
+        if resolution.similarity is not None:
+            metadata["youtube_equivalent_similarity"] = round(resolution.similarity, 4)
+        if resolution.source:
+            metadata["youtube_equivalent_source"] = resolution.source
+
+    def _apply_resolved_youtube_equivalent(
+        self,
+        *,
+        content: ContentData,
+        original_youtube_url: str,
+        resolution: YouTubeEquivalentResolution,
+    ) -> None:
+        self._apply_youtube_resolution_metadata(
+            content=content,
+            original_youtube_url=original_youtube_url,
+            resolution=resolution,
+        )
+
+        if resolution.resolved_url:
+            content.url = cast(Any, resolution.resolved_url)
+        if content.source_url is None:
+            content.source_url = original_youtube_url
+        if resolution.resolved_title:
+            content.title = resolution.resolved_title
+        if resolution.platform:
+            content.metadata["platform"] = resolution.platform
+        if resolution.media_url:
+            content.metadata["audio_url"] = resolution.media_url
+        if resolution.media_format:
+            content.metadata["media_format"] = resolution.media_format
+
+        content.error_message = None
+        if resolution.content_type == "article":
+            content.content_type = ContentType.ARTICLE
+            content.metadata.pop("content_to_summarize", None)
+            content.metadata.pop("content_to_filter", None)
+        else:
+            content.content_type = ContentType.PODCAST
+
     def _prepare_youtube_podcast_for_summary(
         self,
         *,
@@ -940,9 +1005,10 @@ class ContentWorker:
         strategy: YouTubeProcessorStrategy,
     ) -> bool:
         """Populate YouTube podcast metadata so podcasts can summarize before download."""
-        target_url = str(
+        original_youtube_url = str(
             content.metadata.get("video_url") or content.metadata.get("audio_url") or content.url
         )
+        target_url = original_youtube_url
         processed_url = strategy.preprocess_url(target_url)
 
         try:
@@ -977,7 +1043,31 @@ class ContentWorker:
                 or llm_data.get("skip_reason")
                 or "marked by strategy"
             )
-            content.metadata["youtube_video"] = True
+            resolution = resolve_youtube_equivalent(
+                original_youtube_url,
+                fallback_title=content.title,
+            )
+            self._apply_youtube_resolution_metadata(
+                content=content,
+                original_youtube_url=original_youtube_url,
+                resolution=resolution,
+            )
+            if resolution.resolved_url:
+                self._apply_resolved_youtube_equivalent(
+                    content=content,
+                    original_youtube_url=original_youtube_url,
+                    resolution=resolution,
+                )
+                logger.info(
+                    "Resolved YouTube podcast %s to %s via %s",
+                    content.id,
+                    resolution.resolved_url,
+                    resolution.source,
+                )
+                if content.content_type == ContentType.ARTICLE:
+                    return self._process_article(content)
+                return False
+
             content.metadata["skip_reason"] = skip_reason
             content.status = ContentStatus.SKIPPED
             content.error_message = skip_reason

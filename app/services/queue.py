@@ -2,7 +2,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 from app.core.db import get_db
 from app.core.logging import get_logger
@@ -40,6 +41,11 @@ DEDUPABLE_CONTENT_TASK_TYPES: set[TaskType] = {
     TaskType.FETCH_DISCUSSION,
     TaskType.GENERATE_IMAGE,
 }
+ACTIVE_TASK_STATUSES: tuple[str, str] = (
+    TaskStatus.PENDING.value,
+    TaskStatus.PROCESSING.value,
+)
+ACTIVE_DEDUPE_INDEX_WHERE = text("dedupe_key IS NOT NULL AND status IN ('pending', 'processing')")
 
 
 def _utc_now() -> datetime:
@@ -79,6 +85,17 @@ def _build_dedupe_key(
     if payload_fragment is not None and content_id is None:
         parts.append(f"payload:{payload_fragment}")
     return "|".join(parts)
+
+
+def _lookup_active_task_by_dedupe_key(db, *, dedupe_key: str, active_task_order):
+    """Return the newest active task for one dedupe key."""
+    return (
+        db.query(ProcessingTask)
+        .filter(ProcessingTask.dedupe_key == dedupe_key)
+        .filter(ProcessingTask.status.in_(ACTIVE_TASK_STATUSES))
+        .order_by(active_task_order.desc(), ProcessingTask.id.desc())
+        .first()
+    )
 
 
 def _log_dequeued_task(task_data: dict[str, Any], *, worker_id: str) -> None:
@@ -192,6 +209,7 @@ class QueueService:
             Task ID
         """
         target_queue = self._resolve_task_queue(task_type, queue_name)
+        task_payload = payload or {}
         active_task_order = func.coalesce(
             ProcessingTask.available_at,
             ProcessingTask.created_at,
@@ -205,22 +223,60 @@ class QueueService:
                 resolved_dedupe_key = _build_dedupe_key(
                     task_type=task_type,
                     content_id=content_id,
-                    payload=payload,
+                    payload=task_payload,
                     queue_name=target_queue,
                     should_dedupe=should_dedupe,
                 )
-            existing_task = None
             if resolved_dedupe_key is not None:
-                existing_task = (
-                    db.query(ProcessingTask)
-                    .filter(ProcessingTask.dedupe_key == resolved_dedupe_key)
-                    .filter(
-                        ProcessingTask.status.in_(
-                            [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
-                        )
+                inserted_task_id = db.execute(
+                    postgresql_insert(ProcessingTask)
+                    .values(
+                        task_type=task_type.value,
+                        content_id=content_id,
+                        payload=task_payload,
+                        status=TaskStatus.PENDING.value,
+                        queue_name=target_queue,
+                        available_at=_utc_now(),
+                        dedupe_key=resolved_dedupe_key,
                     )
-                    .order_by(active_task_order.desc(), ProcessingTask.id.desc())
-                    .first()
+                    .on_conflict_do_nothing(
+                        index_elements=[ProcessingTask.dedupe_key],
+                        index_where=ACTIVE_DEDUPE_INDEX_WHERE,
+                    )
+                    .returning(ProcessingTask.id)
+                ).scalar_one_or_none()
+                if inserted_task_id is not None:
+                    task_id = int(inserted_task_id)
+                    notification_payload = json.dumps(
+                        {
+                            "task_id": task_id,
+                            "task_type": task_type.value,
+                            "queue_name": target_queue,
+                        },
+                        separators=(",", ":"),
+                    )
+                    db.execute(select(func.pg_notify("processing_tasks", notification_payload)))
+
+                    logger.info(
+                        "Task enqueued",
+                        extra=build_log_extra(
+                            component="queue",
+                            operation="enqueue",
+                            event_name="task.enqueued",
+                            status="completed",
+                            task_id=task_id,
+                            task_type=task_type.value,
+                            queue_name=target_queue,
+                            content_id=content_id,
+                            context_data={"has_payload": bool(payload)},
+                        ),
+                    )
+                    return task_id
+
+                existing_task = _lookup_active_task_by_dedupe_key(
+                    db,
+                    dedupe_key=resolved_dedupe_key,
+                    active_task_order=active_task_order,
                 )
                 if existing_task:
                     existing_task_id = existing_task.id
@@ -240,11 +296,15 @@ class QueueService:
                         ),
                     )
                     return int(existing_task_id)
+                raise RuntimeError(
+                    "Task dedupe conflict did not return "
+                    "an inserted task or an existing active task"
+                )
 
             task = ProcessingTask(
                 task_type=task_type.value,
                 content_id=content_id,
-                payload=payload or {},
+                payload=task_payload,
                 status=TaskStatus.PENDING.value,
                 queue_name=target_queue,
                 available_at=_utc_now(),

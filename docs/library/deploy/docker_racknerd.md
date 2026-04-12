@@ -41,7 +41,10 @@ Then set at minimum:
 - `ADMIN_PASSWORD`
 - your provider API keys
 
-For migrating the existing RackNerd SQLite database in `/data/news_app.db`, keep the file in place. The container mounts host `/data` to container `/data`, so the old SQLite file is visible at the same path.
+Historical migration note: if you are recovering an old RackNerd SQLite backup
+from `/data/news_app.db`, keep the file in place while you run the one-way
+SQLite-to-Postgres migration tooling. SQLite is not a supported runtime
+dialect for current RackNerd deployments.
 
 ## Deploy flow
 

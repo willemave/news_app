@@ -17,4 +17,4 @@ Query composition helpers for content feeds and visibility rules used by list, s
 |---|---|---|
 | `app/repositories/content_feed_query.py` | `FeedQueryRows`, `apply_created_at_cursor`, `build_user_feed_query` | Shared query builders for user-visible content feed endpoints. |
 | `app/repositories/content_repository.py` | `VisibilityContext`, `build_visibility_context`, `apply_visibility_filters`, `apply_read_filter`, `get_visible_content_query` | Repository helpers for content visibility and flags. |
-| `app/repositories/search_backend.py` | `SearchBackend`, `GenericSearchBackend`, `SQLiteSearchBackend`, `build_fts_match_query`, `get_search_backend` | Dialect-aware search backends for repository and query modules. |
+| `app/repositories/search_repository.py` | `content_search_supports_full_text`, `search_content_page`, `search_content`, `search_news`, `search_subscription_feeds` | PostgreSQL-native full-text and trigram-backed search entry points for content, news, and subscription-scoped search flows. |

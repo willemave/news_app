@@ -22,7 +22,7 @@ from typing import Any
 # Add parent directory to path for imports (use os.path for Python 3.13 compatibility)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import create_engine, func, or_
+from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import sessionmaker
 
 from app.core.settings import get_settings
@@ -171,9 +171,8 @@ def reset_errored_content(
             # Add missing summary condition if specified
             if missing_summary:
                 # Content is 'completed' but has no summary in metadata
-                # Use json_extract for SQLite compatibility
                 missing_summary_condition = (Content.status == ContentStatus.COMPLETED.value) & (
-                    func.json_extract(Content.content_metadata, "$.summary").is_(None)
+                    Content.content_metadata["summary"].is_(None)
                 )
                 status_conditions.append(missing_summary_condition)
                 print("Including 'completed' content missing a summary")

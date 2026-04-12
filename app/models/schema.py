@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import validates
 
@@ -240,6 +241,12 @@ class ProcessingTask(Base):
             "available_at",
             "retry_count",
             "created_at",
+        ),
+        Index(
+            "uq_processing_tasks_dedupe_key_active",
+            "dedupe_key",
+            unique=True,
+            postgresql_where=text("dedupe_key IS NOT NULL AND status IN ('pending', 'processing')"),
         ),
     )
 

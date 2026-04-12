@@ -189,8 +189,8 @@ The old top-level presenter package was collapsed into the API and models layers
 
 Implementation seams now live alongside the layers that use them:
 
-- `app/repositories/search_backend.py`
-  - search backend abstraction with SQLite FTS vs generic fallback
+- `app/repositories/search_repository.py`
+  - PostgreSQL full-text and trigram-backed search helpers for content and news queries
 - `app/core/api_keys.py`
   - API key formatting, generation, hashing, and verification helpers
 
@@ -657,7 +657,8 @@ Current task-to-queue mapping in `app/services/queue.py`:
 - retry scheduling through delayed `created_at`
 - completion and retry state transitions
 
-This design is intentionally compatible with SQLite, where advanced row-locking semantics are limited.
+This design assumes PostgreSQL row-locking and notification features, including
+`FOR UPDATE SKIP LOCKED` and `LISTEN`/`NOTIFY`.
 
 ### 9.4 Sequential task processor
 
@@ -1017,14 +1018,7 @@ Search is intentionally abstracted from the routers.
 `app/queries/search_content_cards.py` uses:
 
 - `build_user_feed_query(...)`
-- a backend returned by `app/repositories/search_backend.py`
-
-Search backend selection:
-
-- SQLite
-  - `SQLiteSearchBackend`
-- non-SQLite
-  - `GenericSearchBackend`
+- PostgreSQL search helpers in `app/repositories/search_repository.py`
 
 ### 16.2 External search
 
@@ -1241,7 +1235,7 @@ Top-level coverage areas include:
 
 Key test infrastructure:
 
-- in-memory SQLite fixtures via `tests/conftest.py`
+- isolated PostgreSQL schemas via `app/testing/postgres_harness.py` and `tests/conftest.py`
 - FastAPI `TestClient`
 - fixture-driven content samples in `tests/fixtures/`
 
@@ -1281,7 +1275,7 @@ Implications:
 
 ### 23.4 Queue is DB-backed
 
-This keeps deployment simple and SQLite-compatible, but it also means:
+This keeps deployment simple, but it also means:
 
 - worker throughput is constrained by DB polling and row updates
 - partitioning is logical, not broker-native

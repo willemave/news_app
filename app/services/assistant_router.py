@@ -4,18 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any
 
 from fastapi.concurrency import run_in_threadpool
 from pydantic import HttpUrl, TypeAdapter
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
-from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_session_factory
@@ -28,16 +25,17 @@ from app.models.chat_message_metadata import (
     ChatMessageRenderMetadata,
 )
 from app.models.content_submission import SubmitContentRequest
-from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.internal.assistant import AssistantScreenContext
 from app.models.metadata import ContentType
-from app.models.schema import ChatSession, Content, NewsItem, NewsItemReadStatus, UserScraperConfig
+from app.models.schema import ChatSession, Content, NewsItem
 from app.models.user import User
 from app.repositories import knowledge_repository, read_status_repository
-from app.repositories.content_feed_query import build_user_feed_query
-from app.repositories.news_search_backend import get_news_search_backend
-from app.repositories.search_backend import get_search_backend
-from app.services.admin_conversational_agent import search_knowledge
+from app.repositories.search_repository import (
+    search_content,
+    search_news,
+    search_subscription_feeds,
+)
+from app.services.admin_conversational_agent import search_knowledge as search_knowledge_hits
 from app.services.assistant_feed_finder import find_feed_options as find_feed_options_service
 from app.services.chat_agent import (
     _log_chat_usage,
@@ -62,6 +60,7 @@ from app.services.sandbox_runtime import (
     create_personal_library_sandbox_session,
 )
 from app.utils.news_titles import resolve_news_display_title
+from app.utils.title_utils import resolve_content_display_title
 
 logger = get_logger(__name__)
 
@@ -75,46 +74,6 @@ ASSISTANT_SESSION_TYPES = {
     KNOWLEDGE_SESSION_TYPE,
     *LEGACY_KNOWLEDGE_SESSION_TYPES,
     "weekly_discovery",
-}
-SUBSCRIPTION_QUERY_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "article",
-    "articles",
-    "episode",
-    "episodes",
-    "feed",
-    "feeds",
-    "have",
-    "in",
-    "inbox",
-    "my",
-    "newsletter",
-    "newsletters",
-    "of",
-    "pod",
-    "pods",
-    "podcast",
-    "podcasts",
-    "read",
-    "series",
-    "show",
-    "shows",
-    "the",
-}
-SUBSCRIPTION_QUERY_HINTS = {
-    "episode",
-    "episodes",
-    "feed",
-    "feeds",
-    "pod",
-    "pods",
-    "podcast",
-    "podcasts",
-    "series",
-    "show",
-    "shows",
 }
 _agents: dict[tuple[str, str], Agent[AssistantDeps, str]] = {}
 URL_ADAPTER = TypeAdapter(HttpUrl)
@@ -131,9 +90,11 @@ ASSISTANT_SYSTEM_PROMPT = (
     "- When SearchMarkdownLibrary returns relevant file paths, call ReadMarkdownFile "
     "before answering from file contents.\n"
     "- If the user asks about their saved knowledge or bookmarked content, "
-    "call SearchKnowledge first.\n"
-    "- If the user asks about their in-app feed or inbox, "
-    "call SearchContent first.\n"
+    "call search_knowledge first.\n"
+    "- If the user asks about their in-app feed or inbox, call search_content "
+    "and search_news as needed.\n"
+    "- If the user asks about a specific followed feed, newsletter, or podcast, "
+    "call search_subscription_feeds first.\n"
     "- For broad current-events or recent factual questions, call search_web first.\n"
     "- For blog, newsletter, RSS, or podcast source-finding requests, call "
     "find_feed_options first and present the returned options as recommendations "
@@ -396,22 +357,23 @@ def _build_turn_instructions(user_text: str) -> str | None:
             "For this turn, call SearchMarkdownLibrary before answering. "
             "Use a concise query derived from the user's request. "
             "If it returns relevant file paths, call ReadMarkdownFile on the most relevant file "
-            "before answering. Only fall back to SearchKnowledge if the markdown library has no "
+            "before answering. Only fall back to search_knowledge if the markdown library has no "
             "useful file-level results."
         )
 
     if _should_route_to_content_search(user_text):
         return (
-            "For this turn, you must call SearchContent before answering. "
-            "Use it for in-app feed items, news items, and inbox content. "
-            "Only call search_web if SearchContent is insufficient."
+            "For this turn, call search_content and search_news before answering. "
+            "If the request is about a specific followed feed, newsletter, or podcast, "
+            "call search_subscription_feeds first. "
+            "Only call search_web if these tools are insufficient."
         )
 
     if _should_route_to_knowledge(user_text):
         return (
-            "For this turn, call SearchKnowledge before answering. "
+            "For this turn, call search_knowledge before answering. "
             "Use a concise query derived from the user's request. "
-            "If SearchKnowledge has no relevant matches, say so plainly instead of guessing."
+            "If search_knowledge has no relevant matches, say so plainly instead of guessing."
         )
 
     if _should_route_to_web(user_text):
@@ -427,12 +389,12 @@ def _build_turn_instructions(user_text: str) -> str | None:
             "For this turn, call search_web before answering. "
             "Use a concise web query derived from the user's request. "
             "If the request is actually about saved knowledge, "
-            "call SearchKnowledge first."
+            "call search_knowledge first."
         )
 
     return (
         "For this turn, if the user is asking for specific factual information, "
-        "prefer tools over assumptions. Use SearchKnowledge for saved knowledge context "
+        "prefer tools over assumptions. Use search_knowledge for saved knowledge context "
         "and search_web for current external facts."
     )
 
@@ -552,202 +514,24 @@ def _format_content_hits(
         else:
             lines.append("Recent Feed Content:")
         for idx, (content, is_read, is_saved_to_knowledge) in enumerate(content_rows, start=1):
+            title = resolve_content_display_title(
+                title=content.title,
+                metadata=content.content_metadata,
+                fallback="Untitled",
+            )
             lines.append(
-                f"{idx}. [{content.id}] {(content.title or 'Untitled').strip()} "
+                f"{idx}. [{content.id}] {title} "
                 f"| type={content.content_type} | source={content.source or 'unknown'} "
                 f"| read={bool(is_read)} | saved_to_knowledge={bool(is_saved_to_knowledge)} "
                 f"| url={content.url}"
             )
-            summary = str((content.content_metadata or {}).get("summary") or "").strip()
+            summary = str(content.short_summary or "").strip()
             if summary:
                 lines.append(f"   summary: {summary[:240]}")
 
     if len(lines) == 1:
         return f'No in-app content matched "{query}".'
     return "\n".join(lines)
-
-
-def _visible_news_item_query(
-    db: Session,
-    *,
-    user_id: int,
-):
-    """Return the base visible news-item query for one user."""
-
-    return (
-        db.query(
-            NewsItem,
-            NewsItemReadStatus.id.label("is_read"),
-        )
-        .outerjoin(
-            NewsItemReadStatus,
-            and_(
-                NewsItemReadStatus.news_item_id == NewsItem.id,
-                NewsItemReadStatus.user_id == user_id,
-            ),
-        )
-        .filter(NewsItem.status == NewsItemStatus.READY.value)
-        .filter(NewsItem.representative_news_item_id.is_(None))
-        .filter(
-            or_(
-                NewsItem.visibility_scope == NewsItemVisibilityScope.GLOBAL.value,
-                and_(
-                    NewsItem.visibility_scope == NewsItemVisibilityScope.USER.value,
-                    NewsItem.owner_user_id == user_id,
-                ),
-            )
-        )
-    )
-
-
-def _find_visible_news_item_matches(
-    db: Session,
-    *,
-    user_id: int,
-    query: str,
-    limit: int,
-):
-    """Return visible news items matching the query or recent fallbacks."""
-
-    normalized_query = query.strip()
-    sort_expr = func.coalesce(
-        NewsItem.published_at,
-        NewsItem.processed_at,
-        NewsItem.ingested_at,
-        NewsItem.created_at,
-    )
-    base_query = _visible_news_item_query(db, user_id=user_id)
-    matched_query = base_query
-    if normalized_query:
-        search_context: dict[str, Any] = {}
-        search_backend = get_news_search_backend(db)
-        matched_query = search_backend.apply_search(
-            matched_query,
-            normalized_query,
-            context=search_context,
-        )
-        total_matches = matched_query.order_by(None).count()
-        rank_expr = search_context.get("rank_expr")
-        order_exprs = (
-            [rank_expr.desc(), sort_expr.desc(), NewsItem.id.desc()]
-            if rank_expr is not None
-            else [sort_expr.desc(), NewsItem.id.desc()]
-        )
-        rows = matched_query.order_by(*order_exprs).limit(limit).all()
-        if rows:
-            return rows, total_matches
-
-    rows = base_query.order_by(sort_expr.desc(), NewsItem.id.desc()).limit(limit).all()
-    return rows, 0
-
-
-def _tokenize_subscription_query(value: str | None) -> list[str]:
-    """Return normalized tokens for subscription-aware content lookups."""
-
-    if not value:
-        return []
-
-    tokens: list[str] = []
-    for raw_token in re.findall(r"[a-z0-9]+", value.lower()):
-        token = raw_token
-        if len(token) > 4 and token.endswith("ies"):
-            token = f"{token[:-3]}y"
-        elif len(token) > 3 and token.endswith("s"):
-            token = token[:-1]
-        tokens.append(token)
-    return tokens
-
-
-def _significant_subscription_tokens(value: str | None) -> list[str]:
-    """Return de-duplicated non-generic query tokens."""
-
-    seen: set[str] = set()
-    tokens: list[str] = []
-    for token in _tokenize_subscription_query(value):
-        if token in SUBSCRIPTION_QUERY_STOPWORDS:
-            continue
-        if token in seen:
-            continue
-        seen.add(token)
-        tokens.append(token)
-    return tokens
-
-
-def _find_subscription_content_matches(
-    db: Session,
-    *,
-    user_id: int,
-    query: str,
-    limit: int,
-):
-    """Return feed items matching an active subscription name for the user."""
-
-    raw_query_tokens = _tokenize_subscription_query(query)
-    significant_query_tokens = _significant_subscription_tokens(query)
-    if not significant_query_tokens:
-        return [], None
-
-    query_has_subscription_hint = any(
-        token in SUBSCRIPTION_QUERY_HINTS for token in raw_query_tokens
-    )
-    normalized_query = query.strip().lower()
-    configs = (
-        db.query(UserScraperConfig)
-        .filter(UserScraperConfig.user_id == user_id)
-        .filter(UserScraperConfig.is_active.is_(True))
-        .all()
-    )
-
-    config_filters = []
-    for config in configs:
-        candidate_names = [
-            (config.display_name or "").strip(),
-            str((config.config or {}).get("name") or "").strip(),
-        ]
-        candidate_names = [name for name in candidate_names if name]
-        if not candidate_names:
-            continue
-
-        candidate_tokens = set()
-        for name in candidate_names:
-            candidate_tokens.update(_significant_subscription_tokens(name))
-        if not candidate_tokens:
-            continue
-
-        name_overlap = set(significant_query_tokens) & candidate_tokens
-        if not name_overlap and not any(
-            normalized_query
-            and (normalized_query in name.lower() or name.lower() in normalized_query)
-            for name in candidate_names
-        ):
-            continue
-        if not query_has_subscription_hint and not name_overlap:
-            continue
-
-        per_config_filters: list[Any] = [
-            func.lower(Content.source).like(f"%{name.lower()}%") for name in candidate_names
-        ]
-        token_filters = [
-            or_(
-                func.lower(Content.title).like(f"%{token}%"),
-                func.lower(Content.source).like(f"%{token}%"),
-            )
-            for token in sorted(candidate_tokens)
-        ]
-        if token_filters:
-            per_config_filters.append(and_(*token_filters))
-        config_filters.append(or_(*per_config_filters))
-
-    if not config_filters:
-        return [], None
-
-    matched_query = build_user_feed_query(db, user_id, mode="inbox").filter(or_(*config_filters))
-    total_matches = matched_query.order_by(None).count()
-    if total_matches == 0:
-        return [], 0
-
-    rows = matched_query.order_by(Content.created_at.desc(), Content.id.desc()).limit(limit).all()
-    return rows, total_matches
 
 
 def _build_agent_cache_key(model_spec: str, api_key_override: str | None) -> tuple[str, str]:
@@ -814,8 +598,8 @@ def _get_or_create_agent(
         result = find_feed_options_service(query=query, limit=limit)
         return result.model_dump(mode="json")
 
-    @agent.tool(name="SearchKnowledge")
-    def search_saved_content(
+    @agent.tool(name="search_knowledge")
+    def search_knowledge_tool(
         ctx: RunContext[AssistantDeps],
         query: str,
         limit: int = 5,
@@ -823,7 +607,7 @@ def _get_or_create_agent(
         """Search knowledge-saved user content for the current user."""
         normalized_limit = max(1, min(limit, 10))
         with ctx.deps.session_factory() as db:
-            hits = search_knowledge(
+            hits = search_knowledge_hits(
                 db=db,
                 user_id=ctx.deps.user_id,
                 query=query,
@@ -877,43 +661,43 @@ def _get_or_create_agent(
             max_chars=normalized_max_chars,
         )
 
-    @agent.tool(name="SearchContent")
-    def search_user_content(
+    @agent.tool(name="search_subscription_feeds")
+    def search_subscription_feeds_tool(
         ctx: RunContext[AssistantDeps],
         query: str,
         limit: int = 5,
     ) -> str:
-        """Search user-visible app content."""
+        """Search content from sources the user already follows."""
         normalized_limit = max(1, min(limit, 10))
         normalized_query = query.strip()
         with ctx.deps.session_factory() as db:
-            content_rows, total_content_matches = _find_subscription_content_matches(
+            content_rows, total_content_matches = search_subscription_feeds(
                 db,
                 user_id=ctx.deps.user_id,
-                query=normalized_query,
+                query_text=normalized_query,
                 limit=normalized_limit,
             )
-            if total_content_matches is None:
-                feed_query = build_user_feed_query(db, ctx.deps.user_id, mode="inbox")
-                search_backend = get_search_backend(db)
-                content_query = search_backend.apply_search(feed_query, normalized_query)
-                total_content_matches = content_query.order_by(None).count()
-                content_rows = (
-                    content_query.order_by(Content.created_at.desc(), Content.id.desc())
-                    .limit(normalized_limit)
-                    .all()
-                )
-                if not content_rows:
-                    content_rows = (
-                        feed_query.order_by(Content.created_at.desc(), Content.id.desc())
-                        .limit(normalized_limit)
-                        .all()
-                    )
-                    total_content_matches = 0
-            news_item_rows, total_news_item_matches = _find_visible_news_item_matches(
+
+        return _format_content_hits(
+            query=query,
+            content_rows=content_rows,
+            total_content_matches=total_content_matches or 0,
+        )
+
+    @agent.tool(name="search_content")
+    def search_content_tool(
+        ctx: RunContext[AssistantDeps],
+        query: str,
+        limit: int = 5,
+    ) -> str:
+        """Search user-visible feed content excluding news-item rows."""
+        normalized_limit = max(1, min(limit, 10))
+        normalized_query = query.strip()
+        with ctx.deps.session_factory() as db:
+            content_rows, total_content_matches = search_content(
                 db,
                 user_id=ctx.deps.user_id,
-                query=normalized_query,
+                query_text=normalized_query,
                 limit=normalized_limit,
             )
 
@@ -921,6 +705,29 @@ def _get_or_create_agent(
             query=query,
             content_rows=content_rows,
             total_content_matches=total_content_matches,
+        )
+
+    @agent.tool(name="search_news")
+    def search_news_tool(
+        ctx: RunContext[AssistantDeps],
+        query: str,
+        limit: int = 5,
+    ) -> str:
+        """Search user-visible news items."""
+        normalized_limit = max(1, min(limit, 10))
+        normalized_query = query.strip()
+        with ctx.deps.session_factory() as db:
+            news_item_rows, total_news_item_matches = search_news(
+                db,
+                user_id=ctx.deps.user_id,
+                query_text=normalized_query,
+                limit=normalized_limit,
+            )
+
+        return _format_content_hits(
+            query=query,
+            content_rows=[],
+            total_content_matches=0,
             news_item_rows=news_item_rows,
             total_news_item_matches=total_news_item_matches,
         )
@@ -1188,7 +995,11 @@ def build_screen_context_snapshot(
             content = by_id.get(content_id)
             if content is None:
                 continue
-            label = (content.title or "Untitled").strip()
+            label = resolve_content_display_title(
+                title=content.title,
+                metadata=content.content_metadata,
+                fallback="Untitled",
+            )
             source = f" ({content.source})" if content.source else ""
             lines.append(f"- [{content_id}] {label}{source} — {content.url}")
             short_summary = content.short_summary

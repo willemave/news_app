@@ -9,11 +9,11 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
-from app.models.content_mapper import content_to_domain
 from app.models.schema import ChatSession, Content, ContentDiscussion, ProcessingTask
 from app.services.chat_agent import create_processing_message, process_message_async
 from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
 from app.services.queue import TaskQueue, TaskStatus, TaskType
+from app.utils.title_utils import resolve_content_display_title
 
 logger = get_logger(__name__)
 
@@ -57,14 +57,16 @@ def _require_task_id(task: ProcessingTask) -> int:
 def _build_content_context_snapshot(content: Content, user_id: int) -> str:
     """Build a compact content-grounding snapshot without importing assistant_router."""
 
+    display_title = resolve_content_display_title(
+        title=content.title,
+        metadata=content.content_metadata,
+        fallback="Untitled",
+    )
     lines = [
         f"Screen Type: {KNOWLEDGE_SESSION_TYPE}",
         "Screen Title: Knowledge",
         "Visible Content:",
-        (
-            f"- [{content.id}] {(content.title or 'Untitled').strip()} "
-            f"({content.source or 'unknown'}) — {content.url}"
-        ),
+        f"- [{content.id}] {display_title} ({content.source or 'unknown'}) — {content.url}",
     ]
     if content.short_summary:
         lines.append(f"  Short Summary: {content.short_summary}")
@@ -193,7 +195,11 @@ def resolve_display_title(content: Content) -> str:
         Display title string.
     """
     try:
-        return content_to_domain(content).display_title
+        return resolve_content_display_title(
+            title=content.title,
+            metadata=content.content_metadata,
+            fallback="this content",
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "Failed to resolve display title for content %s: %s",
@@ -205,7 +211,7 @@ def resolve_display_title(content: Content) -> str:
                 "item_id": content.id,
             },
         )
-        return content.title or "this content"
+        return "this content"
 
 
 def build_dig_deeper_prompt(db: Session, content: Content) -> str:

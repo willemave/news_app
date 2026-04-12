@@ -4,7 +4,7 @@ from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.core.logging import get_logger
@@ -27,6 +27,17 @@ def init_db() -> None:
 
     settings = get_settings()
     database_url = str(settings.database_url)
+    database_url_object = make_url(database_url)
+    if database_url_object.drivername.startswith("sqlite"):
+        raise RuntimeError(
+            "SQLite has been deprecated as a Newsly runtime dialect. "
+            "Configure DATABASE_URL with PostgreSQL."
+        )
+    is_postgres_driver = database_url_object.drivername == "postgres" or (
+        database_url_object.drivername.startswith("postgresql")
+    )
+    if not is_postgres_driver:
+        raise RuntimeError("Newsly requires a PostgreSQL DATABASE_URL")
 
     _engine = create_engine(
         database_url,

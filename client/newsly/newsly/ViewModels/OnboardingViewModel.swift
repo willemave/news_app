@@ -14,7 +14,10 @@ private let defaultNewsListPreferencePrompt =
     + "add context, synthesis, or clear implications; avoid memes, engagement bait, vague reactions, "
     + "spammy vendor copy, repetitive hype, and low-context chatter unless they contain genuinely new information."
 
-enum OnboardingStep: Int {
+private let onboardingDiscoveryPollingTimeoutSeconds: TimeInterval = 120
+private let onboardingDiscoveryPollingIntervalNanoseconds: UInt64 = 2_000_000_000
+
+enum OnboardingStep: Int, Codable {
     case intro
     case choice
     case audio
@@ -50,14 +53,15 @@ final class OnboardingViewModel: ObservableObject {
     @Published var discoveryRunId: Int?
     @Published var discoveryRunStatus: String?
     @Published var discoveryErrorMessage: String?
+    @Published var hasReachedDiscoveryPollingLimit = false
     @Published var topicSummary: String?
     @Published var inferredTopics: [String] = []
     @Published var twitterUsername: String = ""
     @Published var newsListPreferencePrompt: String = ""
 
-    private let service = OnboardingService.shared
+    private let service: OnboardingService
     private let dictationService: any SpeechTranscribing
-    private let onboardingStateStore = OnboardingStateStore.shared
+    private let onboardingStateStore: OnboardingStateStore
     private let user: User
     private var audioTimer: Timer?
     private var pollingTask: Task<Void, Never>?
@@ -65,15 +69,28 @@ final class OnboardingViewModel: ObservableObject {
     private var didAttemptResume = false
     private var isSubmittingAudioDiscovery = false
 
-    init(user: User) {
+    init(
+        user: User,
+        service: OnboardingService = .shared,
+        dictationService: (any SpeechTranscribing)? = nil,
+        onboardingStateStore: OnboardingStateStore = .shared
+    ) {
         self.user = user
-        self.dictationService = SpeechTranscriberFactory.makeVoiceDictationTranscriber()
+        self.service = service
+        self.dictationService = dictationService ?? SpeechTranscriberFactory.makeVoiceDictationTranscriber()
+        self.onboardingStateStore = onboardingStateStore
         self.twitterUsername = user.twitterUsername ?? ""
         let trimmedPrompt = user.newsListPreferencePrompt.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
         self.newsListPreferencePrompt =
             trimmedPrompt.isEmpty ? defaultNewsListPreferencePrompt : user.newsListPreferencePrompt
+
+        if !user.hasCompletedOnboarding,
+           let snapshot = onboardingStateStore.progress(userId: user.id)
+        {
+            restoreProgress(snapshot)
+        }
     }
 
     deinit {
@@ -95,6 +112,25 @@ final class OnboardingViewModel: ObservableObject {
         suggestions?.recommendedSubreddits ?? []
     }
 
+    var isShowingDefaultConfirmation: Bool {
+        step == .suggestions && !isPersonalized && suggestionsAreEmpty
+    }
+
+    var shouldOfferRetryFromSuggestions: Bool {
+        step == .suggestions && isPersonalized && suggestionsAreEmpty
+    }
+
+    var shouldOfferRetryFromLoading: Bool {
+        step == .loading && (hasReachedDiscoveryPollingLimit || discoveryRunStatus == "failed")
+    }
+
+    var shouldOfferContinueWaiting: Bool {
+        step == .loading
+            && hasReachedDiscoveryPollingLimit
+            && discoveryRunId != nil
+            && !isDiscoveryTerminalStatus(discoveryRunStatus)
+    }
+
     func advanceToChoice() {
         step = .choice
     }
@@ -103,23 +139,45 @@ final class OnboardingViewModel: ObservableObject {
         isPersonalized = false
         stopAudioCapture()
         clearDiscoveryState()
-        Task { await completeOnboarding() }
+        errorMessage = nil
+        step = .suggestions
+        persistProgress()
     }
 
     func startPersonalized() {
+        clearDiscoveryState()
         isPersonalized = true
         step = .audio
         resetAudioState()
+    }
+
+    func retryPersonalization() {
+        startPersonalized()
+    }
+
+    func continueWaitingForDiscovery() {
+        guard let runId = discoveryRunId else { return }
+        hasReachedDiscoveryPollingLimit = false
+        discoveryErrorMessage = nil
+        persistProgress()
+        startPolling(runId: runId)
     }
 
     func resumeDiscoveryIfNeeded() async {
         guard !didAttemptResume else { return }
         didAttemptResume = true
 
-        guard let runId = onboardingStateStore.discoveryRunId(userId: user.id) else { return }
+        guard step == .loading else { return }
+        guard let runId = discoveryRunId ?? onboardingStateStore.discoveryRunId(userId: user.id) else {
+            return
+        }
+
         discoveryRunId = runId
-        step = .loading
         await refreshDiscoveryStatus(runId: runId)
+
+        if isDiscoveryTerminalStatus(discoveryRunStatus) || hasReachedDiscoveryPollingLimit {
+            return
+        }
         startPolling(runId: runId)
     }
 
@@ -172,6 +230,7 @@ final class OnboardingViewModel: ObservableObject {
         } else {
             selectedSourceKeys.insert(feedURL)
         }
+        persistProgress()
     }
 
     func toggleSubreddit(_ suggestion: OnboardingSuggestion) {
@@ -181,6 +240,7 @@ final class OnboardingViewModel: ObservableObject {
         } else {
             selectedSubreddits.insert(subreddit)
         }
+        persistProgress()
     }
 
     func completeOnboarding() async {
@@ -190,11 +250,9 @@ final class OnboardingViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let selectedSources = buildSelectedSources()
-            let selectedSubreddits = Array(self.selectedSubreddits)
             let request = OnboardingCompleteRequest(
-                selectedSources: selectedSources,
-                selectedSubreddits: selectedSubreddits,
+                selectedSources: buildSelectedSources(),
+                selectedSubreddits: Array(selectedSubreddits),
                 profileSummary: isPersonalized ? topicSummary : nil,
                 inferredTopics: isPersonalized ? inferredTopics : nil,
                 twitterUsername: normalizedTwitterUsername(),
@@ -202,7 +260,7 @@ final class OnboardingViewModel: ObservableObject {
             )
             let response = try await service.complete(request: request)
             completionResponse = response
-            onboardingStateStore.clearDiscoveryRun(userId: user.id)
+            onboardingStateStore.clearProgress(userId: user.id)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -224,8 +282,9 @@ final class OnboardingViewModel: ObservableObject {
             topicSummary = response.topicSummary
             inferredTopics = response.inferredTopics
             discoveryLanes = response.lanes
-            onboardingStateStore.setDiscoveryRun(userId: user.id, runId: response.runId)
+            hasReachedDiscoveryPollingLimit = false
             step = .loading
+            persistProgress()
             startPolling(runId: response.runId)
         } catch {
             errorMessage = error.localizedDescription
@@ -240,17 +299,18 @@ final class OnboardingViewModel: ObservableObject {
             applyDiscoveryStatus(status)
         } catch {
             discoveryErrorMessage = error.localizedDescription
+            persistProgress()
         }
     }
 
     private func startPolling(runId: Int) {
         pollingTask?.cancel()
         pollingTask = Task { @MainActor in
-            let deadline = Date().addingTimeInterval(60)
+            let deadline = Date().addingTimeInterval(onboardingDiscoveryPollingTimeoutSeconds)
             while !Task.isCancelled {
                 await refreshDiscoveryStatus(runId: runId)
 
-                if let status = discoveryRunStatus, status == "completed" || status == "failed" {
+                if isDiscoveryTerminalStatus(discoveryRunStatus) {
                     break
                 }
 
@@ -259,7 +319,7 @@ final class OnboardingViewModel: ObservableObject {
                     break
                 }
 
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                try? await Task.sleep(nanoseconds: onboardingDiscoveryPollingIntervalNanoseconds)
             }
         }
     }
@@ -271,20 +331,33 @@ final class OnboardingViewModel: ObservableObject {
         topicSummary = status.topicSummary
         inferredTopics = status.inferredTopics
         discoveryErrorMessage = status.errorMessage
+        hasReachedDiscoveryPollingLimit = false
 
         if status.runStatus == "completed" {
-            onboardingStateStore.clearDiscoveryRun(userId: user.id)
             if let suggestions = status.suggestions {
                 applySuggestions(suggestions)
+            } else {
+                suggestions = nil
+                selectedSourceKeys = []
+                selectedSubreddits = []
             }
             errorMessage = nil
             step = .suggestions
-        } else if status.runStatus == "failed" {
-            suggestions = nil
-            errorMessage = status.errorMessage ?? "Discovery failed. We'll start you with defaults."
-            step = .suggestions
-            onboardingStateStore.clearDiscoveryRun(userId: user.id)
+            persistProgress()
+            return
         }
+
+        if status.runStatus == "failed" {
+            suggestions = nil
+            selectedSourceKeys = []
+            selectedSubreddits = []
+            errorMessage = nil
+            step = .loading
+            persistProgress()
+            return
+        }
+
+        persistProgress()
     }
 
     private func applySuggestions(_ response: OnboardingFastDiscoverResponse) {
@@ -339,11 +412,11 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     private func handleDiscoveryTimeout() {
-        discoveryErrorMessage = "Discovery is taking longer than expected."
-        suggestions = nil
-        errorMessage = "Discovery is taking longer than expected. We'll start you with defaults."
-        onboardingStateStore.clearDiscoveryRun(userId: user.id)
-        step = .suggestions
+        hasReachedDiscoveryPollingLimit = true
+        discoveryErrorMessage =
+            "Discovery is taking longer than expected. You can keep waiting, try again, or use defaults."
+        errorMessage = nil
+        persistProgress()
     }
 
     private func clearDiscoveryState() {
@@ -352,13 +425,14 @@ final class OnboardingViewModel: ObservableObject {
         discoveryRunStatus = nil
         discoveryLanes = []
         discoveryErrorMessage = nil
+        hasReachedDiscoveryPollingLimit = false
         topicSummary = nil
         inferredTopics = []
         suggestions = nil
         selectedSourceKeys = []
         selectedSubreddits = []
         isSubmittingAudioDiscovery = false
-        onboardingStateStore.clearDiscoveryRun(userId: user.id)
+        onboardingStateStore.clearProgress(userId: user.id)
     }
 
     private func stopAudioCapture() {
@@ -448,5 +522,56 @@ final class OnboardingViewModel: ObservableObject {
     private func stopAudioTimer() {
         audioTimer?.invalidate()
         audioTimer = nil
+    }
+
+    private var suggestionsAreEmpty: Bool {
+        substackSuggestions.isEmpty && podcastSuggestions.isEmpty && subredditSuggestions.isEmpty
+    }
+
+    private func isDiscoveryTerminalStatus(_ status: String?) -> Bool {
+        status == "completed" || status == "failed"
+    }
+
+    private func restoreProgress(_ snapshot: OnboardingProgressSnapshot) {
+        step = snapshot.step
+        isPersonalized = snapshot.isPersonalized
+        suggestions = snapshot.suggestions
+        selectedSourceKeys = Set(snapshot.selectedSourceKeys)
+        selectedSubreddits = Set(snapshot.selectedSubreddits)
+        discoveryRunId = snapshot.discoveryRunId
+        discoveryRunStatus = snapshot.discoveryRunStatus
+        discoveryErrorMessage = snapshot.discoveryErrorMessage
+        hasReachedDiscoveryPollingLimit = snapshot.hasReachedPollingLimit
+        topicSummary = snapshot.topicSummary
+        inferredTopics = snapshot.inferredTopics
+    }
+
+    private func persistProgress() {
+        guard !user.hasCompletedOnboarding else {
+            onboardingStateStore.clearProgress(userId: user.id)
+            return
+        }
+
+        guard step == .loading || step == .suggestions else {
+            onboardingStateStore.clearProgress(userId: user.id)
+            return
+        }
+
+        onboardingStateStore.saveProgress(
+            userId: user.id,
+            snapshot: OnboardingProgressSnapshot(
+                step: step,
+                isPersonalized: isPersonalized,
+                suggestions: suggestions,
+                selectedSourceKeys: Array(selectedSourceKeys).sorted(),
+                selectedSubreddits: Array(selectedSubreddits).sorted(),
+                discoveryRunId: discoveryRunId,
+                discoveryRunStatus: discoveryRunStatus,
+                discoveryErrorMessage: discoveryErrorMessage,
+                hasReachedPollingLimit: hasReachedDiscoveryPollingLimit,
+                topicSummary: topicSummary,
+                inferredTopics: inferredTopics
+            )
+        )
     }
 }

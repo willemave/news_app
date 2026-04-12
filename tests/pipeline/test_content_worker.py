@@ -14,6 +14,10 @@ from app.pipeline.worker import ContentWorker
 from app.processing_strategies.youtube_strategy import YouTubeProcessorStrategy
 from app.services.http import NonRetryableError
 from app.services.queue import TaskType
+from app.services.youtube_equivalent_resolver import (
+    YouTubeEquivalentResolution,
+    YouTubeOEmbedMetadata,
+)
 
 
 @pytest.fixture
@@ -552,6 +556,223 @@ class TestContentWorker:
         assert content_data.metadata["transcript"] == "Transcript text"
         assert content_data.metadata["youtube_video"] is True
         assert content_data.status == ContentStatus.PROCESSING
+
+    def test_process_youtube_skip_resolves_to_non_youtube_podcast(self, mock_dependencies):
+        worker = ContentWorker()
+
+        mock_content = Mock()
+        mock_content.id = 790
+        mock_content.url = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_content.content_type = ContentType.PODCAST.value
+        mock_content.content_metadata = {}
+
+        content_data = ContentData(
+            id=790,
+            url="https://www.youtube.com/watch?v=abc123xyz",
+            content_type=ContentType.PODCAST,
+            status=ContentStatus.NEW,
+            metadata={
+                "audio_url": "https://www.youtube.com/watch?v=abc123xyz",
+                "youtube_video": True,
+                "platform": "youtube",
+            },
+            title=None,
+            created_at=datetime.now(UTC),
+            processed_at=None,
+            retry_count=0,
+        )
+
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
+
+        mock_strategy = Mock(spec=YouTubeProcessorStrategy)
+        mock_strategy.preprocess_url.return_value = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_strategy.download_content.return_value = b""
+        mock_strategy.extract_data.return_value = {
+            "skip_processing": True,
+            "skip_reason": "YouTube requires authentication or is a premiere",
+        }
+        mock_strategy.prepare_for_llm.return_value = {}
+        worker.strategy_registry.get_strategy.return_value = mock_strategy
+
+        resolution = YouTubeEquivalentResolution(
+            metadata=YouTubeOEmbedMetadata(
+                title="The Future of Software Engineering with AI",
+                author_name="Lightspeed Venture Partners",
+                thumbnail_url="https://i.ytimg.com/vi/abc123xyz/hqdefault.jpg",
+            ),
+            search_query="The Future of Software Engineering with AI Lightspeed Venture Partners",
+            resolved_url="https://podcasts.apple.com/us/podcast/example/id1?i=2",
+            resolved_title="The Future of Software! When AI Becomes Your Reliability Team",
+            content_type="podcast",
+            platform="apple_podcasts",
+            media_url="https://anchor.fm/s/example.mp3",
+            media_format="mp3",
+            source="exa_search",
+            similarity=0.61,
+            reason="resolved",
+        )
+
+        with (
+            patch("app.pipeline.worker.content_to_domain") as mock_converter,
+            patch("app.pipeline.worker.resolve_youtube_equivalent", return_value=resolution),
+        ):
+            mock_converter.return_value = content_data
+            result = worker.process_content(790, "test-worker")
+
+        assert result is True
+        worker.queue_gateway.enqueue.assert_called_once_with(
+            TaskType.PROCESS_PODCAST_MEDIA,
+            content_id=790,
+        )
+        assert str(content_data.url) == "https://podcasts.apple.com/us/podcast/example/id1?i=2"
+        assert content_data.title == "The Future of Software! When AI Becomes Your Reliability Team"
+        assert content_data.metadata["audio_url"] == "https://anchor.fm/s/example.mp3"
+        assert content_data.metadata["platform"] == "apple_podcasts"
+        assert content_data.metadata["resolved_from_youtube_url"] == (
+            "https://www.youtube.com/watch?v=abc123xyz"
+        )
+        assert content_data.status == ContentStatus.PROCESSING
+        assert content_data.error_message is None
+
+    def test_process_youtube_skip_resolves_to_article(self, mock_dependencies):
+        worker = ContentWorker()
+
+        mock_content = Mock()
+        mock_content.id = 791
+        mock_content.url = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_content.content_type = ContentType.PODCAST.value
+        mock_content.content_metadata = {}
+
+        content_data = ContentData(
+            id=791,
+            url="https://www.youtube.com/watch?v=abc123xyz",
+            content_type=ContentType.PODCAST,
+            status=ContentStatus.NEW,
+            metadata={
+                "audio_url": "https://www.youtube.com/watch?v=abc123xyz",
+                "youtube_video": True,
+                "platform": "youtube",
+            },
+            title=None,
+            created_at=datetime.now(UTC),
+            processed_at=None,
+            retry_count=0,
+        )
+
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
+
+        mock_strategy = Mock(spec=YouTubeProcessorStrategy)
+        mock_strategy.preprocess_url.return_value = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_strategy.download_content.return_value = b""
+        mock_strategy.extract_data.return_value = {
+            "skip_processing": True,
+            "skip_reason": "YouTube requires authentication or is a premiere",
+        }
+        mock_strategy.prepare_for_llm.return_value = {}
+        worker.strategy_registry.get_strategy.return_value = mock_strategy
+        worker._process_article = Mock(return_value=True)
+
+        resolution = YouTubeEquivalentResolution(
+            metadata=YouTubeOEmbedMetadata(
+                title="Owning the AI Pareto Frontier",
+                author_name="Latent Space",
+            ),
+            search_query="Owning the AI Pareto Frontier Latent Space",
+            resolved_url="https://www.latent.space/p/jeffdean",
+            resolved_title="Owning the AI Pareto Frontier — Jeff Dean",
+            content_type="article",
+            platform="substack",
+            media_url="https://api.substack.com/feed/podcast/example.mp3",
+            media_format="mp3",
+            source="exa_search",
+            similarity=0.41,
+            reason="resolved",
+        )
+
+        with (
+            patch("app.pipeline.worker.content_to_domain") as mock_converter,
+            patch("app.pipeline.worker.resolve_youtube_equivalent", return_value=resolution),
+        ):
+            mock_converter.return_value = content_data
+            result = worker.process_content(791, "test-worker")
+
+        assert result is True
+        worker._process_article.assert_called_once_with(content_data)
+        worker.queue_gateway.enqueue.assert_not_called()
+        assert str(content_data.url) == "https://www.latent.space/p/jeffdean"
+        assert content_data.content_type == ContentType.ARTICLE
+        assert content_data.metadata["platform"] == "substack"
+        assert (
+            content_data.metadata["audio_url"]
+            == "https://api.substack.com/feed/podcast/example.mp3"
+        )
+
+    def test_process_youtube_skip_without_match_still_sets_title_from_metadata(
+        self, mock_dependencies
+    ):
+        worker = ContentWorker()
+
+        mock_content = Mock()
+        mock_content.id = 792
+        mock_content.url = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_content.content_type = ContentType.PODCAST.value
+        mock_content.content_metadata = {}
+
+        content_data = ContentData(
+            id=792,
+            url="https://www.youtube.com/watch?v=abc123xyz",
+            content_type=ContentType.PODCAST,
+            status=ContentStatus.NEW,
+            metadata={
+                "audio_url": "https://www.youtube.com/watch?v=abc123xyz",
+                "youtube_video": True,
+                "platform": "youtube",
+            },
+            title=None,
+            created_at=datetime.now(UTC),
+            processed_at=None,
+            retry_count=0,
+        )
+
+        mock_db = Mock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_content
+        mock_dependencies["get_db"].return_value.__enter__.return_value = mock_db
+
+        mock_strategy = Mock(spec=YouTubeProcessorStrategy)
+        mock_strategy.preprocess_url.return_value = "https://www.youtube.com/watch?v=abc123xyz"
+        mock_strategy.download_content.return_value = b""
+        mock_strategy.extract_data.return_value = {
+            "skip_processing": True,
+            "skip_reason": "YouTube requires authentication or is a premiere",
+        }
+        mock_strategy.prepare_for_llm.return_value = {}
+        worker.strategy_registry.get_strategy.return_value = mock_strategy
+
+        resolution = YouTubeEquivalentResolution(
+            metadata=YouTubeOEmbedMetadata(
+                title="The Future of Software Engineering with AI",
+                author_name="Lightspeed Venture Partners",
+            ),
+            search_query="The Future of Software Engineering with AI Lightspeed Venture Partners",
+            reason="no_validated_match",
+        )
+
+        with (
+            patch("app.pipeline.worker.content_to_domain") as mock_converter,
+            patch("app.pipeline.worker.resolve_youtube_equivalent", return_value=resolution),
+        ):
+            mock_converter.return_value = content_data
+            result = worker.process_content(792, "test-worker")
+
+        assert result is True
+        assert content_data.title == "The Future of Software Engineering with AI"
+        assert content_data.status == ContentStatus.SKIPPED
+        assert content_data.error_message == "YouTube requires authentication or is a premiere"
+        assert content_data.metadata["youtube_equivalent_resolution"] == "no_validated_match"
 
     def test_process_unknown_content_type(self, mock_dependencies):
         """Test processing with unknown content type."""

@@ -7,43 +7,121 @@
 
 import Foundation
 
+struct OnboardingProgressSnapshot: Codable {
+    var step: OnboardingStep
+    var isPersonalized: Bool
+    var suggestions: OnboardingFastDiscoverResponse?
+    var selectedSourceKeys: [String]
+    var selectedSubreddits: [String]
+    var discoveryRunId: Int?
+    var discoveryRunStatus: String?
+    var discoveryErrorMessage: String?
+    var hasReachedPollingLimit: Bool
+    var topicSummary: String?
+    var inferredTopics: [String]
+}
+
 final class OnboardingStateStore {
     static let shared = OnboardingStateStore()
 
-    private let discoveryRunKey = "onboarding_discovery_runs"
+    private let progressKey = "onboarding_progress"
+    private let legacyDiscoveryRunKey = "onboarding_discovery_runs"
     private let defaults: UserDefaults
 
-    private init() {
-        defaults = SharedContainer.userDefaults
+    init(defaults: UserDefaults = SharedContainer.userDefaults) {
+        self.defaults = defaults
+    }
+
+    func saveProgress(userId: Int, snapshot: OnboardingProgressSnapshot) {
+        guard userId > 0 else { return }
+        var progress = loadProgressMap()
+        progress[String(userId)] = snapshot
+        saveProgressMap(progress)
+        clearLegacyDiscoveryRun(userId: userId)
+    }
+
+    func progress(userId: Int) -> OnboardingProgressSnapshot? {
+        guard userId > 0 else { return nil }
+        let key = String(userId)
+        if let snapshot = loadProgressMap()[key] {
+            return snapshot
+        }
+
+        guard let legacyRunId = loadLegacyRunMap()[key] else { return nil }
+        return OnboardingProgressSnapshot(
+            step: .loading,
+            isPersonalized: true,
+            suggestions: nil,
+            selectedSourceKeys: [],
+            selectedSubreddits: [],
+            discoveryRunId: legacyRunId,
+            discoveryRunStatus: nil,
+            discoveryErrorMessage: nil,
+            hasReachedPollingLimit: false,
+            topicSummary: nil,
+            inferredTopics: []
+        )
     }
 
     func setDiscoveryRun(userId: Int, runId: Int) {
         guard userId > 0, runId > 0 else { return }
-        var runs = loadRunMap()
-        runs[String(userId)] = runId
-        saveRunMap(runs)
+        saveProgress(
+            userId: userId,
+            snapshot: OnboardingProgressSnapshot(
+                step: .loading,
+                isPersonalized: true,
+                suggestions: nil,
+                selectedSourceKeys: [],
+                selectedSubreddits: [],
+                discoveryRunId: runId,
+                discoveryRunStatus: nil,
+                discoveryErrorMessage: nil,
+                hasReachedPollingLimit: false,
+                topicSummary: nil,
+                inferredTopics: []
+            )
+        )
     }
 
     func discoveryRunId(userId: Int) -> Int? {
-        guard userId > 0 else { return nil }
-        return loadRunMap()[String(userId)]
+        progress(userId: userId)?.discoveryRunId
     }
 
     func clearDiscoveryRun(userId: Int) {
-        guard userId > 0 else { return }
-        var runs = loadRunMap()
-        runs.removeValue(forKey: String(userId))
-        saveRunMap(runs)
+        clearProgress(userId: userId)
     }
 
-    private func loadRunMap() -> [String: Int] {
-        guard let data = defaults.data(forKey: discoveryRunKey) else { return [:] }
+    func clearProgress(userId: Int) {
+        guard userId > 0 else { return }
+        let key = String(userId)
+        var progress = loadProgressMap()
+        progress.removeValue(forKey: key)
+        saveProgressMap(progress)
+        clearLegacyDiscoveryRun(userId: userId)
+    }
+
+    private func loadProgressMap() -> [String: OnboardingProgressSnapshot] {
+        guard let data = defaults.data(forKey: progressKey) else { return [:] }
+        return
+            (try? JSONDecoder().decode([String: OnboardingProgressSnapshot].self, from: data)) ?? [:]
+    }
+
+    private func saveProgressMap(_ progress: [String: OnboardingProgressSnapshot]) {
+        if let data = try? JSONEncoder().encode(progress) {
+            defaults.set(data, forKey: progressKey)
+        }
+    }
+
+    private func loadLegacyRunMap() -> [String: Int] {
+        guard let data = defaults.data(forKey: legacyDiscoveryRunKey) else { return [:] }
         return (try? JSONDecoder().decode([String: Int].self, from: data)) ?? [:]
     }
 
-    private func saveRunMap(_ runs: [String: Int]) {
+    private func clearLegacyDiscoveryRun(userId: Int) {
+        var runs = loadLegacyRunMap()
+        runs.removeValue(forKey: String(userId))
         if let data = try? JSONEncoder().encode(runs) {
-            defaults.set(data, forKey: discoveryRunKey)
+            defaults.set(data, forKey: legacyDiscoveryRunKey)
         }
     }
 }

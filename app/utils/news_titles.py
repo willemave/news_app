@@ -4,13 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.utils.title_utils import clean_title, resolve_display_title, resolve_title_candidate
+from app.utils.title_utils import (
+    clean_title,
+    get_section_title,
+    mapping,
+    resolve_display_title,
+    resolve_title_candidate,
+)
 
 _UNSET = object()
-
-
-def _mapping(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
 
 
 def _clean_related_titles(value: Any) -> list[str]:
@@ -32,19 +34,17 @@ def _clean_related_titles(value: Any) -> list[str]:
 
 def get_news_article_title(raw_metadata: Any) -> str | None:
     """Return the canonical original/source title for one news item."""
-    article = _mapping(_mapping(raw_metadata).get("article"))
-    return clean_title(article.get("title"))
+    return get_section_title(raw_metadata, "article")
 
 
 def get_news_summary_title(raw_metadata: Any) -> str | None:
     """Return the canonical enriched/generated title for one news item."""
-    summary = _mapping(_mapping(raw_metadata).get("summary"))
-    return clean_title(summary.get("title"))
+    return get_section_title(raw_metadata, "summary")
 
 
 def get_news_cluster_related_titles(raw_metadata: Any) -> list[str]:
     """Return cleaned related titles stored in cluster metadata."""
-    cluster = _mapping(_mapping(raw_metadata).get("cluster"))
+    cluster = mapping(mapping(raw_metadata).get("cluster"))
     return _clean_related_titles(cluster.get("related_titles"))
 
 
@@ -84,8 +84,8 @@ def resolve_news_summary_title(
 
 
 def _set_nested_title(raw_metadata: Any, section_name: str, title: Any) -> dict[str, Any]:
-    updated = _mapping(raw_metadata)
-    section = _mapping(updated.get(section_name))
+    updated = mapping(raw_metadata)
+    section = mapping(updated.get(section_name))
     cleaned = clean_title(title)
     if cleaned:
         section["title"] = cleaned
@@ -110,10 +110,10 @@ def set_news_summary_title(raw_metadata: Any, title: Any) -> dict[str, Any]:
 
 def merge_news_metadata(existing: Any, incoming: Any) -> dict[str, Any]:
     """Merge news-item metadata while preserving nested title sections."""
-    merged = _mapping(existing)
-    for key, value in _mapping(incoming).items():
+    merged = mapping(existing)
+    for key, value in mapping(incoming).items():
         if isinstance(merged.get(key), dict) and isinstance(value, dict):
-            merged[key] = {**_mapping(merged.get(key)), **_mapping(value)}
+            merged[key] = {**mapping(merged.get(key)), **mapping(value)}
             continue
         merged[key] = value
     return merged
@@ -126,7 +126,7 @@ def normalize_news_metadata_titles(
     summary_title: Any = _UNSET,
 ) -> dict[str, Any]:
     """Normalize stored metadata titles and optionally overwrite them with explicit values."""
-    updated = _mapping(raw_metadata)
+    updated = mapping(raw_metadata)
     updated = set_news_article_title(updated, get_news_article_title(updated))
     updated = set_news_summary_title(updated, get_news_summary_title(updated))
     if article_title is not _UNSET:

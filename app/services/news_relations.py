@@ -17,7 +17,9 @@ from app.models.schema import NewsItem
 from app.services.news_embeddings import encode_news_texts
 from app.services.news_reranker import rerank_news_documents
 from app.utils.news_titles import (
+    get_news_article_title,
     get_news_cluster_related_titles,
+    get_news_summary_title,
     resolve_news_display_title,
     set_news_article_title,
     set_news_summary_title,
@@ -118,7 +120,7 @@ def _relation_primary_title(item: NewsItem) -> str | None:
     cluster_titles = get_news_cluster_related_titles(item.raw_metadata)
     if cluster_titles:
         return cluster_titles[0]
-    return clean_title(item.summary_title or item.article_title)
+    return get_news_summary_title(item.raw_metadata) or get_news_article_title(item.raw_metadata)
 
 
 def _cluster_related_titles(item: NewsItem) -> list[str]:
@@ -142,7 +144,9 @@ def _cluster_related_titles(item: NewsItem) -> list[str]:
             _append_title(value)
             if len(titles) >= CLUSTER_RELATED_TITLE_LIMIT:
                 break
-    _append_title(item.summary_title or item.article_title)
+    _append_title(
+        get_news_summary_title(item.raw_metadata) or get_news_article_title(item.raw_metadata)
+    )
 
     return titles
 
@@ -530,8 +534,8 @@ def _cluster_payload(
         )
 
         for candidate_title in (
-            item.summary_title,
-            item.article_title,
+            get_news_summary_title(item.raw_metadata),
+            get_news_article_title(item.raw_metadata),
             *(prior_related_titles if isinstance(prior_related_titles, list) else []),
         ):
             title = clean_title(candidate_title)

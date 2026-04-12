@@ -104,7 +104,7 @@ def list_contents(
     response_model=ContentListResponse,
     summary="Search content across articles and podcasts",
     description=(
-        "Case-insensitive string search across titles, sources, and summaries. "
+        "PostgreSQL-backed search across titles, sources, and summaries. "
         "Results exclude items classified as 'skip' and only include summarized content. "
         "Supports cursor-based pagination for efficient loading."
     ),
@@ -129,7 +129,7 @@ def search_contents(
         deprecated=True,
     ),
 ) -> ContentListResponse:
-    """Search content with portable SQL patterns and cursor-based pagination."""
+    """Search content with PostgreSQL full-text search and cursor-based pagination."""
     user_id = _require_user_id(current_user)
     return search_content_cards.execute(
         db,

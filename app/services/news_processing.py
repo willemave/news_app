@@ -18,6 +18,7 @@ from app.services.discussion_fetcher import fetch_and_store_news_item_discussion
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
 from app.services.news_article_bodies import get_news_item_article_body_resolver
 from app.services.news_relations import reconcile_news_item_relation
+from app.utils.news_titles import get_news_article_title, get_news_summary_title
 from app.utils.title_utils import clean_title, resolve_title_candidate
 from app.utils.url_utils import normalize_http_url
 
@@ -58,10 +59,6 @@ def _clean_string(value: Any) -> str | None:
     return cleaned or None
 
 
-def _clean_title(value: Any) -> str | None:
-    return clean_title(value)
-
-
 def _normalize_key_points(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -98,7 +95,7 @@ def _extract_existing_summary(item: NewsItem) -> NewsSummary | None:
         summary_text=item.summary_text,
     ):
         return NewsSummary(
-            title=_clean_title(item.summary_title) or _clean_title(item.article_title),
+            title=get_news_summary_title(raw_metadata) or get_news_article_title(raw_metadata),
             article_url=item.article_url,
             key_points=item_key_points,
             summary=item.summary_text,
@@ -115,7 +112,7 @@ def _extract_existing_summary(item: NewsItem) -> NewsSummary | None:
     ):
         return None
     return NewsSummary(
-        title=_clean_title(summary.get("title")) or _clean_title(item.article_title),
+        title=clean_title(summary.get("title")) or get_news_article_title(raw_metadata),
         article_url=_clean_string(summary.get("article_url")) or item.article_url,
         key_points=summary_key_points,
         summary=summary_text,
@@ -159,7 +156,7 @@ def _build_processing_prompt(
         lines.append(f"Source label: {item.source_label}")
     if item.platform:
         lines.append(f"Platform: {item.platform}")
-    article_title = _clean_title(item.article_title)
+    article_title = get_news_article_title(raw_metadata) or clean_title(item.article_title)
     if article_title:
         lines.append(f"Article title: {article_title}")
     if item.article_domain:
@@ -196,11 +193,12 @@ def _fallback_summary(item: NewsItem, raw_metadata: dict[str, Any]) -> NewsSumma
         if snippet:
             key_points = [snippet[:220]]
 
-    summary_text = item.summary_text or (key_points[0] if key_points else item.article_title)
+    canonical_article_title = get_news_article_title(raw_metadata) or item.article_title
+    summary_text = item.summary_text or (key_points[0] if key_points else canonical_article_title)
     return NewsSummary(
         title=(
-            _clean_title(item.summary_title)
-            or _clean_title(item.article_title)
+            get_news_summary_title(raw_metadata)
+            or get_news_article_title(raw_metadata)
             or f"News item {item.id}"
         ),
         article_url=item.article_url,
@@ -376,7 +374,8 @@ def process_news_item(
             content_summarizer = summarizer or get_content_summarizer()
             summarize_kwargs: dict[str, Any] = {
                 "content_type": "news",
-                "title": _clean_title(item.article_title) or _clean_title(item.summary_title),
+                "title": get_news_article_title(raw_metadata)
+                or get_news_summary_title(raw_metadata),
                 "content_id": item.id,
             }
             if summarizer is None or _summarizer_accepts_context_kwargs(content_summarizer):

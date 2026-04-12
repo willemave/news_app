@@ -41,7 +41,6 @@ from app.models.api.chat import (
     MessageProcessingStatus as MessageProcessingStatusDto,
 )
 from app.models.chat_message_metadata import ChatMessageRenderMetadata
-from app.models.content_mapper import content_to_domain
 from app.models.internal.assistant import AssistantScreenContext
 from app.models.schema import (
     ChatMessage,
@@ -74,6 +73,7 @@ from app.services.llm_models import (
     resolve_model,
 )
 from app.services.personal_markdown_library import sync_personal_markdown_for_content
+from app.utils.title_utils import resolve_content_display_title
 
 logger = get_logger(__name__)
 
@@ -278,8 +278,11 @@ def _refresh_assistant_session_context(
 def _resolve_article_title(content: Content) -> str | None:
     """Resolve a chat-friendly title from content, falling back to display_title."""
     try:
-        domain_content = content_to_domain(content)
-        return domain_content.display_title
+        return resolve_content_display_title(
+            title=content.title,
+            metadata=content.content_metadata,
+            fallback="Untitled",
+        )
     except Exception as exc:  # pragma: no cover - defensive fallback
         logger.warning("Failed to resolve display title for content %s: %s", content.id, exc)
         return None

@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.models.metadata import ContentStatus, ContentType
 from app.models.schema import Content, ContentStatusEntry
 from app.models.user import User
-from app.repositories.search_backend import get_search_backend
 from app.utils.image_paths import get_content_images_dir
 from app.utils.pagination import PaginationCursor
 
@@ -260,10 +259,8 @@ class TestSearchEndpointPagination:
         assert data["meta"]["has_more"] is True
         assert data["meta"]["next_cursor"] is not None
 
-    def test_search_uses_fts_when_available(self, client, db_session, sample_contents):
-        """Use the PostgreSQL FTS backend when the database supports it."""
-        assert get_search_backend(db_session).supports_full_text()
-
+    def test_search_returns_results(self, client, sample_contents):
+        """Search should return visible content results."""
         response = client.get("/api/content/search", params={"q": "Article", "limit": 5})
         assert response.status_code == 200
 

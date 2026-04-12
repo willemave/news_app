@@ -6,16 +6,20 @@ from pydantic_ai.models.test import TestModel
 
 from app.core.settings import get_settings
 from app.models.schema import Content, ContentStatusEntry, UserScraperConfig
+from app.repositories.search_repository import (
+    search_news,
+    search_subscription_feeds,
+)
 from app.services import assistant_router
 
 
 def test_build_turn_instructions_prefers_knowledge_for_saved_content_prompts() -> None:
-    """Favorite/saved prompts should route to SearchKnowledge."""
+    """Favorite/saved prompts should route to search_knowledge."""
 
     instructions = assistant_router._build_turn_instructions("What is my favorite article?")
 
     assert instructions is not None
-    assert "SearchKnowledge" in instructions
+    assert "search_knowledge" in instructions
 
 
 def test_build_turn_instructions_prefers_web_for_recent_questions() -> None:
@@ -55,7 +59,7 @@ def test_build_turn_instructions_keeps_feed_recommendations_non_mutating() -> No
 
 
 def test_build_turn_instructions_prefers_content_search_for_feed_summary() -> None:
-    """Feed summary prompts should route to SearchContent before web search."""
+    """Feed summary prompts should route to in-app search tools before web search."""
 
     instructions = assistant_router._build_turn_instructions(
         "Give me a summary of the last day's content from my feed, "
@@ -63,7 +67,8 @@ def test_build_turn_instructions_prefers_content_search_for_feed_summary() -> No
     )
 
     assert instructions is not None
-    assert "SearchContent" in instructions
+    assert "search_content" in instructions
+    assert "search_news" in instructions
 
 
 def test_build_turn_instructions_skips_small_talk() -> None:
@@ -171,10 +176,10 @@ def test_find_subscription_content_matches_uses_active_feed_names(
     )
     db_session.commit()
 
-    matches, total_matches = assistant_router._find_subscription_content_matches(
+    matches, total_matches = search_subscription_feeds(
         db_session,
         user_id=test_user.id,
-        query="How many BG2 pods do I have in my feed?",
+        query_text="How many BG2 pods do I have in my feed?",
         limit=10,
     )
 
@@ -183,7 +188,7 @@ def test_find_subscription_content_matches_uses_active_feed_names(
 
 
 def test_format_content_hits_reports_total_matches() -> None:
-    """Formatted SearchContent responses should include the total match count."""
+    """Formatted search_content responses should include the total match count."""
 
     content = Content(
         id=42,
@@ -204,8 +209,36 @@ def test_format_content_hits_reports_total_matches() -> None:
     assert "Feed Content (13 total matches, showing 1):" in formatted
 
 
+def test_format_content_hits_prefers_summary_display_title() -> None:
+    """Formatted search_content responses should use the canonical summary display title."""
+
+    content = Content(
+        id=42,
+        content_type="article",
+        url="https://example.com/bg2",
+        title="Stored page title",
+        source="BG2 Pod",
+        status="completed",
+        content_metadata={
+            "summary": {
+                "title": "Canonical summary title",
+                "overview": "Short summary",
+            }
+        },
+    )
+
+    formatted = assistant_router._format_content_hits(
+        query="summary title",
+        content_rows=[(content, object(), None)],
+        total_content_matches=1,
+    )
+
+    assert "Canonical summary title" in formatted
+    assert "Stored page title" not in formatted
+
+
 def test_format_content_hits_includes_news_item_section(visible_news_item) -> None:
-    """Formatted SearchContent responses should include recent news items."""
+    """Formatted search_news responses should include recent news items."""
 
     formatted = assistant_router._format_content_hits(
         query="recent news items from my feed",
@@ -220,7 +253,7 @@ def test_format_content_hits_includes_news_item_section(visible_news_item) -> No
     assert "summary:" in formatted
 
 
-def test_find_visible_news_item_matches_returns_recent_visible_rows(
+def test_search_news_returns_recent_visible_rows(
     db_session,
     test_user,
     news_item_factory,
@@ -242,10 +275,10 @@ def test_find_visible_news_item_matches_returns_recent_visible_rows(
         ingested_at=(datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None),
     )
 
-    rows, total_matches = assistant_router._find_visible_news_item_matches(
+    rows, total_matches = search_news(
         db_session,
         user_id=test_user.id,
-        query="Give me a summary of the last day's content from my feed.",
+        query_text="Give me a summary of the last day's content from my feed.",
         limit=5,
     )
 
@@ -253,7 +286,7 @@ def test_find_visible_news_item_matches_returns_recent_visible_rows(
     assert [item.id for item, _is_read in rows[:2]] == [newer_item.id, older_item.id]
 
 
-def test_find_visible_news_item_matches_uses_metadata_titles(
+def test_search_news_uses_metadata_titles(
     db_session,
     test_user,
     news_item_factory,
@@ -282,10 +315,10 @@ def test_find_visible_news_item_matches_uses_metadata_titles(
     )
     db_session.commit()
 
-    rows, total_matches = assistant_router._find_visible_news_item_matches(
+    rows, total_matches = search_news(
         db_session,
         user_id=test_user.id,
-        query="SolveIt craftsmanship",
+        query_text="SolveIt craftsmanship",
         limit=5,
     )
 

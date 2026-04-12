@@ -18,7 +18,7 @@ from pydantic_ai.messages import (
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models.chat_message_metadata import ChatMessageRenderMetadata, CouncilCandidate
-from app.models.schema import ChatMessage, ChatSession, Content
+from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.models.user import (
     MIN_COUNCIL_EXPERTS,
     CouncilPersonaConfig,
@@ -165,7 +165,7 @@ def clone_session_messages(
     source_session_id: int,
     target_session_id: int,
 ) -> None:
-    """Clone persisted chat history from one session into another."""
+    """Clone completed chat history from one session into another."""
 
     source_messages = (
         db.query(ChatMessage)
@@ -174,6 +174,8 @@ def clone_session_messages(
         .all()
     )
     for source in source_messages:
+        if source.status == MessageProcessingStatus.PROCESSING.value:
+            continue
         db.add(
             ChatMessage(
                 session_id=target_session_id,

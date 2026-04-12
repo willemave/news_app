@@ -1,5 +1,8 @@
 # Migrating Session-Based Data to User-Based Tracking
 
+Legacy note: this guide exists for recovering data from pre-PostgreSQL SQLite
+backups. SQLite is deprecated and unsupported as a Newsly runtime dialect.
+
 This guide explains how to recover your favorites and read status after migrating from session-based to user-based authentication.
 
 ## Background
