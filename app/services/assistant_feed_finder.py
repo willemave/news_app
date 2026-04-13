@@ -11,6 +11,7 @@ from app.models.chat_message_metadata import (
 )
 from app.services.exa_client import ExaContentResult, ExaSearchResult, exa_get_contents, exa_search
 from app.services.feed_detection import FeedDetector
+from app.services.feed_resolution import extract_candidate_feed_urls, resolve_feed_candidate
 
 MAX_FEED_SEARCH_RESULTS = 8
 MAX_FEED_CONTENT_CHARACTERS = 5000
@@ -18,8 +19,6 @@ MAX_FEED_OPTIONS = 5
 MAX_FEED_OPTION_TITLE_CHARACTERS = 300
 MAX_FEED_OPTION_DESCRIPTION_CHARACTERS = 600
 MAX_FEED_OPTION_RATIONALE_CHARACTERS = 600
-URL_REGEX = r"https?://[^\s\"'<>]+"
-URL_TRIM_CHARS = ".,);]>'\""
 PODCAST_QUERY_HINTS = ("podcast", "podcasts", "episode", "episodes", "show", "shows")
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
 
@@ -100,41 +99,22 @@ def _build_option_from_result(
         if isinstance(part, str) and part.strip()
     )
 
-    for candidate_feed_url in _candidate_feed_urls(site_url, page_text):
-        validated = detector.validate_feed_url(candidate_feed_url)
-        if not validated:
-            continue
-        option = _build_option(
-            search_result=search_result,
-            site_url=site_url,
-            feed_url=validated["feed_url"],
-            feed_format=validated.get("feed_format", "rss"),
-            feed_title=validated.get("title"),
-            detector=detector,
-            page_text=page_text,
-            seen_feed_urls=seen_feed_urls,
-        )
-        if option is not None:
-            return option
-
-    detection = detector.detect_from_links(
-        None,
-        page_url=site_url,
-        page_title=search_result.title,
+    resolved = resolve_feed_candidate(
+        detector=detector,
+        title=search_result.title,
+        site_url=site_url,
+        candidate_feed_urls=extract_candidate_feed_urls(site_url, page_text),
         source="assistant_feed_finder",
-        content_type="article",
-        force_detect=True,
     )
-    if not detection:
+    if resolved is None:
         return None
 
-    detected_feed = detection["detected_feed"]
     return _build_option(
         search_result=search_result,
         site_url=site_url,
-        feed_url=detected_feed["url"],
-        feed_format=detected_feed.get("format", "rss"),
-        feed_title=detected_feed.get("title"),
+        feed_url=resolved["feed_url"],
+        feed_format=resolved.get("feed_format", "rss"),
+        feed_title=resolved.get("title"),
         detector=detector,
         page_text=page_text,
         seen_feed_urls=seen_feed_urls,
@@ -153,25 +133,22 @@ def _build_option_from_live_page(
     except Exception:  # noqa: BLE001
         return None
 
-    detection = detector.detect_from_links(
-        None,
-        page_url=str(getattr(response, "url", site_url) or site_url),
-        page_title=search_result.title,
+    resolved = resolve_feed_candidate(
+        detector=detector,
+        title=search_result.title,
+        site_url=str(getattr(response, "url", site_url) or site_url),
         html_content=response.text,
         source="assistant_feed_finder",
-        content_type="article",
-        force_detect=True,
     )
-    if not detection:
+    if resolved is None:
         return None
 
-    detected_feed = detection["detected_feed"]
     return _build_option(
         search_result=search_result,
         site_url=site_url,
-        feed_url=detected_feed["url"],
-        feed_format=detected_feed.get("format", "rss"),
-        feed_title=detected_feed.get("title"),
+        feed_url=resolved["feed_url"],
+        feed_format=resolved.get("feed_format", "rss"),
+        feed_title=resolved.get("title"),
         detector=detector,
         page_text=response.text,
         seen_feed_urls=seen_feed_urls,
@@ -211,8 +188,7 @@ def _build_option(
         MAX_FEED_OPTION_TITLE_CHARACTERS,
     )
     rationale = _truncate_text(
-        classification.reasoning
-        or f"Validated feed for {title or _host_label(site_url)}.",
+        classification.reasoning or f"Validated feed for {title or _host_label(site_url)}.",
         MAX_FEED_OPTION_RATIONALE_CHARACTERS,
     )
     return AssistantFeedOption(
@@ -226,27 +202,6 @@ def _build_option(
         rationale=rationale,
         evidence_url=site_url,
     )
-
-
-def _candidate_feed_urls(site_url: str, page_text: str) -> list[str]:
-    urls: list[str] = []
-    if _looks_like_feed_url(site_url):
-        urls.append(site_url)
-
-    for raw_url in _extract_urls_from_text(page_text):
-        if _looks_like_feed_url(raw_url):
-            urls.append(raw_url)
-
-    return list(dict.fromkeys(urls))
-
-
-def _extract_urls_from_text(text: str) -> list[str]:
-    if not text:
-        return []
-
-    import re
-
-    return [match.rstrip(URL_TRIM_CHARS) for match in re.findall(URL_REGEX, text)]
 
 
 def _rank_options_for_query(
@@ -275,11 +230,6 @@ def _looks_like_podcast_query(query: str) -> bool:
 def _is_youtube_site_url(url: str) -> bool:
     host = urlparse(url).netloc.lower()
     return host in YOUTUBE_HOSTS
-
-
-def _looks_like_feed_url(url: str) -> bool:
-    lowered = url.lower()
-    return any(hint in lowered for hint in ("rss", "atom", "feed", ".xml"))
 
 
 def _normalize_feed_url(feed_url: str) -> str | None:
