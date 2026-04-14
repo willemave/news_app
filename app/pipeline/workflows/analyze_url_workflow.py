@@ -30,8 +30,8 @@ class FeedFlowProtocol(Protocol):
         """Execute flow and return outcome."""
 
 
-class TwitterFlowProtocol(Protocol):
-    """Protocol for Twitter share flow."""
+class TweetResolutionFlowProtocol(Protocol):
+    """Protocol for submitted-tweet resolution flow."""
 
     def run(
         self,
@@ -39,7 +39,6 @@ class TwitterFlowProtocol(Protocol):
         content: Content,
         metadata: dict[str, Any],
         url: str,
-        task_queue_gateway: Any,
     ) -> Any:
         """Execute flow and return outcome."""
 
@@ -79,13 +78,13 @@ class AnalyzeUrlWorkflow:
         self,
         *,
         feed_flow: FeedFlowProtocol,
-        twitter_flow: TwitterFlowProtocol,
+        tweet_resolution_flow: TweetResolutionFlowProtocol,
         analysis_flow: AnalysisFlowProtocol,
         instruction_fanout: InstructionFanoutProtocol,
         payload_cleaner: PayloadCleanerProtocol,
     ) -> None:
         self._feed_flow = feed_flow
-        self._twitter_flow = twitter_flow
+        self._tweet_resolution_flow = tweet_resolution_flow
         self._analysis_flow = analysis_flow
         self._instruction_fanout = instruction_fanout
         self._payload_cleaner = payload_cleaner
@@ -128,21 +127,20 @@ class AnalyzeUrlWorkflow:
             if feed_result.handled:
                 return TaskResult.ok() if feed_result.success else TaskResult.fail()
 
-            twitter_result = self._twitter_flow.run(
+            tweet_resolution_result = self._tweet_resolution_flow.run(
                 db,
                 content,
                 metadata,
                 str(url),
-                context.queue,
             )
-            if twitter_result.handled and not twitter_result.success:
+            if tweet_resolution_result.handled and not tweet_resolution_result.success:
                 return TaskResult.fail(
-                    twitter_result.error_message or "Twitter share processing failed",
-                    retryable=twitter_result.retryable,
+                    tweet_resolution_result.error_message or "Tweet URL processing failed",
+                    retryable=tweet_resolution_result.retryable,
                 )
 
             analysis_result = None
-            if not twitter_result.handled:
+            if not tweet_resolution_result.handled:
                 analysis_result = self._analysis_flow.run(
                     db,
                     content,
@@ -153,7 +151,7 @@ class AnalyzeUrlWorkflow:
 
             if (
                 crawl_links
-                and not twitter_result.handled
+                and not tweet_resolution_result.handled
                 and analysis_result
                 and analysis_result.instruction
             ):

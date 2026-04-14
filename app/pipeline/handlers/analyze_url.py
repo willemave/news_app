@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 from app.constants import (
     DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT,
@@ -18,6 +19,7 @@ from app.models.schema import Content, ProcessingTask
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
 from app.pipeline.workflows.analyze_url_workflow import AnalyzeUrlWorkflow
+from app.repositories import knowledge_repository
 from app.services.apple_podcasts import resolve_apple_podcast_episode
 from app.services.content_analyzer import AnalysisError
 from app.services.content_metadata_merge import refresh_merge_content_metadata
@@ -36,6 +38,7 @@ from app.services.twitter_share import (
     extract_tweet_id,
 )
 from app.services.url_detection import (
+    PODCAST_HOST_PLATFORMS,
     infer_content_type_and_platform,
     should_use_llm_analysis,
 )
@@ -107,8 +110,8 @@ class FlowOutcome:
 
 
 @dataclass(frozen=True)
-class TweetArticleResolution:
-    """Resolved article target and thread context for an X share."""
+class TweetTargetResolution:
+    """Resolved canonical target and thread context for a submitted tweet URL."""
 
     selected_article_url: str | None
     resolution_source: str
@@ -343,35 +346,55 @@ class FeedSubscriptionFlow:
         return FlowOutcome(handled=True, success=True)
 
 
-class TwitterShareFlow:
-    """Handle tweet URL fanout and metadata enrichment."""
+class TweetResolutionFlow:
+    """Resolve submitted tweet URLs into canonical long-form content."""
 
     _THREAD_PAGE_LIMIT = 10
     _THREAD_TWEET_LIMIT = 1000
 
-    def _ensure_existing_article_visible(
+    def _resolve_target_type(
+        self,
+        *,
+        resolved_url: str | None,
+    ) -> tuple[str, str | None]:
+        if not resolved_url:
+            return ContentType.ARTICLE.value, "twitter"
+        hostname = (urlparse(resolved_url).hostname or "").strip().lower()
+        if hostname.startswith("www."):
+            hostname = hostname[4:]
+        podcast_platform = PODCAST_HOST_PLATFORMS.get(hostname)
+        if podcast_platform:
+            return ContentType.PODCAST.value, podcast_platform
+        detected_type, detected_platform = infer_content_type_and_platform(
+            resolved_url,
+            None,
+            None,
+        )
+        return detected_type.value, detected_platform
+
+    def _save_bookmark_target_for_user(
         self,
         db,
         *,
-        existing: Content,
+        content: Content,
         submitter_id: int | None,
     ) -> None:
-        """Attach an existing article row to the submitting user's inbox when possible."""
+        """Ensure a bookmark target is visible and saved for the submitting user."""
         if not submitter_id:
             return
 
-        existing_id = existing.id
-        if existing_id is None:
+        content_id = content.id
+        if content_id is None:
             return
         status_created = ensure_inbox_status(
             db,
             submitter_id,
-            existing_id,
-            content_type=existing.content_type,
+            content_id,
+            content_type=content.content_type,
         )
-        db.commit()
+        knowledge_repository.save_to_knowledge(db, content_id, submitter_id)
         if status_created:
-            enqueue_visible_long_form_image_if_needed(db, existing)
+            enqueue_visible_long_form_image_if_needed(db, content)
 
     def _normalize_candidate_urls(self, urls: list[str], *, content_id: int) -> list[str]:
         normalized_urls: list[str] = []
@@ -384,7 +407,7 @@ class TwitterShareFlow:
                     "Skipping invalid tweet external URL: %s",
                     raw_url,
                     extra={
-                        "component": "twitter_share",
+                        "component": "tweet_resolution",
                         "operation": "normalize_external_url",
                         "item_id": content_id,
                     },
@@ -449,7 +472,7 @@ class TwitterShareFlow:
                     "Recent search thread lookup failed for tweet %s",
                     root_tweet.id,
                     extra={
-                        "component": "twitter_share",
+                        "component": "tweet_resolution",
                         "operation": "recent_search_thread_lookup",
                     },
                 )
@@ -482,17 +505,17 @@ class TwitterShareFlow:
         thread_tweets = self._build_same_author_thread(root_tweet, collected)
         return None, "capped", root_tweet.id, thread_tweets
 
-    def _resolve_article_target(
+    def _resolve_tweet_target(
         self,
         *,
         root_tweet: XTweet,
         access_token: str | None,
         content_id: int,
-    ) -> TweetArticleResolution:
+    ) -> TweetTargetResolution:
         root_urls = self._normalize_candidate_urls(root_tweet.external_urls, content_id=content_id)
         linked_tweet_ids = list(root_tweet.linked_tweet_ids)
         if root_urls:
-            return TweetArticleResolution(
+            return TweetTargetResolution(
                 selected_article_url=root_urls[0],
                 resolution_source="root_tweet",
                 resolution_tweet_id=root_tweet.id,
@@ -513,7 +536,7 @@ class TwitterShareFlow:
                         content_id=content_id,
                     )
                     if linked_urls:
-                        return TweetArticleResolution(
+                        return TweetTargetResolution(
                             selected_article_url=linked_urls[0],
                             resolution_source="linked_tweet",
                             resolution_tweet_id=linked_tweet.id,
@@ -528,7 +551,7 @@ class TwitterShareFlow:
                     "Linked tweet lookup failed for tweet %s",
                     root_tweet.id,
                     extra={
-                        "component": "twitter_share",
+                        "component": "tweet_resolution",
                         "operation": "linked_tweet_lookup",
                         "item_id": content_id,
                     },
@@ -543,7 +566,7 @@ class TwitterShareFlow:
                 "Thread lookup failed for tweet %s",
                 root_tweet.id,
                 extra={
-                    "component": "twitter_share",
+                    "component": "tweet_resolution",
                     "operation": "thread_lookup",
                     "item_id": content_id,
                 },
@@ -556,7 +579,7 @@ class TwitterShareFlow:
             [build_tweet_processing_text(tweet) for tweet in thread_tweets]
         )
         if selected_article_url:
-            return TweetArticleResolution(
+            return TweetTargetResolution(
                 selected_article_url=selected_article_url,
                 resolution_source="thread_reply",
                 resolution_tweet_id=resolution_tweet_id,
@@ -565,7 +588,7 @@ class TwitterShareFlow:
                 thread_lookup_status=thread_lookup_status,
             )
 
-        return TweetArticleResolution(
+        return TweetTargetResolution(
             selected_article_url=None,
             resolution_source="tweet_only",
             resolution_tweet_id=root_tweet.id,
@@ -581,7 +604,6 @@ class TwitterShareFlow:
         content: Content,
         metadata: dict[str, Any],
         url: str,
-        task_queue_gateway,
     ) -> FlowOutcome:
         """Process tweet URLs and enrich the original content row."""
         base_metadata = normalize_metadata_shape(metadata)
@@ -595,6 +617,8 @@ class TwitterShareFlow:
 
         tweet_url = canonical_tweet_url(tweet_id)
         submitter_id = metadata.get("submitted_by_user_id")
+        submitted_via = str(metadata.get("submitted_via") or "").strip().lower()
+        is_bookmark_submission = submitted_via == "x_bookmarks"
         access_token = None
         if isinstance(submitter_id, int):
             access_token = get_x_user_access_token(db, user_id=submitter_id)
@@ -605,9 +629,9 @@ class TwitterShareFlow:
             if _is_nonfatal_tweet_lookup_error(error_message):
                 setup_error = _build_x_app_auth_error(error_message)
                 logger.warning(
-                    "Twitter share enrichment failed due to missing app auth token",
+                    "Tweet resolution failed due to missing app auth token",
                     extra={
-                        "component": "twitter_share",
+                        "component": "tweet_resolution",
                         "operation": "fetch_tweet",
                         "item_id": content.id,
                         "context_data": {"error": setup_error},
@@ -639,10 +663,10 @@ class TwitterShareFlow:
                 )
 
             logger.error(
-                "Twitter share fetch failed: %s",
+                "Tweet resolution fetch failed: %s",
                 error_message,
                 extra={
-                    "component": "twitter_share",
+                    "component": "tweet_resolution",
                     "operation": "fetch_tweet",
                     "item_id": content.id,
                 },
@@ -656,8 +680,8 @@ class TwitterShareFlow:
         processing_text = build_tweet_processing_text(tweet)
         content_id = content.id
         if content_id is None:
-            raise ValueError("Twitter share flow requires persisted content")
-        resolution = self._resolve_article_target(
+            raise ValueError("Tweet resolution flow requires persisted content")
+        resolution = self._resolve_tweet_target(
             root_tweet=tweet,
             access_token=access_token,
             content_id=content_id,
@@ -698,29 +722,32 @@ class TwitterShareFlow:
         if tweet.note_tweet_text:
             metadata["tweet_note_tweet_text"] = tweet.note_tweet_text
 
-        content.content_type = ContentType.ARTICLE.value
-        content.platform = "twitter"
         if not content.source_url:
             content.source_url = tweet_url
 
         primary_external_url = resolution.selected_article_url
-        existing_primary_article: Content | None = None
+        existing_target: Content | None = None
+        target_content_type, target_platform = self._resolve_target_type(
+            resolved_url=primary_external_url,
+        )
+        content.content_type = target_content_type
+        content.platform = target_platform or "twitter"
         if primary_external_url:
-            existing_primary_article = (
+            existing_target = (
                 db.query(Content)
                 .filter(
                     Content.url == primary_external_url,
-                    Content.content_type == ContentType.ARTICLE.value,
+                    Content.content_type == target_content_type,
                 )
                 .first()
             )
-            if existing_primary_article:
-                self._ensure_existing_article_visible(
+            if existing_target:
+                self._save_bookmark_target_for_user(
                     db,
-                    existing=existing_primary_article,
-                    submitter_id=submitter_id if isinstance(submitter_id, int) else None,
+                    content=existing_target,
+                    submitter_id=submitter_id if is_bookmark_submission else None,
                 )
-                metadata["canonical_content_id"] = existing_primary_article.id
+                metadata["canonical_content_id"] = existing_target.id
                 content.url = tweet_url
                 content.status = ContentStatus.SKIPPED.value
                 content.error_message = "Canonical URL conflicts with existing content"
@@ -739,13 +766,19 @@ class TwitterShareFlow:
             updated_metadata=metadata,
         )
         db.commit()
+        if is_bookmark_submission:
+            self._save_bookmark_target_for_user(
+                db,
+                content=content,
+                submitter_id=submitter_id if isinstance(submitter_id, int) else None,
+            )
 
         logger.info(
-            "Twitter share processed for content %s (external_urls=%s)",
+            "Tweet URL resolved for content %s (external_urls=%s)",
             content.id,
             len(external_urls),
             extra={
-                "component": "twitter_share",
+                "component": "tweet_resolution",
                 "operation": "analyze_url",
                 "item_id": content.id,
             },
@@ -929,13 +962,13 @@ class AnalyzeUrlHandler:
 
     def __init__(self) -> None:
         self._feed_flow = FeedSubscriptionFlow()
-        self._twitter_flow = TwitterShareFlow()
+        self._tweet_resolution_flow = TweetResolutionFlow()
         self._analysis_flow = UrlAnalysisFlow()
         self._instruction_fanout = InstructionLinkFanout()
         self._payload_cleaner = InstructionPayloadCleaner()
         self._workflow = AnalyzeUrlWorkflow(
             feed_flow=self._feed_flow,
-            twitter_flow=self._twitter_flow,
+            tweet_resolution_flow=self._tweet_resolution_flow,
             analysis_flow=self._analysis_flow,
             instruction_fanout=self._instruction_fanout,
             payload_cleaner=self._payload_cleaner,

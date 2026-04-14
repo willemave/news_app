@@ -10,7 +10,7 @@ from unittest.mock import Mock
 
 from app.constants import DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT, SELF_SUBMISSION_SOURCE
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentStatusEntry, UserScraperConfig
+from app.models.schema import Content, ContentKnowledgeSave, ContentStatusEntry, UserScraperConfig
 from app.pipeline.handlers.analyze_url import AnalyzeUrlHandler
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope
@@ -541,6 +541,14 @@ def test_tweet_bookmark_reuses_existing_article_when_primary_url_already_exists(
         )
         .first()
     )
+    knowledge_row = (
+        db_session.query(ContentKnowledgeSave)
+        .filter(
+            ContentKnowledgeSave.content_id == existing_article.id,
+            ContentKnowledgeSave.user_id == 1,
+        )
+        .first()
+    )
 
     assert result.success is True
     assert bookmark_shell.status == ContentStatus.SKIPPED.value
@@ -548,6 +556,7 @@ def test_tweet_bookmark_reuses_existing_article_when_primary_url_already_exists(
     assert _metadata(bookmark_shell.content_metadata)["canonical_content_id"] == existing_article.id
     assert status_row is not None
     assert status_row.status == "inbox"
+    assert knowledge_row is not None
     assert db_session.query(Content).filter(Content.url == "https://example.com/story").count() == 1
     queue_gateway.enqueue.assert_not_called()
 
@@ -609,8 +618,26 @@ def test_tweet_bookmark_records_native_x_article_metadata(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
+    status_row = (
+        db_session.query(ContentStatusEntry)
+        .filter(
+            ContentStatusEntry.content_id == bookmark_shell.id,
+            ContentStatusEntry.user_id == 1,
+        )
+        .first()
+    )
+    knowledge_row = (
+        db_session.query(ContentKnowledgeSave)
+        .filter(
+            ContentKnowledgeSave.content_id == bookmark_shell.id,
+            ContentKnowledgeSave.user_id == 1,
+        )
+        .first()
+    )
 
     assert result.success is True
+    assert bookmark_shell.content_type == ContentType.ARTICLE.value
     assert bookmark_shell.url == "https://x.com/i/status/123456789"
     assert bookmark_shell.title == "Native X Article"
     assert metadata["tweet_article_title"] == "Native X Article"
@@ -619,6 +646,96 @@ def test_tweet_bookmark_records_native_x_article_metadata(
         "Native X Article\n\nThis is the full native X article body."
     )
     assert "tweet_only" not in metadata
+    assert status_row is not None
+    assert status_row.status == "inbox"
+    assert knowledge_row is not None
+    queue_gateway.enqueue.assert_called_once_with(
+        TaskType.PROCESS_CONTENT,
+        content_id=bookmark_shell.id,
+    )
+
+
+def test_tweet_bookmark_resolves_linked_podcast_as_long_form_podcast(
+    db_session,
+    monkeypatch,
+) -> None:
+    bookmark_shell = Content(
+        content_type=ContentType.UNKNOWN.value,
+        url="https://x.com/someuser/status/123456789",
+        source=SELF_SUBMISSION_SOURCE,
+        status=ContentStatus.NEW.value,
+        content_metadata={
+            "source": SELF_SUBMISSION_SOURCE,
+            "submitted_by_user_id": 1,
+            "submitted_via": "x_bookmarks",
+            "platform_hint": "twitter",
+        },
+    )
+    db_session.add(bookmark_shell)
+    db_session.commit()
+    db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
+
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
+        lambda **_kwargs: XTweetFetchResult(
+            success=True,
+            tweet=XTweet(
+                id="123456789",
+                text="Listen here",
+                author_username="willem",
+                author_name="Willem",
+                created_at="2026-03-27T21:56:00Z",
+                like_count=12,
+                retweet_count=3,
+                reply_count=1,
+                external_urls=["https://podcasts.apple.com/us/podcast/example-show/id123?i=456"],
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.get_x_user_access_token",
+        lambda *_args, **_kwargs: None,
+    )
+
+    queue_gateway = Mock()
+    context = _build_context(db_session, queue_gateway=queue_gateway)
+    task = TaskEnvelope(
+        id=107,
+        task_type=TaskType.ANALYZE_URL,
+        content_id=bookmark_shell.id,
+        payload={"content_id": bookmark_shell.id},
+    )
+
+    result = AnalyzeUrlHandler().handle(task, context)
+
+    db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
+    status_row = (
+        db_session.query(ContentStatusEntry)
+        .filter(
+            ContentStatusEntry.content_id == bookmark_shell.id,
+            ContentStatusEntry.user_id == 1,
+        )
+        .first()
+    )
+    knowledge_row = (
+        db_session.query(ContentKnowledgeSave)
+        .filter(
+            ContentKnowledgeSave.content_id == bookmark_shell.id,
+            ContentKnowledgeSave.user_id == 1,
+        )
+        .first()
+    )
+
+    assert result.success is True
+    assert bookmark_shell.content_type == ContentType.PODCAST.value
+    assert bookmark_shell.platform == "apple_podcasts"
+    assert bookmark_shell.url == "https://podcasts.apple.com/us/podcast/example-show/id123?i=456"
+    assert metadata["tweet_resolution_source"] == "root_tweet"
+    assert status_row is not None
+    assert status_row.status == "inbox"
+    assert knowledge_row is not None
     queue_gateway.enqueue.assert_called_once_with(
         TaskType.PROCESS_CONTENT,
         content_id=bookmark_shell.id,
@@ -676,6 +793,7 @@ def test_tweet_share_uses_root_article_url_without_fanout(db_session, monkeypatc
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert content.url == "https://example.com/root-story"
@@ -752,6 +870,7 @@ def test_tweet_share_resolves_article_from_linked_tweet(db_session, monkeypatch)
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert content.url == "https://example.com/linked-story"
@@ -839,6 +958,7 @@ def test_tweet_share_resolves_article_from_same_author_thread_reply(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert content.url == "https://example.com/thread-story"
@@ -913,6 +1033,7 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert content.url == "https://x.com/i/status/123456789"
@@ -989,6 +1110,7 @@ def test_tweet_share_uses_user_timeline_for_older_threads(db_session, monkeypatc
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert content.url == "https://example.com/old-thread-story"
@@ -1063,6 +1185,7 @@ def test_tweet_share_records_capped_thread_lookup_and_degrades_gracefully(
     result = AnalyzeUrlHandler().handle(task, context)
 
     db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
 
     assert result.success is True
     assert call_counter["count"] == 10
