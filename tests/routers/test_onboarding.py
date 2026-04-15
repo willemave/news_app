@@ -15,7 +15,9 @@ from app.models.schema import (
 from app.services.queue import TaskType
 
 
-def test_onboarding_complete_creates_configs(client, db_session, monkeypatch, test_user) -> None:
+def test_onboarding_complete_creates_configs(
+    client, db_session, monkeypatch, stub_valid_feed_url, test_user
+) -> None:
     calls: list[tuple[str, dict]] = []
 
     class FakeQueueGateway:
@@ -91,7 +93,9 @@ def test_onboarding_complete_rejects_invalid_twitter_username(client):
     assert "Twitter username" in response.json()["detail"]
 
 
-def test_onboarding_complete_blank_prompt_resets_to_default(client, db_session, test_user):
+def test_onboarding_complete_blank_prompt_resets_to_default(
+    client, db_session, stub_valid_feed_url, test_user
+):
     test_user.news_list_preference_prompt = "Only include chip foundry updates."
     db_session.commit()
 
@@ -370,6 +374,7 @@ def test_onboarding_complete_seeds_selected_feed_content(
     client,
     db_session,
     monkeypatch,
+    stub_valid_feed_url,
     test_user,
 ):
     monkeypatch.setattr("app.services.onboarding._load_curated_defaults", lambda: {})
