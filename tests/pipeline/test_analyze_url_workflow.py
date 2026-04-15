@@ -60,7 +60,7 @@ def test_workflow_propagates_non_retryable_twitter_failures(db_session) -> None:
 
     workflow = AnalyzeUrlWorkflow(
         feed_flow=feed_flow,
-        twitter_flow=twitter_flow,
+        tweet_resolution_flow=twitter_flow,
         analysis_flow=analysis_flow,
         instruction_fanout=instruction_fanout,
         payload_cleaner=payload_cleaner,
@@ -115,7 +115,7 @@ def test_workflow_uses_content_metadata_for_feed_subscription(db_session) -> Non
 
     workflow = AnalyzeUrlWorkflow(
         feed_flow=feed_flow,
-        twitter_flow=twitter_flow,
+        tweet_resolution_flow=twitter_flow,
         analysis_flow=analysis_flow,
         instruction_fanout=instruction_fanout,
         payload_cleaner=payload_cleaner,

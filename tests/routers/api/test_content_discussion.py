@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from app.commands import refresh_content_discussion as refresh_discussion_command
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import ContentDiscussion
+from app.models.schema import ContentDiscussion, NewsItem
 
 
 def test_get_content_discussion_returns_not_ready_when_missing(
@@ -231,3 +232,195 @@ def test_get_news_item_discussion_returns_embedded_payload_without_legacy_conten
     assert payload["comments"][0]["author"] == "alice"
     assert payload["comments"][0]["text"] == "Embedded comment"
     assert payload["links"][0]["url"] == "https://example.com/comment-link"
+
+
+def test_refresh_content_discussion_returns_refreshed_payload(
+    client,
+    content_factory,
+    db_session,
+    discussion_payload_factory,
+    status_entry_factory,
+    test_user,
+    monkeypatch,
+) -> None:
+    content = content_factory(
+        content_type=ContentType.NEWS.value,
+        url="https://example.com/story",
+        title="Example",
+        source="example.com",
+        status=ContentStatus.COMPLETED.value,
+        content_metadata={
+            "platform": "hackernews",
+            "discussion_url": "https://news.ycombinator.com/item?id=123",
+        },
+    )
+    status_entry_factory(user=test_user, content=content, status="inbox")
+
+    def _refresh_and_store(db, *, content_id: int, comment_cap: int = 500):
+        del comment_cap
+        row = db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
+        if row is None:
+            row = ContentDiscussion(content_id=content_id)
+            db.add(row)
+        row.platform = "hackernews"
+        row.status = "completed"
+        row.discussion_data = discussion_payload_factory(
+            discussion_url="https://news.ycombinator.com/item?id=123",
+            comments=[
+                {
+                    "comment_id": "c-refresh",
+                    "author": "fresh-user",
+                    "text": "Newest comment",
+                    "compact_text": "Newest comment",
+                    "depth": 0,
+                }
+            ],
+            links=[],
+            stats={"fetched_count": 1},
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        refresh_discussion_command,
+        "fetch_and_store_discussion",
+        _refresh_and_store,
+    )
+
+    response = client.post(f"/api/content/{content.id}/discussion/refresh")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["mode"] == "comments"
+    assert payload["comments"][0]["comment_id"] == "c-refresh"
+    assert payload["comments"][0]["author"] == "fresh-user"
+
+
+def test_refresh_news_item_discussion_uses_legacy_content_payload(
+    client,
+    content_factory,
+    db_session,
+    discussion_payload_factory,
+    news_item_factory,
+    test_user,
+    monkeypatch,
+) -> None:
+    content = content_factory(
+        content_type=ContentType.NEWS.value,
+        url="https://example.com/story",
+        title="Example",
+        source="example.com",
+        status=ContentStatus.COMPLETED.value,
+        content_metadata={
+            "platform": "reddit",
+            "discussion_url": "https://www.reddit.com/r/test/comments/abc123/thread/",
+        },
+    )
+    news_item = news_item_factory(
+        ingest_key="reddit-legacy-refresh",
+        visibility_scope="user",
+        owner_user_id=test_user.id,
+        platform="reddit",
+        source_type="reddit",
+        source_label="reddit",
+        canonical_item_url="https://www.reddit.com/r/test/comments/abc123/thread/",
+        discussion_url="https://www.reddit.com/r/test/comments/abc123/thread/",
+        legacy_content_id=content.id,
+    )
+
+    def _refresh_and_store(db, *, content_id: int, comment_cap: int = 500):
+        del comment_cap
+        assert content_id == content.id
+        row = db.query(ContentDiscussion).filter(ContentDiscussion.content_id == content_id).first()
+        if row is None:
+            row = ContentDiscussion(content_id=content_id)
+            db.add(row)
+        row.platform = "reddit"
+        row.status = "completed"
+        row.discussion_data = discussion_payload_factory(
+            discussion_url="https://www.reddit.com/r/test/comments/abc123/thread/",
+            comments=[
+                {
+                    "comment_id": "reddit-refresh",
+                    "author": "redditor",
+                    "text": "Fresh reddit comment",
+                    "compact_text": "Fresh reddit comment",
+                    "depth": 0,
+                }
+            ],
+            links=[],
+            stats={"fetched_count": 1},
+        )
+        db.commit()
+
+    monkeypatch.setattr(
+        refresh_discussion_command,
+        "fetch_and_store_discussion",
+        _refresh_and_store,
+    )
+
+    response = client.post(f"/api/news/items/{news_item.id}/discussion/refresh")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["mode"] == "comments"
+    assert payload["comments"][0]["comment_id"] == "reddit-refresh"
+    assert payload["comments"][0]["author"] == "redditor"
+
+
+def test_refresh_news_item_discussion_updates_embedded_payload(
+    client,
+    discussion_payload_factory,
+    news_item_factory,
+    monkeypatch,
+) -> None:
+    news_item = news_item_factory(
+        ingest_key="techmeme-embedded-refresh",
+        platform="techmeme",
+        source_type="techmeme",
+        source_label="Techmeme",
+        canonical_item_url="https://www.techmeme.com/260217/p39#a260217p39",
+        discussion_url="https://www.techmeme.com/260217/p39#a260217p39",
+        legacy_content_id=None,
+    )
+
+    def _refresh_and_store(db, *, news_item_id: int, comment_cap: int = 500):
+        del comment_cap
+        item = db.query(NewsItem).filter(NewsItem.id == news_item_id).first()
+        assert item is not None
+        metadata = dict(item.raw_metadata or {})
+        metadata["discussion_status"] = "completed"
+        metadata["discussion_fetched_at"] = "2026-04-13T12:00:00+00:00"
+        metadata["discussion_payload"] = discussion_payload_factory(
+            discussion_url="https://www.techmeme.com/260217/p39#a260217p39",
+            mode="discussion_list",
+            discussion_groups=[
+                {
+                    "label": "Forums",
+                    "items": [
+                        {
+                            "title": "Hacker News",
+                            "url": "https://news.ycombinator.com/item?id=123",
+                        }
+                    ],
+                }
+            ],
+        )
+        item.raw_metadata = metadata
+        db.commit()
+
+    monkeypatch.setattr(
+        refresh_discussion_command,
+        "fetch_and_store_news_item_discussion",
+        _refresh_and_store,
+    )
+
+    response = client.post(f"/api/news/items/{news_item.id}/discussion/refresh")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["mode"] == "discussion_list"
+    assert payload["fetched_at"] == "2026-04-13T12:00:00+00:00"
+    assert payload["discussion_groups"][0]["items"][0]["title"] == "Hacker News"

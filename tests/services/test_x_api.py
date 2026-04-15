@@ -1,6 +1,10 @@
 """Tests for X API helpers."""
 
+from contextlib import contextmanager
+
 import app.services.x_api as x_api
+from app.models.schema import VendorUsageRecord
+from app.services import vendor_costs
 from app.services.x_api import (
     _extract_linked_tweet_ids,
     _extract_next_token,
@@ -39,10 +43,7 @@ def _patch_oauth_token_request(monkeypatch) -> dict[str, object]:
 def test_normalize_external_url_keeps_non_social_domains() -> None:
     """Domains that merely end with similar letters must not be filtered."""
     assert _normalize_external_url("https://index.com/article") == "https://index.com/article"
-    assert (
-        _normalize_external_url("https://mytwitter.com/post/1")
-        == "https://mytwitter.com/post/1"
-    )
+    assert _normalize_external_url("https://mytwitter.com/post/1") == "https://mytwitter.com/post/1"
 
 
 def test_normalize_external_url_filters_x_twitter_domains() -> None:
@@ -202,3 +203,37 @@ def test_refresh_oauth_token_omits_redirect_uri(monkeypatch) -> None:
         "refresh_token": "refresh-token",
     }
     assert captured["auth"] == ("client-id", "client-secret")
+
+
+def test_fetch_tweet_by_id_records_vendor_usage(db_session, monkeypatch) -> None:
+    @contextmanager
+    def fake_get_db():
+        yield db_session
+        db_session.commit()
+
+    monkeypatch.setattr(
+        x_api,
+        "_request_json",
+        lambda *_args, **_kwargs: {
+            "data": {"id": "123", "text": "Hello", "author_id": "u1"},
+            "includes": {"users": [{"id": "u1", "username": "alice", "name": "Alice"}]},
+        },
+    )
+    monkeypatch.setattr(vendor_costs, "get_db", fake_get_db)
+
+    result = x_api.fetch_tweet_by_id(
+        tweet_id="123",
+        telemetry={
+            "feature": "x_sync",
+            "operation": "x_sync.timeline.read",
+            "user_id": 11,
+        },
+    )
+
+    assert result.success is True
+    persisted = db_session.query(VendorUsageRecord).one()
+    assert persisted.provider == "x"
+    assert persisted.model == "posts.read"
+    assert persisted.user_id == 11
+    assert persisted.request_count == 1
+    assert persisted.resource_count == 1

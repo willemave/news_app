@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from app.models.metadata import ContentType, NewsSummary
 from app.models.schema import Content, NewsItem
+from app.services import news_article_enrichment as news_article_enrichment_module
 from app.services import news_processing as news_processing_module
 from app.services.discussion_fetcher import DiscussionFetchResult
 from app.services.news_article_bodies import NEWS_ARTICLE_BODY_REF_KEY
@@ -847,6 +848,57 @@ def test_enrich_news_item_article_reuses_existing_article_content(db_session) ->
     assert body_ref["kind"] == "content"
     assert body_ref["content_id"] == article.id
     assert extraction["status"] == "completed"
+
+
+def test_enrich_news_item_article_uses_stored_tweet_metadata_without_x_refetch(
+    db_session,
+    monkeypatch,
+) -> None:
+    item = NewsItem(
+        ingest_key="news-item-tweet-metadata-reuse",
+        visibility_scope="user",
+        owner_user_id=1,
+        platform="twitter",
+        source_type="x_timeline",
+        source_label="X Following",
+        source_external_id="123",
+        article_url="https://x.com/i/status/123",
+        canonical_story_url="https://x.com/i/status/123",
+        canonical_item_url="https://x.com/i/status/123",
+        discussion_url="https://x.com/i/status/123",
+        article_title="Native digest title",
+        raw_metadata={
+            "tweet_article_title": "Native digest title",
+            "tweet_article_text": "Full native digest body.",
+            "tweet_text": "Teaser text",
+        },
+        status="new",
+    )
+    db_session.add(item)
+    db_session.commit()
+    db_session.refresh(item)
+
+    def _unexpected_strategy_registry():
+        raise AssertionError("strategy registry should not be used when tweet metadata is present")
+
+    monkeypatch.setattr(
+        news_article_enrichment_module,
+        "get_strategy_registry",
+        _unexpected_strategy_registry,
+    )
+
+    result = enrich_news_item_article(db_session, news_item_id=_require_id(item.id))
+
+    db_session.refresh(item)
+    assert result.success is True
+    assert result.source == "metadata"
+    item_metadata = _metadata(item.raw_metadata)
+    body_ref = _metadata(item_metadata[NEWS_ARTICLE_BODY_REF_KEY])
+    extraction = _metadata(item_metadata["article_extraction"])
+    assert body_ref["kind"] == "inline"
+    assert "Full native digest body." in body_ref["text"]
+    assert extraction["status"] == "completed"
+    assert extraction["source"] == "metadata"
 
 
 def test_process_news_item_includes_resolved_article_body_in_prompt(

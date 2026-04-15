@@ -7,11 +7,7 @@ import pytest
 import app.services.x_integration as x_integration
 from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
 from app.core.settings import get_settings
-from app.models.schema import (
-    NewsItem,
-    UserIntegrationConnection,
-    UserIntegrationSyncState,
-)
+from app.models.schema import Content, NewsItem, UserIntegrationConnection, UserIntegrationSyncState
 from app.services.token_crypto import decrypt_token
 from app.services.x_api import XTokenResponse, XTweet, XTweetsPage, XUser
 from app.services.x_digest_filter import XDigestFilterDecision
@@ -150,7 +146,7 @@ def test_exchange_x_oauth_stores_encrypted_tokens_and_profile(
     )
     monkeypatch.setattr(
         "app.services.x_integration.get_authenticated_user",
-        lambda access_token: XUser(id="42", username="willemaw", name="Willem"),
+        lambda access_token, **_kwargs: XUser(id="42", username="willemaw", name="Willem"),
     )
 
     view = exchange_x_oauth(
@@ -392,6 +388,148 @@ def test_sync_x_sources_persists_bookmark_progress_when_timeline_fails(
     assert sync_state.last_status == "failed"
     assert sync_state.sync_metadata["bookmarks"]["last_synced_item_id"] == "101"
     assert "timeline" in (sync_state.last_error or "")
+
+
+def test_sync_x_sources_persists_bookmark_tweet_snapshot_for_later_resolution(
+    db_session,
+    test_user,
+    monkeypatch,
+):
+    connection = _build_connection(
+        test_user,
+        ["tweet.read", "users.read", "bookmark.read"],
+    )
+    db_session.add(connection)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.x_integration._ensure_valid_access_token",
+        lambda *_args, **_kwargs: "token",
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration._ensure_provider_user_id",
+        lambda *_args, **_kwargs: "42",
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration.fetch_bookmarks",
+        lambda **_kwargs: XTweetsPage(
+            tweets=[
+                XTweet(
+                    id="101",
+                    text="Bookmark me",
+                    author_id="42",
+                    author_username="willem",
+                    author_name="Willem",
+                    created_at="2026-03-26T10:00:00Z",
+                    like_count=12,
+                    retweet_count=3,
+                    reply_count=1,
+                    conversation_id="101",
+                    external_urls=["https://example.com/story"],
+                    linked_tweet_ids=["202"],
+                )
+            ],
+            included_tweets={
+                "202": XTweet(
+                    id="202",
+                    text="Linked tweet body",
+                    author_id="42",
+                    author_username="willem",
+                    author_name="Willem",
+                    created_at="2026-03-26T10:01:00Z",
+                    like_count=2,
+                    retweet_count=1,
+                    reply_count=0,
+                    conversation_id="101",
+                    external_urls=["https://example.com/linked"],
+                )
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration.fetch_reverse_chronological_timeline",
+        lambda **_kwargs: XTweetsPage(tweets=[]),
+    )
+
+    summary = sync_x_sources_for_user(db_session, user_id=test_user.id)
+
+    content = db_session.query(Content).filter(Content.url == "https://x.com/i/status/101").one()
+    metadata = content.content_metadata or {}
+
+    assert summary.status == "success"
+    assert metadata["tweet_snapshot"]["id"] == "101"
+    assert metadata["tweet_snapshot"]["external_urls"] == ["https://example.com/story"]
+    assert metadata["tweet_snapshot"]["linked_tweet_ids"] == ["202"]
+    assert metadata["tweet_snapshot_included"]["202"]["external_urls"] == [
+        "https://example.com/linked"
+    ]
+    assert metadata["tweet_snapshot_source"] == "x_bookmarks_sync"
+
+
+def test_sync_x_sources_scores_reply_timeline_candidates_when_they_have_long_form_signal(
+    db_session,
+    test_user,
+    monkeypatch,
+) -> None:
+    connection = _build_connection(
+        test_user,
+        ["tweet.read", "users.read", "bookmark.read"],
+    )
+    db_session.add(connection)
+    db_session.commit()
+
+    queue_gateway = _FakeQueueGateway()
+    captured_exclude: list[str] | None = None
+
+    monkeypatch.setattr(
+        "app.services.x_integration._ensure_valid_access_token",
+        lambda *_args, **_kwargs: "token",
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration._ensure_provider_user_id",
+        lambda *_args, **_kwargs: "42",
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration.fetch_bookmarks",
+        lambda **_kwargs: XTweetsPage(tweets=[]),
+    )
+
+    def _fetch_timeline_with_signal(**kwargs):
+        nonlocal captured_exclude
+        captured_exclude = list(kwargs["exclude"])
+        return XTweetsPage(
+            tweets=[
+                XTweet(
+                    id="102",
+                    text="reply with link",
+                    author_username="willem",
+                    author_name="Willem",
+                    created_at="2026-03-26T10:00:00Z",
+                    like_count=12,
+                    retweet_count=3,
+                    reply_count=1,
+                    in_reply_to_user_id="7",
+                    external_urls=["https://example.com/story"],
+                )
+            ]
+        )
+
+    monkeypatch.setattr(
+        "app.services.x_integration.fetch_reverse_chronological_timeline",
+        _fetch_timeline_with_signal,
+    )
+    monkeypatch.setattr(
+        "app.services.x_integration.score_x_digest_candidate",
+        lambda **_kwargs: XDigestFilterDecision(score=0.9, reason="keep", accepted=True),
+    )
+    monkeypatch.setattr("app.services.x_integration.get_task_queue_gateway", lambda: queue_gateway)
+
+    summary = sync_x_sources_for_user(db_session, user_id=test_user.id)
+
+    assert summary.status == "success"
+    assert summary.channels["timeline"].accepted == 1
+    assert summary.channels["timeline"].filtered_out == 0
+    assert captured_exclude == ["retweets"]
 
 
 def test_sync_x_sources_skips_recent_scheduled_runs(db_session, test_user, monkeypatch):

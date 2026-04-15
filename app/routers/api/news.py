@@ -7,6 +7,7 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy.orm import Session
 
+from app.commands import refresh_content_discussion as refresh_content_discussion_command
 from app.commands.convert_news_to_article import (
     convert_article_url_to_content,
     ensure_article_saved_to_knowledge,
@@ -20,9 +21,8 @@ from app.models.api.common import (
     ContentListResponse,
 )
 from app.models.api.news import ConvertNewsItemResponse
-from app.models.schema import ContentDiscussion
 from app.models.user import User
-from app.queries.get_content_discussion import build_discussion_response
+from app.queries import get_news_item_discussion as get_news_item_discussion_query
 from app.services.news_feed import (
     bulk_mark_news_items_read,
     get_visible_news_item,
@@ -111,45 +111,28 @@ def get_news_item_discussion(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> ContentDiscussionResponse:
     """Return discussion payload for one visible representative news item."""
-    item = get_visible_news_item(
+    return get_news_item_discussion_query.execute(
         db,
         user_id=_require_user_id(current_user),
         news_item_id=news_item_id,
     )
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
 
-    discussion_row = None
-    if item.legacy_content_id is not None:
-        discussion_row = (
-            db.query(ContentDiscussion)
-            .filter(ContentDiscussion.content_id == item.legacy_content_id)
-            .first()
-        )
 
-    raw_metadata = (
-        item.raw_metadata if discussion_row is None and isinstance(item.raw_metadata, dict) else {}
-    )
-    embedded_discussion = raw_metadata.get("discussion_payload")
-    if not isinstance(embedded_discussion, dict):
-        embedded_discussion = None
-
-    fallback_discussion_url = item.discussion_url or item.canonical_item_url
-    return build_discussion_response(
-        content_id=news_item_id,
-        discussion_url=fallback_discussion_url,
-        platform=item.platform,
-        discussion_row=discussion_row,
-        discussion_data=embedded_discussion,
-        status=str(raw_metadata["discussion_status"])
-        if raw_metadata.get("discussion_status")
-        else None,
-        error_message=str(raw_metadata["discussion_error"])
-        if raw_metadata.get("discussion_error")
-        else None,
-        fetched_at=str(raw_metadata["discussion_fetched_at"])
-        if raw_metadata.get("discussion_fetched_at")
-        else None,
+@router.post(
+    "/items/{news_item_id}/discussion/refresh",
+    response_model=ContentDiscussionResponse,
+    summary="Refresh one news item discussion",
+)
+def refresh_news_item_discussion(
+    news_item_id: Annotated[int, Path(..., gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ContentDiscussionResponse:
+    """Refresh discussion payload for one visible representative news item."""
+    return refresh_content_discussion_command.refresh_news_item_discussion(
+        db,
+        user_id=_require_user_id(current_user),
+        news_item_id=news_item_id,
     )
 
 

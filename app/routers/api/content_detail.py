@@ -5,7 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.orm import Session
 
-from app.core.db import get_readonly_db_session
+from app.commands import refresh_content_discussion as refresh_content_discussion_command
+from app.core.db import get_db_session, get_readonly_db_session
 from app.core.deps import get_current_user
 from app.core.timing import timed
 from app.models.api.common import (
@@ -103,6 +104,34 @@ def get_content_discussion(
 ) -> ContentDiscussionResponse:
     """Return stored discussion payload for a content item."""
     return get_content_discussion_query.execute(
+        db,
+        user_id=_require_user_id(current_user),
+        content_id=content_id,
+    )
+
+
+@router.post(
+    "/{content_id}/discussion/refresh",
+    response_model=ContentDiscussionResponse,
+    summary="Refresh discussion payload for a content item",
+    description=(
+        "Fetch the latest in-app discussion data for the content item, persist it, "
+        "and return the refreshed payload."
+    ),
+    responses={
+        404: {
+            "description": "Content not found",
+            "content": {"application/json": {"example": {"detail": "Content not found"}}},
+        }
+    },
+)
+def refresh_content_discussion(
+    content_id: Annotated[int, Path(..., description="Content ID", gt=0)],
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ContentDiscussionResponse:
+    """Refresh and return discussion payload for a content item."""
+    return refresh_content_discussion_command.refresh_content_discussion(
         db,
         user_id=_require_user_id(current_user),
         content_id=content_id,

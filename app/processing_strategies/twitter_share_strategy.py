@@ -12,7 +12,8 @@ from app.core.logging import get_logger
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
 from app.services.http import NonRetryableError
 from app.services.twitter_share import extract_tweet_id
-from app.services.x_api import build_tweet_processing_text, fetch_tweet_by_url
+from app.services.x_api import fetch_tweet_by_url
+from app.services.x_tweet_metadata import build_resolved_tweet_content, hydrate_tweet_from_metadata
 
 logger = get_logger(__name__)
 
@@ -26,23 +27,21 @@ class TweetContent:
     publication_date: datetime | None
 
 
-def _parse_tweet_date(date_str: str | None) -> datetime | None:
-    if not date_str:
-        return None
-    try:
-        iso_value = date_str.replace("Z", "+00:00")
-        return datetime.fromisoformat(iso_value)
-    except Exception:
-        pass
-    try:
-        return datetime.strptime(date_str, "%a %b %d %H:%M:%S %z %Y")
-    except Exception:
-        return None
+def resolve_tweet_content(*, url: str, metadata: dict[str, Any] | None = None) -> TweetContent:
+    tweet_id = extract_tweet_id(url)
+    hydrated_tweet = hydrate_tweet_from_metadata(metadata, tweet_id=tweet_id)
+    if hydrated_tweet is not None:
+        text, author, publication_date = build_resolved_tweet_content(hydrated_tweet.tweet)
+        return TweetContent(text=text, author=author, publication_date=publication_date)
 
+    fetch_result = fetch_tweet_by_url(url=url)
+    if not fetch_result.success or not fetch_result.tweet:
+        raise NonRetryableError(fetch_result.error or "Tweet lookup failed")
 
-def _build_thread_text(thread: list[str]) -> str:
-    cleaned = [text.strip() for text in thread if isinstance(text, str) and text.strip()]
-    return "\n\n".join(cleaned)
+    text, author, publication_date = build_resolved_tweet_content(fetch_result.tweet)
+    if not text:
+        raise NonRetryableError("Tweet thread contained no text to summarize")
+    return TweetContent(text=text, author=author, publication_date=publication_date)
 
 
 class TwitterShareProcessorStrategy(UrlProcessorStrategy):
@@ -51,23 +50,12 @@ class TwitterShareProcessorStrategy(UrlProcessorStrategy):
     def can_handle_url(self, url: str, response_headers: httpx.Headers | None = None) -> bool:
         return extract_tweet_id(url) is not None
 
-    def download_content(self, url: str) -> TweetContent:
-        fetch_result = fetch_tweet_by_url(url=url)
-
-        if not fetch_result.success or not fetch_result.tweet:
-            raise NonRetryableError(fetch_result.error or "Tweet lookup failed")
-
-        tweet = fetch_result.tweet
-        thread_text = _build_thread_text([build_tweet_processing_text(tweet)])
-        if not thread_text:
-            raise NonRetryableError("Tweet thread contained no text to summarize")
-
-        author = None
-        if tweet.author_username:
-            author = f"@{tweet.author_username}"
-        publication_date = _parse_tweet_date(tweet.created_at)
-
-        return TweetContent(text=thread_text, author=author, publication_date=publication_date)
+    def download_content(
+        self,
+        url: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> TweetContent:
+        return resolve_tweet_content(url=url, metadata=metadata)
 
     def extract_data(self, content: TweetContent, url: str) -> dict[str, Any]:
         title = content.text.split("\n", 1)[0].strip() if content.text else "Tweet"

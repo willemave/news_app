@@ -11,6 +11,7 @@ import httpx
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.services.twitter_share import extract_tweet_id
+from app.services.vendor_costs import record_vendor_usage_out_of_band
 
 logger = get_logger(__name__)
 
@@ -85,6 +86,7 @@ class XTweetsPage:
     """Page of tweets returned from an X API collection endpoint."""
 
     tweets: list[XTweet]
+    included_tweets: dict[str, XTweet] = field(default_factory=dict)
     next_token: str | None = None
 
 
@@ -155,7 +157,7 @@ def refresh_oauth_token(*, refresh_token: str) -> XTokenResponse:
     return _parse_token_payload(payload)
 
 
-def get_authenticated_user(*, access_token: str) -> XUser:
+def get_authenticated_user(*, access_token: str, telemetry: dict[str, Any] | None = None) -> XUser:
     """Fetch the currently authenticated X user."""
     payload = _request_json(
         "GET",
@@ -169,6 +171,9 @@ def get_authenticated_user(*, access_token: str) -> XUser:
     user_id = str(data.get("id") or "").strip()
     if not user_id:
         raise RuntimeError("X /users/me response missing user id")
+    _record_x_usage(
+        model="users.read", usage={"request_count": 1, "resource_count": 1}, telemetry=telemetry
+    )
     return XUser(
         id=user_id,
         username=_optional_string(data.get("username")),
@@ -176,7 +181,12 @@ def get_authenticated_user(*, access_token: str) -> XUser:
     )
 
 
-def get_user_by_username(*, username: str, access_token: str | None = None) -> XUser | None:
+def get_user_by_username(
+    *,
+    username: str,
+    access_token: str | None = None,
+    telemetry: dict[str, Any] | None = None,
+) -> XUser | None:
     """Resolve a public X profile by username."""
     cleaned = username.strip().lstrip("@")
     if not cleaned:
@@ -195,6 +205,9 @@ def get_user_by_username(*, username: str, access_token: str | None = None) -> X
     user_id = str(data.get("id") or "").strip()
     if not user_id:
         return None
+    _record_x_usage(
+        model="users.read", usage={"request_count": 1, "resource_count": 1}, telemetry=telemetry
+    )
     return XUser(
         id=user_id,
         username=_optional_string(data.get("username")),
@@ -206,6 +219,7 @@ def fetch_tweet_by_id(
     *,
     tweet_id: str,
     access_token: str | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetFetchResult:
     """Fetch a single tweet via X API v2."""
     cleaned = tweet_id.strip()
@@ -228,6 +242,11 @@ def fetch_tweet_by_id(
         return XTweetFetchResult(success=False, error=str(exc))
 
     data = payload.get("data")
+    _record_x_usage(
+        model="posts.read",
+        usage={"request_count": 1, "resource_count": 1 if isinstance(data, dict) else 0},
+        telemetry=telemetry,
+    )
     if not isinstance(data, dict):
         return XTweetFetchResult(success=False, error="Tweet not found")
     includes = payload.get("includes") if isinstance(payload.get("includes"), dict) else {}
@@ -239,18 +258,24 @@ def fetch_tweet_by_id(
     return XTweetFetchResult(success=True, tweet=tweet)
 
 
-def fetch_tweet_by_url(*, url: str, access_token: str | None = None) -> XTweetFetchResult:
+def fetch_tweet_by_url(
+    *,
+    url: str,
+    access_token: str | None = None,
+    telemetry: dict[str, Any] | None = None,
+) -> XTweetFetchResult:
     """Fetch a tweet from an X/Twitter status URL."""
     tweet_id = extract_tweet_id(url)
     if not tweet_id:
         return XTweetFetchResult(success=False, error="Invalid tweet URL")
-    return fetch_tweet_by_id(tweet_id=tweet_id, access_token=access_token)
+    return fetch_tweet_by_id(tweet_id=tweet_id, access_token=access_token, telemetry=telemetry)
 
 
 def fetch_tweets_by_ids(
     *,
     tweet_ids: list[str],
     access_token: str | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> list[XTweet]:
     """Fetch multiple tweets by id while preserving request order."""
     cleaned_ids: list[str] = []
@@ -292,7 +317,13 @@ def fetch_tweets_by_ids(
             if mapped:
                 mapped_by_id[mapped.id] = mapped
 
-    return [mapped_by_id[tweet_id] for tweet_id in cleaned_ids if tweet_id in mapped_by_id]
+    tweets = [mapped_by_id[tweet_id] for tweet_id in cleaned_ids if tweet_id in mapped_by_id]
+    _record_x_usage(
+        model="posts.read",
+        usage={"request_count": 1, "resource_count": len(tweets)},
+        telemetry=telemetry,
+    )
+    return tweets
 
 
 def build_tweet_processing_text(tweet: XTweet) -> str:
@@ -321,6 +352,7 @@ def fetch_bookmarks(
     user_id: str,
     pagination_token: str | None = None,
     max_results: int = 100,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     """Fetch one page of bookmarks for a user."""
     if not user_id.strip():
@@ -328,7 +360,7 @@ def fetch_bookmarks(
     clamped = max(5, min(max_results, 100))
     params: dict[str, str | int] = {
         "max_results": clamped,
-        "expansions": "author_id",
+        "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
     }
@@ -339,6 +371,7 @@ def fetch_bookmarks(
         url=f"{X_API_BASE}/users/{user_id}/bookmarks",
         access_token=access_token,
         params=params,
+        telemetry=telemetry,
     )
 
 
@@ -350,6 +383,7 @@ def fetch_reverse_chronological_timeline(
     since_id: str | None = None,
     max_results: int = 100,
     exclude: list[str] | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     """Fetch one page of the authenticated user's home timeline."""
     if not user_id.strip():
@@ -372,6 +406,7 @@ def fetch_reverse_chronological_timeline(
         url=f"{X_API_BASE}/users/{user_id}/timelines/reverse_chronological",
         access_token=access_token,
         params=params,
+        telemetry=telemetry,
     )
 
 
@@ -381,6 +416,7 @@ def fetch_list_tweets(
     access_token: str | None = None,
     pagination_token: str | None = None,
     max_results: int = 100,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     """Fetch one page of tweets for a list."""
     cleaned = list_id.strip()
@@ -401,6 +437,7 @@ def fetch_list_tweets(
         access_token=access_token,
         allow_app_bearer=True,
         params=params,
+        telemetry=telemetry,
     )
 
 
@@ -411,6 +448,7 @@ def fetch_user_tweets(
     pagination_token: str | None = None,
     max_results: int = 100,
     exclude: list[str] | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     """Fetch one page of tweets for a user."""
     cleaned = user_id.strip()
@@ -433,6 +471,7 @@ def fetch_user_tweets(
         access_token=access_token,
         allow_app_bearer=True,
         params=params,
+        telemetry=telemetry,
     )
 
 
@@ -442,6 +481,7 @@ def search_recent_tweets(
     access_token: str | None = None,
     next_token: str | None = None,
     max_results: int = 100,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     """Search recent tweets."""
     cleaned_query = query.strip()
@@ -463,6 +503,7 @@ def search_recent_tweets(
         access_token=access_token,
         allow_app_bearer=True,
         params=params,
+        telemetry=telemetry,
     )
 
 
@@ -504,6 +545,7 @@ def _fetch_tweets_page(
     access_token: str | None,
     params: dict[str, Any],
     allow_app_bearer: bool = False,
+    telemetry: dict[str, Any] | None = None,
 ) -> XTweetsPage:
     payload = _request_json(
         "GET",
@@ -517,6 +559,7 @@ def _fetch_tweets_page(
     includes = payload.get("includes") if isinstance(payload.get("includes"), dict) else {}
     users = includes.get("users") if isinstance(includes, dict) else []
     lookup = _user_lookup(users)
+    raw_included_tweets = includes.get("tweets") if isinstance(includes, dict) else []
 
     tweets: list[XTweet] = []
     if isinstance(data, list):
@@ -527,10 +570,26 @@ def _fetch_tweets_page(
             if mapped:
                 tweets.append(mapped)
 
-    return XTweetsPage(
+    included_tweets: dict[str, XTweet] = {}
+    if isinstance(raw_included_tweets, list):
+        for item in raw_included_tweets:
+            if not isinstance(item, dict):
+                continue
+            mapped = _map_tweet(item, lookup)
+            if mapped:
+                included_tweets[mapped.id] = mapped
+
+    page = XTweetsPage(
         tweets=tweets,
+        included_tweets=included_tweets,
         next_token=_extract_next_token(payload.get("meta")),
     )
+    _record_x_usage(
+        model="posts.read",
+        usage={"request_count": 1, "resource_count": len(page.tweets)},
+        telemetry=telemetry,
+    )
+    return page
 
 
 def _fetch_lists_page(
@@ -715,6 +774,30 @@ def _extract_error_text(response: httpx.Response) -> str:
                 if isinstance(msg, str):
                     return msg
     return "Unknown error"
+
+
+def _record_x_usage(
+    *,
+    model: str,
+    usage: dict[str, int | None],
+    telemetry: dict[str, Any] | None,
+) -> None:
+    telemetry_data = telemetry or {}
+    record_vendor_usage_out_of_band(
+        provider="x",
+        model=model,
+        feature=telemetry_data.get("feature") or "x_api",
+        operation=telemetry_data.get("operation") or f"x_api.{model}",
+        source=telemetry_data.get("source"),
+        usage=usage,
+        request_id=telemetry_data.get("request_id"),
+        task_id=telemetry_data.get("task_id"),
+        content_id=telemetry_data.get("content_id"),
+        session_id=telemetry_data.get("session_id"),
+        message_id=telemetry_data.get("message_id"),
+        user_id=telemetry_data.get("user_id"),
+        metadata=telemetry_data.get("metadata"),
+    )
 
 
 def _optional_string(value: Any) -> str | None:

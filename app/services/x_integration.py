@@ -19,7 +19,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.content_submission import SubmitContentRequest
 from app.models.contracts import TaskType
-from app.models.schema import UserIntegrationConnection, UserIntegrationSyncState
+from app.models.schema import Content, UserIntegrationConnection, UserIntegrationSyncState
 from app.models.user import User
 from app.services.content_submission import submit_user_content
 from app.services.gateways.task_queue_gateway import get_task_queue_gateway
@@ -46,6 +46,7 @@ from app.services.x_digest_filter import (
     XDigestFilterDecision,
     score_x_digest_candidate,
 )
+from app.services.x_tweet_metadata import build_tweet_snapshot_metadata
 
 logger = get_logger(__name__)
 
@@ -57,7 +58,7 @@ BOOKMARK_SYNC_MAX_PAGES = 5
 BOOKMARK_SYNC_PAGE_SIZE = 100
 TIMELINE_SYNC_MAX_PAGES = 5
 TIMELINE_SYNC_PAGE_SIZE = 100
-TIMELINE_EXCLUDE_TYPES = ("replies", "retweets")
+TIMELINE_EXCLUDE_TYPES = ("retweets",)
 TIMELINE_CHANNEL = "timeline"
 BOOKMARKS_CHANNEL = "bookmarks"
 REQUIRED_TIMELINE_SCOPES = frozenset({"tweet.read", "users.read"})
@@ -292,7 +293,14 @@ def exchange_x_oauth(
         raise ValueError("OAuth flow expired. Start OAuth again.")
 
     token = exchange_oauth_code(code=code, code_verifier=code_verifier)
-    me = get_authenticated_user(access_token=token.access_token)
+    me = get_authenticated_user(
+        access_token=token.access_token,
+        telemetry={
+            "feature": "x_oauth",
+            "operation": "x_oauth.get_authenticated_user",
+            "user_id": _require_user_id(user),
+        },
+    )
 
     metadata.pop(OAUTH_PENDING_KEY, None)
     metadata["connected_at"] = _now_utc_iso()
@@ -517,7 +525,7 @@ def _sync_bookmark_channel(
     last_synced_id = _clean_optional_string(bookmark_state.get("last_synced_item_id"))
     newest_seen_id: str | None = None
     fetched = 0
-    collected_new: list[str] = []
+    collected_new: list[XTweet] = []
     next_token: str | None = None
     reached_previous_sync = False
 
@@ -527,6 +535,12 @@ def _sync_bookmark_channel(
             user_id=provider_user_id,
             pagination_token=next_token,
             max_results=BOOKMARK_SYNC_PAGE_SIZE,
+            telemetry={
+                "feature": "x_sync",
+                "operation": "x_sync.bookmarks.read",
+                "user_id": _require_user_id(user),
+                "metadata": {"channel": BOOKMARKS_CHANNEL},
+            },
         )
         if page.tweets and newest_seen_id is None:
             newest_seen_id = page.tweets[0].id
@@ -539,7 +553,7 @@ def _sync_bookmark_channel(
             if last_synced_id and tweet.id == last_synced_id:
                 reached_previous_sync = True
                 break
-            collected_new.append(tweet.id)
+            collected_new.append(tweet)
 
         if reached_previous_sync or not page.next_token:
             break
@@ -547,11 +561,11 @@ def _sync_bookmark_channel(
 
     created = 0
     reused = 0
-    for tweet_id in reversed(collected_new):
+    for tweet in reversed(collected_new):
         result = submit_user_content(
             db,
             SubmitContentRequest(
-                url=URL_ADAPTER.validate_python(canonical_tweet_url(tweet_id)),
+                url=URL_ADAPTER.validate_python(canonical_tweet_url(tweet.id)),
                 content_type=None,
                 title=None,
                 platform="twitter",
@@ -563,6 +577,12 @@ def _sync_bookmark_channel(
             ),
             user,
             submitted_via="x_bookmarks",
+        )
+        _persist_bookmark_tweet_snapshot(
+            db,
+            content_id=result.content_id,
+            tweet=tweet,
+            included_tweets=page.included_tweets,
         )
         if result.already_exists:
             reused += 1
@@ -623,6 +643,12 @@ def _sync_timeline_channel(
             since_id=since_id,
             max_results=TIMELINE_SYNC_PAGE_SIZE,
             exclude=list(TIMELINE_EXCLUDE_TYPES),
+            telemetry={
+                "feature": "x_sync",
+                "operation": "x_sync.timeline.read",
+                "user_id": _require_user_id(user),
+                "metadata": {"channel": TIMELINE_CHANNEL},
+            },
         )
         if page.tweets and newest_seen_id is None:
             newest_seen_id = page.tweets[0].id
@@ -631,14 +657,15 @@ def _sync_timeline_channel(
         if not page.tweets:
             break
 
-        fresh_tweets = [
-            tweet
-            for tweet in page.tweets
-            if tweet.id not in seen_ids and _should_ingest_digest_tweet(tweet)
-        ]
-        filtered_out += sum(1 for tweet in page.tweets if not _should_ingest_digest_tweet(tweet))
-        for tweet in fresh_tweets:
+        fresh_tweets: list[XTweet] = []
+        for tweet in page.tweets:
+            if tweet.id in seen_ids:
+                continue
+            if not _should_ingest_digest_tweet(tweet):
+                filtered_out += 1
+                continue
             seen_ids.add(tweet.id)
+            fresh_tweets.append(tweet)
         for tweet in reversed(fresh_tweets):
             decision = score_x_digest_candidate(
                 tweet=tweet,
@@ -789,7 +816,16 @@ def _build_digest_tweet_metadata(
         "tweet_retweet_count": tweet.retweet_count,
         "tweet_reply_count": tweet.reply_count,
         "tweet_text": tweet.text,
+        "tweet_article_title": tweet.article_title,
+        "tweet_article_text": tweet.article_text,
+        "tweet_note_tweet_text": tweet.note_tweet_text,
         "tweet_external_urls": list(tweet.external_urls),
+        "tweet_linked_tweet_ids": list(tweet.linked_tweet_ids),
+        **build_tweet_snapshot_metadata(
+            tweet=tweet,
+            included_tweets=None,
+            snapshot_source="x_timeline_sync",
+        ),
         "article": {
             "url": tweet_url,
             "title": _tweet_title(tweet),
@@ -818,13 +854,50 @@ def _tweet_title(tweet: XTweet) -> str:
     return f"Post {tweet.id}"
 
 
+def _persist_bookmark_tweet_snapshot(
+    db: Session,
+    *,
+    content_id: int,
+    tweet: XTweet,
+    included_tweets: dict[str, XTweet],
+) -> None:
+    content = db.query(Content).filter(Content.id == content_id).first()
+    if content is None:
+        return
+    existing_metadata = (
+        content.content_metadata if isinstance(content.content_metadata, dict) else {}
+    )
+    linked_tweet_ids = set(tweet.linked_tweet_ids)
+    content.content_metadata = {
+        **existing_metadata,
+        **build_tweet_snapshot_metadata(
+            tweet=tweet,
+            included_tweets={
+                tweet_id: included_tweet
+                for tweet_id, included_tweet in included_tweets.items()
+                if tweet_id in linked_tweet_ids
+            },
+            snapshot_source="x_bookmarks_sync",
+        ),
+    }
+    db.commit()
+
+
+def _tweet_has_long_form_signal(tweet: XTweet) -> bool:
+    if tweet.external_urls or tweet.article_title or tweet.article_text or tweet.note_tweet_text:
+        return True
+    return len(tweet.text.strip()) >= 120
+
+
 def _should_ingest_digest_tweet(tweet: XTweet) -> bool:
     if not tweet.text.strip():
         return False
     reference_types = set(tweet.referenced_tweet_types)
     if "retweeted" in reference_types:
         return False
-    return not tweet.in_reply_to_user_id
+    if tweet.in_reply_to_user_id:
+        return _tweet_has_long_form_signal(tweet)
+    return True
 
 
 def _missing_required_scopes(
@@ -1007,7 +1080,14 @@ def _ensure_provider_user_id(
     if provider_user_id:
         return provider_user_id
 
-    me = get_authenticated_user(access_token=access_token)
+    me = get_authenticated_user(
+        access_token=access_token,
+        telemetry={
+            "feature": "x_sync",
+            "operation": "x_sync.ensure_provider_user",
+            "user_id": _require_user_id(user),
+        },
+    )
     connection.provider_user_id = me.id
     connection.provider_username = me.username
     if me.username and not user.twitter_username:

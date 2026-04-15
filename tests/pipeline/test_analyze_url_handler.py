@@ -58,7 +58,12 @@ def test_tweet_submission_missing_x_app_auth_fails_fast(
     db_session.commit()
     db_session.refresh(content)
 
-    def _missing_app_token(*, tweet_id: str, access_token: str | None = None) -> XTweetFetchResult:
+    def _missing_app_token(
+        *,
+        tweet_id: str,
+        access_token: str | None = None,
+        **_kwargs,
+    ) -> XTweetFetchResult:
         assert tweet_id == "123456789"
         assert access_token is None
         return XTweetFetchResult(
@@ -94,6 +99,60 @@ def test_tweet_submission_missing_x_app_auth_fails_fast(
     assert tweet_enrichment["reason"] == "x_app_auth_unavailable"
     queue_gateway.enqueue.assert_not_called()
     assert db_session.query(Content).count() == 1
+
+
+def test_tweet_submission_spend_cap_failure_is_non_retryable(
+    db_session,
+    monkeypatch,
+) -> None:
+    content = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://x.com/someuser/status/123456789",
+        source=SELF_SUBMISSION_SOURCE,
+        status=ContentStatus.NEW.value,
+        content_metadata={
+            "source": SELF_SUBMISSION_SOURCE,
+            "submitted_by_user_id": 1,
+            "submitted_via": "share_sheet",
+            "platform_hint": "twitter",
+        },
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
+        lambda **_kwargs: XTweetFetchResult(
+            success=False,
+            error="X API 403: SpendCapReached",
+        ),
+    )
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.get_x_user_access_token",
+        lambda *_args, **_kwargs: None,
+    )
+
+    queue_gateway = Mock()
+    context = _build_context(db_session, queue_gateway=queue_gateway)
+    task = TaskEnvelope(
+        id=1001,
+        task_type=TaskType.ANALYZE_URL,
+        content_id=content.id,
+        payload={"content_id": content.id, "crawl_links": True},
+    )
+
+    result = AnalyzeUrlHandler().handle(task, context)
+
+    db_session.refresh(content)
+    metadata = _metadata(content.content_metadata)
+    tweet_enrichment = _metadata(metadata["tweet_enrichment"])
+    assert result.success is False
+    assert result.retryable is False
+    assert content.status == ContentStatus.FAILED.value
+    assert tweet_enrichment["status"] == "deferred"
+    assert tweet_enrichment["reason"] == "x_spend_cap_reached"
+    queue_gateway.enqueue.assert_not_called()
 
 
 def test_subscribe_to_feed_accepts_direct_feed_url(db_session, monkeypatch) -> None:
@@ -561,6 +620,166 @@ def test_tweet_bookmark_reuses_existing_article_when_primary_url_already_exists(
     queue_gateway.enqueue.assert_not_called()
 
 
+def test_tweet_bookmark_uses_sync_snapshot_before_fetching_x_again(
+    db_session,
+    monkeypatch,
+) -> None:
+    bookmark_shell = Content(
+        content_type=ContentType.UNKNOWN.value,
+        url="https://x.com/someuser/status/123456789",
+        source=SELF_SUBMISSION_SOURCE,
+        status=ContentStatus.NEW.value,
+        content_metadata={
+            "source": SELF_SUBMISSION_SOURCE,
+            "submitted_by_user_id": 1,
+            "submitted_via": "x_bookmarks",
+            "platform_hint": "twitter",
+            "tweet_snapshot": {
+                "id": "123456789",
+                "text": "Story link https://t.co/story",
+                "author_id": "42",
+                "author_username": "willem",
+                "author_name": "Willem",
+                "created_at": "2026-03-27T21:56:00Z",
+                "like_count": 12,
+                "retweet_count": 3,
+                "reply_count": 1,
+                "conversation_id": "123456789",
+                "external_urls": ["https://example.com/story"],
+                "linked_tweet_ids": [],
+                "referenced_tweet_types": [],
+            },
+            "tweet_snapshot_source": "x_bookmarks_sync",
+        },
+    )
+    db_session.add(bookmark_shell)
+    db_session.commit()
+    db_session.refresh(bookmark_shell)
+
+    def _unexpected_fetch(**_kwargs):
+        raise AssertionError("tweet fetch should use bookmark snapshot")
+
+    monkeypatch.setattr("app.pipeline.handlers.analyze_url.fetch_tweet_by_id", _unexpected_fetch)
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.get_x_user_access_token",
+        lambda *_args, **_kwargs: None,
+    )
+
+    queue_gateway = Mock()
+    context = _build_context(db_session, queue_gateway=queue_gateway)
+    task = TaskEnvelope(
+        id=1051,
+        task_type=TaskType.ANALYZE_URL,
+        content_id=bookmark_shell.id,
+        payload={"content_id": bookmark_shell.id},
+    )
+
+    result = AnalyzeUrlHandler().handle(task, context)
+
+    db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
+    assert result.success is True
+    assert bookmark_shell.url == "https://example.com/story"
+    assert metadata["tweet_lookup_source"] == "bookmark_sync_snapshot"
+    queue_gateway.enqueue.assert_called_once_with(
+        TaskType.PROCESS_CONTENT,
+        content_id=bookmark_shell.id,
+    )
+
+
+def test_tweet_bookmark_uses_included_snapshot_for_linked_tweet_resolution(
+    db_session,
+    monkeypatch,
+) -> None:
+    bookmark_shell = Content(
+        content_type=ContentType.UNKNOWN.value,
+        url="https://x.com/someuser/status/123456789",
+        source=SELF_SUBMISSION_SOURCE,
+        status=ContentStatus.NEW.value,
+        content_metadata={
+            "source": SELF_SUBMISSION_SOURCE,
+            "submitted_by_user_id": 1,
+            "submitted_via": "x_bookmarks",
+            "platform_hint": "twitter",
+            "tweet_snapshot": {
+                "id": "123456789",
+                "text": "Root tweet body",
+                "author_id": "42",
+                "author_username": "willem",
+                "author_name": "Willem",
+                "created_at": "2026-03-27T21:56:00Z",
+                "like_count": 12,
+                "retweet_count": 3,
+                "reply_count": 1,
+                "conversation_id": "123456789",
+                "external_urls": [],
+                "linked_tweet_ids": ["987654321"],
+                "referenced_tweet_types": ["quoted"],
+            },
+            "tweet_snapshot_included": {
+                "987654321": {
+                    "id": "987654321",
+                    "text": "Linked tweet with url",
+                    "author_id": "42",
+                    "author_username": "willem",
+                    "author_name": "Willem",
+                    "created_at": "2026-03-27T21:57:00Z",
+                    "like_count": 4,
+                    "retweet_count": 1,
+                    "reply_count": 0,
+                    "conversation_id": "123456789",
+                    "external_urls": ["https://example.com/story"],
+                    "linked_tweet_ids": [],
+                    "referenced_tweet_types": [],
+                }
+            },
+            "tweet_snapshot_source": "x_bookmarks_sync",
+        },
+    )
+    db_session.add(bookmark_shell)
+    db_session.commit()
+    db_session.refresh(bookmark_shell)
+
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("root tweet should come from metadata snapshot")
+        ),
+    )
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.fetch_tweets_by_ids",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("linked tweet should come from included snapshot")
+        ),
+    )
+    monkeypatch.setattr(
+        "app.pipeline.handlers.analyze_url.get_x_user_access_token",
+        lambda *_args, **_kwargs: None,
+    )
+
+    queue_gateway = Mock()
+    context = _build_context(db_session, queue_gateway=queue_gateway)
+    task = TaskEnvelope(
+        id=1052,
+        task_type=TaskType.ANALYZE_URL,
+        content_id=bookmark_shell.id,
+        payload={"content_id": bookmark_shell.id},
+    )
+
+    result = AnalyzeUrlHandler().handle(task, context)
+
+    db_session.refresh(bookmark_shell)
+    metadata = _metadata(bookmark_shell.content_metadata)
+    assert result.success is True
+    assert bookmark_shell.url == "https://example.com/story"
+    assert metadata["tweet_resolution_source"] == "linked_tweet"
+    assert metadata["tweet_lookup_source"] == "bookmark_sync_snapshot"
+    queue_gateway.enqueue.assert_called_once_with(
+        TaskType.PROCESS_CONTENT,
+        content_id=bookmark_shell.id,
+    )
+
+
 def test_tweet_bookmark_records_native_x_article_metadata(
     db_session,
     monkeypatch,
@@ -580,7 +799,6 @@ def test_tweet_bookmark_records_native_x_article_metadata(
     db_session.add(bookmark_shell)
     db_session.commit()
     db_session.refresh(bookmark_shell)
-    metadata = _metadata(bookmark_shell.content_metadata)
 
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
@@ -758,7 +976,6 @@ def test_tweet_share_uses_root_article_url_without_fanout(db_session, monkeypatc
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_tweet_by_id",
@@ -821,7 +1038,6 @@ def test_tweet_share_resolves_article_from_linked_tweet(db_session, monkeypatch)
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -900,7 +1116,6 @@ def test_tweet_share_resolves_article_from_same_author_thread_reply(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -987,7 +1202,6 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -1006,7 +1220,9 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.search_recent_tweets",
-        lambda **_kwargs: XTweetsPage(tweets=[root_tweet], next_token=None),
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("thread lookup should be gated when there is no thread signal")
+        ),
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_tweets_by_ids",
@@ -1014,7 +1230,9 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.fetch_user_tweets",
-        lambda **_kwargs: XTweetsPage(tweets=[root_tweet], next_token=None),
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("timeline fanout should be gated when there is no thread signal")
+        ),
     )
     monkeypatch.setattr(
         "app.pipeline.handlers.analyze_url.get_x_user_access_token",
@@ -1038,7 +1256,7 @@ def test_tweet_share_falls_back_to_tweet_only_when_no_article_found(
     assert result.success is True
     assert content.url == "https://x.com/i/status/123456789"
     assert metadata["tweet_resolution_source"] == "tweet_only"
-    assert metadata["tweet_thread_lookup_status"] == "not_found"
+    assert metadata["tweet_thread_lookup_status"] == "not_attempted"
     assert metadata["tweet_only"] is True
 
 
@@ -1058,7 +1276,6 @@ def test_tweet_share_uses_user_timeline_for_older_threads(db_session, monkeypatc
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",
@@ -1138,7 +1355,6 @@ def test_tweet_share_records_capped_thread_lookup_and_degrades_gracefully(
     db_session.add(content)
     db_session.commit()
     db_session.refresh(content)
-    metadata = _metadata(content.content_metadata)
 
     root_tweet = XTweet(
         id="123456789",

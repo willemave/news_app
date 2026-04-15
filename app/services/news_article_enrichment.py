@@ -21,6 +21,8 @@ from app.services.news_article_bodies import (
     NEWS_ARTICLE_EXTRACTION_KEY,
     persist_news_item_article_body,
 )
+from app.services.twitter_share import extract_tweet_id
+from app.services.x_tweet_metadata import build_resolved_tweet_content, hydrate_tweet_from_metadata
 from app.utils.title_utils import clean_title
 from app.utils.url_utils import is_http_url, normalize_http_url
 
@@ -195,6 +197,39 @@ def enrich_news_item_article(
             final_url=normalize_http_url(item.article_url or item.canonical_story_url),
         )
 
+    tweet_candidate_url = normalize_http_url(item.article_url or item.canonical_story_url)
+    tweet_id = extract_tweet_id(tweet_candidate_url or "")
+    hydrated_tweet = (
+        hydrate_tweet_from_metadata(raw_metadata, tweet_id=tweet_id) if tweet_id else None
+    )
+    if hydrated_tweet is not None:
+        text, _, _ = build_resolved_tweet_content(hydrated_tweet.tweet)
+        if text:
+            raw_metadata[NEWS_ARTICLE_BODY_REF_KEY] = {
+                "kind": "inline",
+                "text": text,
+                "source_url": tweet_candidate_url,
+                "updated_at": _utcnow_naive().isoformat(),
+            }
+            item.raw_metadata = _update_enrichment_metadata(
+                raw_metadata,
+                status="completed",
+                source="metadata",
+                article_url=tweet_candidate_url,
+                final_url=tweet_candidate_url,
+                extracted_chars=len(text),
+            )
+            item.enrichment_updated_at = _utcnow_naive()
+            db.commit()
+            return NewsArticleEnrichmentResult(
+                success=True,
+                status="completed",
+                source="metadata",
+                article_url=tweet_candidate_url,
+                final_url=tweet_candidate_url,
+                extracted_chars=len(text),
+            )
+
     article_url, _ = _choose_article_url(item)
     if article_url is None:
         item.raw_metadata = _update_enrichment_metadata(
@@ -211,8 +246,8 @@ def enrich_news_item_article(
 
     existing_article = _existing_article_body_content(db, article_url)
     if existing_article is not None:
-        text = get_content_body_resolver().resolve_text(db, content=existing_article)
-        if text:
+        existing_text = get_content_body_resolver().resolve_text(db, content=existing_article)
+        if existing_text:
             raw_metadata[NEWS_ARTICLE_BODY_REF_KEY] = {
                 "kind": "content",
                 "content_id": _require_content_id(existing_article),
@@ -226,7 +261,7 @@ def enrich_news_item_article(
                 source="content",
                 article_url=article_url,
                 final_url=normalize_http_url(existing_article.url or existing_article.source_url),
-                extracted_chars=len(text),
+                extracted_chars=len(existing_text),
             )
             item.enrichment_updated_at = _utcnow_naive()
             db.commit()

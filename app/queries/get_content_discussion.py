@@ -14,7 +14,7 @@ from app.models.api.common import (
     DiscussionItemResponse,
     DiscussionLinkResponse,
 )
-from app.models.schema import ContentDiscussion
+from app.models.schema import Content, ContentDiscussion
 from app.repositories.content_detail_repository import (
     get_content_discussion as get_content_discussion_repository,
 )
@@ -203,15 +203,15 @@ def build_discussion_response(
     )
 
 
-def execute(db: Session, *, user_id: int, content_id: int) -> ContentDiscussionResponse:
-    """Return stored discussion payload for a visible content item."""
-    content, discussion_row = get_content_discussion_repository(
-        db,
-        user_id=user_id,
-        content_id=content_id,
-    )
-    if not content:
-        raise HTTPException(status_code=404, detail="Content not found")
+def build_response_for_content(
+    *,
+    content: Content,
+    discussion_row: ContentDiscussion | None,
+) -> ContentDiscussionResponse:
+    """Build a discussion response for one visible content item."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content is missing an id")
 
     metadata = content.content_metadata if isinstance(content.content_metadata, dict) else {}
     discussion_url = metadata.get("discussion_url")
@@ -223,3 +223,15 @@ def execute(db: Session, *, user_id: int, content_id: int) -> ContentDiscussionR
         platform=str(platform) if platform else None,
         discussion_row=discussion_row,
     )
+
+
+def execute(db: Session, *, user_id: int, content_id: int) -> ContentDiscussionResponse:
+    """Return stored discussion payload for a visible content item."""
+    content, discussion_row = get_content_discussion_repository(
+        db,
+        user_id=user_id,
+        content_id=content_id,
+    )
+    if not content:
+        raise HTTPException(status_code=404, detail="Content not found")
+    return build_response_for_content(content=content, discussion_row=discussion_row)

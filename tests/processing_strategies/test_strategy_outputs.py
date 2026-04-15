@@ -12,7 +12,6 @@ from app.processing_strategies.twitter_share_strategy import (
     TweetContent,
     TwitterShareProcessorStrategy,
 )
-from app.services.x_api import XTweet, XTweetFetchResult
 
 
 def test_twitter_share_extract_data_contains_text(mocker):
@@ -33,18 +32,11 @@ def test_twitter_share_download_content_prefers_native_article_text(mocker, monk
     strategy = TwitterShareProcessorStrategy(http_client=mocker.Mock())
 
     monkeypatch.setattr(
-        "app.processing_strategies.twitter_share_strategy.fetch_tweet_by_url",
-        lambda **_kwargs: XTweetFetchResult(
-            success=True,
-            tweet=XTweet(
-                id="123",
-                text="Short teaser",
-                author_username="tester",
-                author_name="Tester",
-                created_at="2026-03-28T10:00:00Z",
-                article_title="Native Article Title",
-                article_text="Full native article body text.",
-            ),
+        "app.processing_strategies.twitter_share_strategy.resolve_tweet_content",
+        lambda **_kwargs: TweetContent(
+            text="Native Article Title\n\nFull native article body text.",
+            author="@tester",
+            publication_date=datetime(2026, 3, 28, 10, 0, 0),
         ),
     )
 
@@ -52,6 +44,36 @@ def test_twitter_share_download_content_prefers_native_article_text(mocker, monk
 
     assert content.text == "Native Article Title\n\nFull native article body text."
     assert content.author == "@tester"
+
+
+def test_twitter_share_download_content_uses_metadata_snapshot_without_fetch(
+    mocker,
+    monkeypatch,
+):
+    strategy = TwitterShareProcessorStrategy(http_client=mocker.Mock())
+
+    def _unexpected_fetch(**_kwargs):
+        raise AssertionError("shared tweet resolver should use metadata snapshot first")
+
+    monkeypatch.setattr(
+        "app.processing_strategies.twitter_share_strategy.fetch_tweet_by_url",
+        _unexpected_fetch,
+    )
+    monkeypatch.setattr(
+        "app.processing_strategies.twitter_share_strategy.resolve_tweet_content",
+        lambda **_kwargs: TweetContent(
+            text="Metadata body",
+            author="@tester",
+            publication_date=datetime(2026, 3, 28, 10, 0, 0),
+        ),
+    )
+
+    content = strategy.download_content(
+        "https://x.com/tester/status/123",
+        metadata={"tweet_article_text": "Metadata body"},
+    )
+
+    assert content.text == "Metadata body"
 
 
 def test_hackernews_extract_data_contains_text(mocker, monkeypatch):

@@ -51,6 +51,11 @@ from app.services.x_api import (
     search_recent_tweets,
 )
 from app.services.x_integration import get_x_user_access_token
+from app.services.x_tweet_metadata import (
+    hydrate_included_tweets_from_metadata,
+    hydrate_tweet_from_metadata,
+    parse_x_created_at,
+)
 
 logger = get_logger(__name__)
 
@@ -74,20 +79,16 @@ def _build_thread_text(tweet_texts: list[str]) -> str:
     return "\n\n".join(cleaned)
 
 
-def _parse_x_created_at(value: str | None) -> datetime | None:
-    """Parse X API timestamps into timezone-aware datetimes."""
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except Exception:
-        return None
-
-
 def _is_nonfatal_tweet_lookup_error(error_message: str) -> bool:
     """Return True when tweet lookup failures should degrade gracefully."""
     lowered = error_message.lower()
     return "x_app_bearer_token is required" in lowered
+
+
+def _is_spend_cap_tweet_lookup_error(error_message: str) -> bool:
+    """Return True when X lookup is blocked by provider quota exhaustion."""
+    lowered = error_message.lower()
+    return "spendcapreached" in lowered or "spend cap reached" in lowered
 
 
 def _build_x_app_auth_error(error_message: str) -> str:
@@ -95,6 +96,15 @@ def _build_x_app_auth_error(error_message: str) -> str:
     return (
         "X app-authenticated tweet lookup is unavailable. Configure "
         "X_APP_BEARER_TOKEN (or TWITTER_AUTH_TOKEN) in the runtime environment. "
+        f"Details: {error_message}"
+    )
+
+
+def _build_x_spend_cap_error(error_message: str) -> str:
+    """Build a clear operator-facing error when X API spend is exhausted."""
+    return (
+        "X tweet lookup is temporarily unavailable because the configured "
+        "X account reached its spend cap. "
         f"Details: {error_message}"
     )
 
@@ -351,6 +361,7 @@ class TweetResolutionFlow:
 
     _THREAD_PAGE_LIMIT = 10
     _THREAD_TWEET_LIMIT = 1000
+    _THREAD_SIGNAL_MARKERS = ("1/", "thread", "🧵", "part 1", "1 of")
 
     def _resolve_target_type(
         self,
@@ -431,7 +442,7 @@ class TweetResolutionFlow:
             by_id[tweet.id] = tweet
 
         def _sort_key(tweet: XTweet) -> tuple[datetime, str]:
-            created_at = _parse_x_created_at(tweet.created_at) or datetime.min.replace(tzinfo=UTC)
+            created_at = parse_x_created_at(tweet.created_at) or datetime.min.replace(tzinfo=UTC)
             return created_at, tweet.id
 
         return sorted(by_id.values(), key=_sort_key)
@@ -446,7 +457,7 @@ class TweetResolutionFlow:
             return None, "unavailable", root_tweet.id, [root_tweet]
 
         cutoff = datetime.now(UTC) - timedelta(days=7)
-        root_created_at = _parse_x_created_at(root_tweet.created_at)
+        root_created_at = parse_x_created_at(root_tweet.created_at)
         can_use_recent_search = bool(
             root_created_at and root_created_at >= cutoff and root_tweet.author_username
         )
@@ -505,12 +516,25 @@ class TweetResolutionFlow:
         thread_tweets = self._build_same_author_thread(root_tweet, collected)
         return None, "capped", root_tweet.id, thread_tweets
 
+    def _should_attempt_thread_lookup(self, root_tweet: XTweet) -> bool:
+        if not root_tweet.author_id or not root_tweet.conversation_id:
+            return False
+        if root_tweet.article_text or root_tweet.note_tweet_text:
+            return False
+        if root_tweet.external_urls:
+            return False
+        lowered = root_tweet.text.lower()
+        if any(marker in lowered for marker in self._THREAD_SIGNAL_MARKERS):
+            return True
+        return (root_tweet.reply_count or 0) >= 3
+
     def _resolve_tweet_target(
         self,
         *,
         root_tweet: XTweet,
         access_token: str | None,
         content_id: int,
+        included_tweets_by_id: dict[str, XTweet] | None = None,
     ) -> TweetTargetResolution:
         root_urls = self._normalize_candidate_urls(root_tweet.external_urls, content_id=content_id)
         linked_tweet_ids = list(root_tweet.linked_tweet_ids)
@@ -524,10 +548,46 @@ class TweetResolutionFlow:
                 thread_lookup_status="not_needed",
             )
 
+        if root_tweet.article_text or root_tweet.note_tweet_text:
+            return TweetTargetResolution(
+                selected_article_url=None,
+                resolution_source="root_tweet",
+                resolution_tweet_id=root_tweet.id,
+                thread_text=_build_thread_text([build_tweet_processing_text(root_tweet)]),
+                linked_tweet_ids=linked_tweet_ids,
+                thread_lookup_status="not_needed",
+            )
+
+        included_lookup = included_tweets_by_id or {}
         if linked_tweet_ids:
+            for linked_tweet_id in linked_tweet_ids:
+                linked_tweet = included_lookup.get(linked_tweet_id)
+                if linked_tweet is None:
+                    continue
+                linked_urls = self._normalize_candidate_urls(
+                    linked_tweet.external_urls,
+                    content_id=content_id,
+                )
+                if linked_urls:
+                    return TweetTargetResolution(
+                        selected_article_url=linked_urls[0],
+                        resolution_source="linked_tweet",
+                        resolution_tweet_id=linked_tweet.id,
+                        thread_text=_build_thread_text([build_tweet_processing_text(root_tweet)]),
+                        linked_tweet_ids=linked_tweet_ids,
+                        thread_lookup_status="not_needed",
+                    )
+
+        remaining_linked_tweet_ids = [
+            linked_tweet_id
+            for linked_tweet_id in linked_tweet_ids
+            if linked_tweet_id not in included_lookup
+        ]
+
+        if remaining_linked_tweet_ids:
             try:
                 linked_tweets = fetch_tweets_by_ids(
-                    tweet_ids=linked_tweet_ids,
+                    tweet_ids=remaining_linked_tweet_ids,
                     access_token=access_token,
                 )
                 for linked_tweet in linked_tweets:
@@ -556,6 +616,16 @@ class TweetResolutionFlow:
                         "item_id": content_id,
                     },
                 )
+
+        if not self._should_attempt_thread_lookup(root_tweet):
+            return TweetTargetResolution(
+                selected_article_url=None,
+                resolution_source="tweet_only",
+                resolution_tweet_id=root_tweet.id,
+                thread_text=_build_thread_text([build_tweet_processing_text(root_tweet)]),
+                linked_tweet_ids=linked_tweet_ids,
+                thread_lookup_status="not_attempted",
+            )
 
         try:
             selected_article_url, thread_lookup_status, resolution_tweet_id, thread_tweets = (
@@ -623,68 +693,92 @@ class TweetResolutionFlow:
         if isinstance(submitter_id, int):
             access_token = get_x_user_access_token(db, user_id=submitter_id)
 
-        fetch_result = fetch_tweet_by_id(tweet_id=tweet_id, access_token=access_token)
-        if not fetch_result.success or not fetch_result.tweet:
-            error_message = fetch_result.error or "Tweet lookup failed"
-            if _is_nonfatal_tweet_lookup_error(error_message):
-                setup_error = _build_x_app_auth_error(error_message)
+        hydrated_tweet = hydrate_tweet_from_metadata(metadata, tweet_id=tweet_id)
+        tweet = hydrated_tweet.tweet if hydrated_tweet is not None else None
+        metadata["tweet_lookup_source"] = hydrated_tweet.source if hydrated_tweet else "x_api"
+        if tweet is None:
+            fetch_result = fetch_tweet_by_id(
+                tweet_id=tweet_id,
+                access_token=access_token,
+                telemetry={
+                    "feature": "analyze_url",
+                    "operation": "analyze_url.fetch_tweet",
+                    "content_id": content.id,
+                    "user_id": submitter_id if isinstance(submitter_id, int) else None,
+                },
+            )
+            if not fetch_result.success or not fetch_result.tweet:
+                error_message = fetch_result.error or "Tweet lookup failed"
+                setup_error: str | None = None
+                enrichment_status = "failed"
+                enrichment_reason: str | None = None
+                if _is_nonfatal_tweet_lookup_error(error_message):
+                    setup_error = _build_x_app_auth_error(error_message)
+                    enrichment_reason = "x_app_auth_unavailable"
+                elif _is_spend_cap_tweet_lookup_error(error_message):
+                    setup_error = _build_x_spend_cap_error(error_message)
+                    enrichment_status = "deferred"
+                    enrichment_reason = "x_spend_cap_reached"
+                if setup_error is not None and enrichment_reason is not None:
+                    logger.warning(
+                        "Tweet resolution failed before lookup could proceed",
+                        extra={
+                            "component": "tweet_resolution",
+                            "operation": "fetch_tweet",
+                            "item_id": content.id,
+                            "context_data": {"error": setup_error},
+                        },
+                    )
+                    metadata = update_processing_state(
+                        metadata,
+                        tweet_enrichment={
+                            "status": enrichment_status,
+                            "reason": enrichment_reason,
+                            "error": setup_error,
+                        },
+                    )
+                    content.content_metadata = refresh_merge_content_metadata(
+                        db,
+                        content_id=content.id,
+                        base_metadata=base_metadata,
+                        updated_metadata=metadata,
+                    )
+                    content.status = ContentStatus.FAILED.value
+                    content.error_message = setup_error
+                    content.processed_at = datetime.now(UTC)
+                    db.commit()
+                    return FlowOutcome(
+                        handled=True,
+                        success=False,
+                        error_message=setup_error,
+                        retryable=False,
+                    )
+
                 logger.warning(
-                    "Tweet resolution failed due to missing app auth token",
+                    "Tweet resolution failed before lookup could proceed",
                     extra={
                         "component": "tweet_resolution",
                         "operation": "fetch_tweet",
                         "item_id": content.id,
-                        "context_data": {"error": setup_error},
+                        "context_data": {"error": error_message},
                     },
-                )
-                metadata = update_processing_state(
-                    metadata,
-                    tweet_enrichment={
-                        "status": "failed",
-                        "reason": "x_app_auth_unavailable",
-                        "error": setup_error,
-                    },
-                )
-                content.content_metadata = refresh_merge_content_metadata(
-                    db,
-                    content_id=content.id,
-                    base_metadata=base_metadata,
-                    updated_metadata=metadata,
                 )
                 content.status = ContentStatus.FAILED.value
-                content.error_message = setup_error
-                content.processed_at = datetime.now(UTC)
+                content.error_message = error_message
                 db.commit()
-                return FlowOutcome(
-                    handled=True,
-                    success=False,
-                    error_message=setup_error,
-                    retryable=False,
-                )
+                return FlowOutcome(handled=True, success=False, error_message=error_message)
 
-            logger.error(
-                "Tweet resolution fetch failed: %s",
-                error_message,
-                extra={
-                    "component": "tweet_resolution",
-                    "operation": "fetch_tweet",
-                    "item_id": content.id,
-                },
-            )
-            content.status = ContentStatus.FAILED.value
-            content.error_message = error_message
-            db.commit()
-            return FlowOutcome(handled=True, success=False, error_message=error_message)
-
-        tweet = fetch_result.tweet
+            tweet = fetch_result.tweet
         processing_text = build_tweet_processing_text(tweet)
         content_id = content.id
         if content_id is None:
             raise ValueError("Tweet resolution flow requires persisted content")
+        included_tweets_by_id = hydrate_included_tweets_from_metadata(metadata)
         resolution = self._resolve_tweet_target(
             root_tweet=tweet,
             access_token=access_token,
             content_id=content_id,
+            included_tweets_by_id=included_tweets_by_id,
         )
         external_urls = self._normalize_candidate_urls(
             tweet.external_urls,
