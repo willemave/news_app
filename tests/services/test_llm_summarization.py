@@ -9,7 +9,7 @@ from app.models.metadata import (
     EditorialQuote,
     NewsSummary,
 )
-from app.models.schema import LlmUsageRecord
+from app.models.schema import VendorUsageRecord
 from app.services import llm_summarization
 
 
@@ -264,10 +264,10 @@ def test_summarize_returns_none_for_empty_payload() -> None:
 
 def test_summarize_persists_usage_when_db_and_metadata_provided(
     db_session,
-    llm_usage_db,
+    vendor_usage_db,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    del llm_usage_db
+    del vendor_usage_db
     summary = _editorial_summary()
     fake_agent = FakeAgent(
         summary,
@@ -290,7 +290,7 @@ def test_summarize_persists_usage_when_db_and_metadata_provided(
 
     assert result == summary
     db_session.commit()
-    row = db_session.query(LlmUsageRecord).one()
+    row = db_session.query(VendorUsageRecord).one()
     assert row.feature == "summarization"
     assert row.operation == "summarization.llm_summarization"
     assert row.source == "queue"

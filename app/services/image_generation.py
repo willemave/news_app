@@ -24,7 +24,7 @@ from app.services.langfuse_tracing import (
     extract_google_usage_details,
     langfuse_generation_context,
 )
-from app.services.llm_costs import record_llm_usage_out_of_band
+from app.services.vendor_costs import record_vendor_usage_out_of_band
 from app.utils.image_paths import (
     get_content_images_dir,
     get_news_thumbnails_dir,
@@ -475,7 +475,7 @@ class ImageGenerationService:
                         usage_details=usage_details,
                     )
                 if usage_details:
-                    record_llm_usage_out_of_band(
+                    record_vendor_usage_out_of_band(
                         provider="google",
                         model=NEWS_THUMBNAIL_MODEL,
                         feature="image_generation",
@@ -568,7 +568,7 @@ class ImageGenerationService:
                         usage_details=usage_details,
                     )
                 if usage_details:
-                    record_llm_usage_out_of_band(
+                    record_vendor_usage_out_of_band(
                         provider="google",
                         model=INFOGRAPHIC_MODEL,
                         feature="image_generation",

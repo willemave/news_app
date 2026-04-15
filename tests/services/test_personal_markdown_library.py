@@ -10,6 +10,7 @@ from app.services import content_bodies
 from app.services.content_bodies import ContentBodyFormat, ContentBodyVariant
 from app.services.gateways import object_storage_gateway
 from app.services.personal_markdown_library import (
+    _resolve_saved_at,
     collect_personal_markdown_documents_for_user,
     get_personal_markdown_user_root,
     sync_personal_markdown_for_content,
@@ -93,6 +94,13 @@ def _make_podcast_content() -> Content:
             },
         },
     )
+
+
+def test_resolve_saved_at_handles_mixed_naive_and_aware_datetimes() -> None:
+    aware_saved_at = datetime(2026, 4, 3, 8, 0, 0, tzinfo=UTC)
+    naive_saved_at = datetime(2026, 4, 3, 9, 0, 0)
+
+    assert _resolve_saved_at(naive_saved_at, aware_saved_at) == datetime(2026, 4, 3, 8, 0, 0)
 
 
 def test_sync_personal_markdown_library_writes_source_and_summary_files(

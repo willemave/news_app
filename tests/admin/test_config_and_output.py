@@ -157,6 +157,13 @@ def test_build_parser_supports_logs_exceptions():
     assert args.limit == 7
 
 
+def test_build_parser_supports_usage_group_by_vendor():
+    args = build_parser().parse_args(["usage", "summary", "--group-by", "vendor"])
+
+    assert args.usage_command == "summary"
+    assert args.group_by == "vendor"
+
+
 def test_build_parser_supports_docker_log_source():
     args = build_parser().parse_args(["logs", "tail", "--source", "docker", "--limit", "12"])
 
@@ -198,6 +205,51 @@ def test_emit_text_logs_exceptions_is_human_readable():
     rendered = stream.getvalue()
     assert "recent exception record" in rendered
     assert "worker/summarize ValueError: boom" in rendered
+
+
+def test_emit_text_usage_summary_includes_vendor_units():
+    stream = StringIO()
+    emit(
+        Envelope(
+            ok=True,
+            command="usage.summary",
+            data={
+                "group_by": "vendor",
+                "totals": {
+                    "call_count": 2,
+                    "total_tokens": 100,
+                    "request_count": 2,
+                    "resource_count": 9,
+                    "cost_usd": 0.42,
+                },
+                "groups": [
+                    {
+                        "key": "exa",
+                        "call_count": 1,
+                        "total_tokens": 0,
+                        "request_count": 1,
+                        "resource_count": 8,
+                        "cost_usd": 0.28,
+                    },
+                    {
+                        "key": "openai",
+                        "call_count": 1,
+                        "total_tokens": 100,
+                        "request_count": 0,
+                        "resource_count": 0,
+                        "cost_usd": 0.14,
+                    },
+                ],
+            },
+        ),
+        "text",
+        stream,
+    )
+
+    rendered = stream.getvalue()
+    assert "Totals: 2 calls, 100 tokens, 2 requests, 9 resources, $0.4200" in rendered
+    assert "- exa: 1 calls, 1 requests, 8 resources, $0.2800" in rendered
+    assert "- openai: 1 calls, 100 tokens, $0.1400" in rendered
 
 
 def test_logs_group_error_includes_next_steps(capsys):

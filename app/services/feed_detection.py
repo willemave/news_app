@@ -19,7 +19,7 @@ from app.models.metadata import ContentType
 from app.services.exa_client import ExaClientError, exa_search
 from app.services.http import HttpService
 from app.services.llm_agents import get_basic_agent
-from app.services.llm_usage import record_usage
+from app.services.vendor_usage import record_model_usage
 
 logger = get_logger(__name__)
 
@@ -384,7 +384,7 @@ def classify_feed_type_with_llm(
             prompt,
             model_settings={"timeout": FEED_CLASSIFICATION_TIMEOUT},
         )
-        record_usage(
+        record_model_usage(
             "feed_classification",
             run_result,
             model_spec=model_spec or FEED_CLASSIFICATION_MODEL,

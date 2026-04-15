@@ -17,8 +17,8 @@ from app.core.observability import build_log_extra
 from app.core.settings import get_settings
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.langfuse_tracing import langfuse_trace_context
-from app.services.llm_costs import record_llm_usage_out_of_band
 from app.services.llm_models import DEEP_RESEARCH_MODEL
+from app.services.vendor_costs import record_vendor_usage_out_of_band
 
 try:
     from langfuse.openai import AsyncOpenAI
@@ -594,7 +594,7 @@ async def process_deep_research_message(
                     ),
                 )
                 if result.usage:
-                    record_llm_usage_out_of_band(
+                    record_vendor_usage_out_of_band(
                         provider="deep_research",
                         model=DEEP_RESEARCH_MODEL,
                         feature="chat",

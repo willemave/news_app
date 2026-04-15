@@ -297,9 +297,8 @@ def _load_reasons_for_content(
     chat_session_ids = [
         int(session_id) for session_id, _created_at in chat_rows if session_id is not None
     ]
-    chat_saved_at = min(
-        (created_at for _session_id, created_at in chat_rows if created_at is not None),
-        default=None,
+    chat_saved_at = _resolve_saved_at(
+        *(created_at for _session_id, created_at in chat_rows if created_at is not None)
     )
     return PersonalMarkdownReasons(
         is_saved_to_knowledge=knowledge_row is not None,
@@ -584,7 +583,15 @@ def _isoformat(value: datetime | None) -> str | None:
 
 
 def _resolve_saved_at(*candidates: datetime | None) -> datetime | None:
-    valid_candidates = [candidate for candidate in candidates if candidate is not None]
+    valid_candidates = [
+        _normalize_datetime(candidate) for candidate in candidates if candidate is not None
+    ]
     if not valid_candidates:
         return None
     return min(valid_candidates)
+
+
+def _normalize_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)

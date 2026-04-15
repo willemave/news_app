@@ -22,7 +22,7 @@ from admin.log_parsing import (
 )
 from admin.sql_guard import validate_readonly_sql
 from app.core.redaction import redact_value
-from app.models.schema import Content, LlmUsageRecord, ProcessingTask
+from app.models.schema import Content, ProcessingTask, VendorUsageRecord
 from app.models.user import User
 
 DEFAULT_ROW_LIMIT = 200
@@ -43,9 +43,9 @@ class RemoteContext:
 @lru_cache(maxsize=1)
 def _load_schema_models() -> tuple[Any, Any, Any, Any]:
     """Load schema models lazily for DB-backed remote commands."""
-    from app.models.schema import Content, LlmUsageRecord, ProcessingTask
+    from app.models.schema import Content, ProcessingTask, VendorUsageRecord
 
-    return Content, LlmUsageRecord, ProcessingTask, None
+    return Content, VendorUsageRecord, ProcessingTask, None
 
 
 def db_tables(context: RemoteContext) -> dict[str, Any]:
@@ -127,13 +127,13 @@ def usage_summary(
     until: datetime | None = None,
     group_by: str = "feature",
 ) -> dict[str, Any]:
-    """Return grouped usage totals from persisted LLM usage rows."""
+    """Return grouped usage totals from persisted vendor usage rows."""
     engine = create_engine(context.database_url, pool_pre_ping=True)
     session_factory = sessionmaker(bind=engine)
     try:
         with session_factory() as session:
             rows = _apply_usage_window(
-                session.query(LlmUsageRecord),
+                session.query(VendorUsageRecord),
                 since=since,
                 until=until,
             ).all()
@@ -171,11 +171,11 @@ def usage_by_user(
         with session_factory() as session:
             user = session.query(User).filter(User.id == user_id).first()
             query = _apply_usage_window(
-                session.query(LlmUsageRecord).filter(LlmUsageRecord.user_id == user_id),
+                session.query(VendorUsageRecord).filter(VendorUsageRecord.user_id == user_id),
                 since=since,
                 until=until,
             )
-            rows = query.order_by(LlmUsageRecord.created_at.desc()).limit(bounded_limit).all()
+            rows = query.order_by(VendorUsageRecord.created_at.desc()).limit(bounded_limit).all()
             serialized = [_serialize_usage_row(row, unsafe_raw=unsafe_raw) for row in rows]
             return {
                 "user": {
@@ -206,9 +206,9 @@ def usage_by_content(
         with session_factory() as session:
             content = session.query(Content).filter(Content.id == content_id).first()
             rows = (
-                session.query(LlmUsageRecord)
-                .filter(LlmUsageRecord.content_id == content_id)
-                .order_by(LlmUsageRecord.created_at.desc())
+                session.query(VendorUsageRecord)
+                .filter(VendorUsageRecord.content_id == content_id)
+                .order_by(VendorUsageRecord.created_at.desc())
                 .limit(bounded_limit)
                 .all()
             )
@@ -269,7 +269,7 @@ def health_snapshot(context: RemoteContext) -> dict[str, Any]:
             task_by_status: dict[str | None, int] = {
                 status: int(count) for status, count in task_rows
             }
-            latest_usage_at = session.query(func.max(LlmUsageRecord.created_at)).scalar()
+            latest_usage_at = session.query(func.max(VendorUsageRecord.created_at)).scalar()
 
             return {
                 "content": {
@@ -713,19 +713,21 @@ def _render_logs(records: list[dict[str, Any]], *, unsafe_raw: bool, limit: int)
 
 def _apply_usage_window(query: Any, *, since: datetime | None, until: datetime | None) -> Any:
     if since is not None:
-        query = query.filter(LlmUsageRecord.created_at >= _naive_utc(since))
+        query = query.filter(VendorUsageRecord.created_at >= _naive_utc(since))
     if until is not None:
-        query = query.filter(LlmUsageRecord.created_at <= _naive_utc(until))
+        query = query.filter(VendorUsageRecord.created_at <= _naive_utc(until))
     return query
 
 
-def _usage_group_key(row: LlmUsageRecord, *, group_by: str) -> str:
+def _usage_group_key(row: VendorUsageRecord, *, group_by: str) -> str:
     if group_by == "user":
         return str(row.user_id) if row.user_id is not None else "unknown"
+    if group_by == "vendor":
+        return str(row.provider or "unknown")
     return str(getattr(row, group_by, None) or "unknown")
 
 
-def _serialize_usage_row(row: LlmUsageRecord, *, unsafe_raw: bool) -> dict[str, Any]:
+def _serialize_usage_row(row: VendorUsageRecord, *, unsafe_raw: bool) -> dict[str, Any]:
     payload = {
         "id": row.id,
         "provider": row.provider,
@@ -742,6 +744,8 @@ def _serialize_usage_row(row: LlmUsageRecord, *, unsafe_raw: bool) -> dict[str, 
         "input_tokens": row.input_tokens,
         "output_tokens": row.output_tokens,
         "total_tokens": row.total_tokens,
+        "request_count": row.request_count,
+        "resource_count": row.resource_count,
         "cost_usd": row.cost_usd,
         "currency": row.currency,
         "pricing_version": row.pricing_version,
@@ -751,7 +755,7 @@ def _serialize_usage_row(row: LlmUsageRecord, *, unsafe_raw: bool) -> dict[str, 
     return payload if unsafe_raw else redact_value(payload)
 
 
-def _summarize_usage_rows(rows: list[LlmUsageRecord]) -> dict[str, Any]:
+def _summarize_usage_rows(rows: list[VendorUsageRecord]) -> dict[str, Any]:
     totals = _usage_totals()
     providers: Counter[str] = Counter()
     models: Counter[str] = Counter()
@@ -770,15 +774,19 @@ def _usage_totals() -> dict[str, Any]:
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
+        "request_count": 0,
+        "resource_count": 0,
         "cost_usd": 0.0,
     }
 
 
-def _accumulate_usage(bucket: dict[str, Any], row: LlmUsageRecord) -> None:
+def _accumulate_usage(bucket: dict[str, Any], row: VendorUsageRecord) -> None:
     bucket["call_count"] += 1
     bucket["input_tokens"] += int(row.input_tokens or 0)
     bucket["output_tokens"] += int(row.output_tokens or 0)
     bucket["total_tokens"] += int(row.total_tokens or 0)
+    bucket["request_count"] += int(row.request_count or 0)
+    bucket["resource_count"] += int(row.resource_count or 0)
     bucket["cost_usd"] += float(row.cost_usd or 0.0)
     bucket["cost_usd"] = round(bucket["cost_usd"], 8)
 

@@ -625,8 +625,8 @@ def _build_logs_parser(subparsers: argparse._SubParsersAction[AdminArgumentParse
 def _build_usage_parser(subparsers: argparse._SubParsersAction[AdminArgumentParser]) -> None:
     usage_parser = subparsers.add_parser(
         "usage",
-        help="Query persisted LLM usage",
-        description="Summarize or inspect persisted LLM usage rows.",
+        help="Query persisted vendor usage and cost",
+        description="Summarize or inspect persisted vendor usage and cost rows.",
     )
     usage_subparsers = usage_parser.add_subparsers(dest="usage_command", required=True)
 
@@ -635,7 +635,7 @@ def _build_usage_parser(subparsers: argparse._SubParsersAction[AdminArgumentPars
     summary_parser.add_argument("--until", default=None)
     summary_parser.add_argument(
         "--group-by",
-        choices=("user", "feature", "operation", "provider", "model", "source"),
+        choices=("user", "feature", "operation", "provider", "vendor", "model", "source"),
         default="feature",
     )
 

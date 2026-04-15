@@ -80,9 +80,9 @@ def db(db_session_factory: sessionmaker):
 
 
 @pytest.fixture
-def llm_usage_db(db_session_factory: sessionmaker, monkeypatch):
-    """Route out-of-band LLM usage writes to the current test database."""
-    from app.services import llm_costs
+def vendor_usage_db(db_session_factory: sessionmaker, monkeypatch):
+    """Route out-of-band vendor usage writes to the current test database."""
+    from app.services import vendor_costs
 
     @contextmanager
     def _get_db():
@@ -96,7 +96,7 @@ def llm_usage_db(db_session_factory: sessionmaker, monkeypatch):
         finally:
             session.close()
 
-    monkeypatch.setattr(llm_costs, "get_db", _get_db)
+    monkeypatch.setattr(vendor_costs, "get_db", _get_db)
 
 
 @pytest.fixture

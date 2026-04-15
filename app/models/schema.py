@@ -554,10 +554,10 @@ class AnalyticsInteraction(Base):
     )
 
 
-class LlmUsageRecord(Base):
-    """Persist per-call LLM usage and estimated cost."""
+class VendorUsageRecord(Base):
+    """Persist per-call vendor usage and estimated cost."""
 
-    __tablename__ = "llm_usage_records"
+    __tablename__ = "vendor_usage_records"
 
     id = Column(Integer, primary_key=True)
     provider = Column(String(50), nullable=False, index=True)
@@ -574,6 +574,8 @@ class LlmUsageRecord(Base):
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
+    request_count = Column(Integer, nullable=True)
+    resource_count = Column(Integer, nullable=True)
     cost_usd = Column(Float, nullable=True)
     currency = Column(String(8), nullable=False, default="USD")
     pricing_version = Column(String(50), nullable=True)
@@ -581,10 +583,10 @@ class LlmUsageRecord(Base):
     created_at = Column(DateTime, default=_utcnow, nullable=False, index=True)
 
     __table_args__ = (
-        Index("idx_llm_usage_provider_model_created", "provider", "model", "created_at"),
-        Index("idx_llm_usage_content_created", "content_id", "created_at"),
-        Index("idx_llm_usage_session_created", "session_id", "created_at"),
-        Index("idx_llm_usage_task_created", "task_id", "created_at"),
+        Index("idx_vendor_usage_provider_model_created", "provider", "model", "created_at"),
+        Index("idx_vendor_usage_content_created", "content_id", "created_at"),
+        Index("idx_vendor_usage_session_created", "session_id", "created_at"),
+        Index("idx_vendor_usage_task_created", "task_id", "created_at"),
     )
 
 

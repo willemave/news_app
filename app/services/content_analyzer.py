@@ -29,7 +29,7 @@ from app.models.internal.content_analyzer import (
 from app.services.feed_detection import extract_feed_links
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import build_pydantic_model
-from app.services.llm_usage import record_usage
+from app.services.vendor_usage import record_model_usage
 
 logger = get_logger(__name__)
 
@@ -370,7 +370,7 @@ PAGE CONTENT (truncated):
                     tags=["queue", "content_analyzer"],
                 ):
                     result = agent.run_sync(prompt)
-                record_usage(
+                record_model_usage(
                     "analyze_url",
                     result,
                     model_spec=f"openai:{CONTENT_ANALYSIS_MODEL}",

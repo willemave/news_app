@@ -251,7 +251,7 @@ def _format_usage_summary(data: dict[str, Any]) -> str:
             lines.append(
                 f"- {_coerce_text(group.get('key') or 'unknown')}: "
                 f"{group.get('call_count', 0)} calls, "
-                f"{group.get('total_tokens', 0)} tokens, "
+                f"{_format_usage_units(group)}, "
                 f"${float(group.get('cost_usd', 0.0)):.4f}"
             )
     return "\n".join(lines)
@@ -268,7 +268,7 @@ def _format_usage_rows(data: dict[str, Any]) -> str:
                 f"- {_coerce_text(row.get('created_at') or 'unknown-time')}: "
                 f"{_coerce_text(row.get('provider') or 'unknown')}/"
                 f"{_coerce_text(row.get('model') or 'unknown')} "
-                f"{row.get('total_tokens', 0)} tokens "
+                f"{_format_usage_units(row)} "
                 f"${float(row.get('cost_usd', 0.0)):.4f}"
             )
     return "\n".join(lines)
@@ -287,9 +287,23 @@ def _format_usage_subject(subject: dict[str, Any]) -> str:
 def _format_usage_totals(totals: dict[str, Any]) -> str:
     return (
         f"Totals: {totals.get('call_count', 0)} calls, "
-        f"{totals.get('total_tokens', 0)} tokens, "
+        f"{_format_usage_units(totals)}, "
         f"${float(totals.get('cost_usd', 0.0)):.4f}"
     )
+
+
+def _format_usage_units(values: dict[str, Any]) -> str:
+    parts: list[str] = []
+    total_tokens = int(values.get("total_tokens") or 0)
+    request_count = int(values.get("request_count") or 0)
+    resource_count = int(values.get("resource_count") or 0)
+    if total_tokens:
+        parts.append(f"{total_tokens} tokens")
+    if request_count:
+        parts.append(f"{request_count} requests")
+    if resource_count:
+        parts.append(f"{resource_count} resources")
+    return ", ".join(parts) if parts else "0 usage units"
 
 
 def _format_events(data: dict[str, Any]) -> str:

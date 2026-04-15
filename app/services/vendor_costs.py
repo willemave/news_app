@@ -1,4 +1,4 @@
-"""Shared persistence and pricing helpers for LLM usage."""
+"""Shared persistence and pricing helpers for vendor usage telemetry."""
 
 from __future__ import annotations
 
@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.core.logging import get_logger
 from app.core.observability import build_log_extra
-from app.models.schema import LlmUsageRecord
+from app.core.settings import get_settings
+from app.models.schema import VendorUsageRecord
 from app.services.llm_models import resolve_model_provider
 
-logger = get_logger("llm.cost")
+logger = get_logger("vendor.cost")
 
-PRICING_VERSION = "2026-03-28"
+PRICING_VERSION = "2026-04-14"
 USD = "USD"
 
 
@@ -27,6 +28,12 @@ class ModelPricing:
     long_context_threshold_tokens: int | None = None
     long_context_input_per_million_usd: float | None = None
     long_context_output_per_million_usd: float | None = None
+
+
+@dataclass(frozen=True)
+class UnitPricing:
+    request_usd: float | None = None
+    resource_usd: float | None = None
 
 
 # Standard online pricing for the exact model names we resolve in production.
@@ -128,7 +135,7 @@ def extract_usage_from_result(result: object) -> dict[str, int | None] | None:
     }
 
 
-def record_llm_usage(
+def record_vendor_usage(
     db: Session,
     *,
     provider: str | None,
@@ -144,22 +151,19 @@ def record_llm_usage(
     message_id: int | None = None,
     user_id: int | None = None,
     metadata: dict[str, Any] | None = None,
-) -> LlmUsageRecord | None:
-    """Persist one LLM usage record and emit a structured log."""
-    if usage is None:
+) -> VendorUsageRecord | None:
+    """Persist one vendor usage record and emit a structured log."""
+    normalized_usage = _normalize_usage(usage)
+    if normalized_usage is None:
         return None
 
     provider_name = provider or resolve_model_provider(model)
-    input_tokens = usage.get("input_tokens", usage.get("input"))
-    output_tokens = usage.get("output_tokens", usage.get("output"))
-    total_tokens = usage.get("total_tokens", usage.get("total"))
-    cost_usd = estimate_cost_usd(
+    cost_usd = estimate_vendor_cost_usd(
         provider=provider_name,
         model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
+        usage=normalized_usage,
     )
-    record = LlmUsageRecord(
+    record = VendorUsageRecord(
         provider=provider_name,
         model=model,
         feature=feature,
@@ -171,9 +175,11 @@ def record_llm_usage(
         session_id=session_id,
         message_id=message_id,
         user_id=user_id,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        total_tokens=total_tokens,
+        input_tokens=normalized_usage.get("input_tokens"),
+        output_tokens=normalized_usage.get("output_tokens"),
+        total_tokens=normalized_usage.get("total_tokens"),
+        request_count=normalized_usage.get("request_count"),
+        resource_count=normalized_usage.get("resource_count"),
         cost_usd=cast(Any, cost_usd),
         currency=USD,
         pricing_version=PRICING_VERSION,
@@ -186,11 +192,11 @@ def record_llm_usage(
         # Usage tracking must never poison the caller's session.
         db.rollback()
         logger.warning(
-            "Failed to persist LLM usage record; continuing without telemetry",
+            "Failed to persist vendor usage record; continuing without telemetry",
             extra=build_log_extra(
-                component="llm_costs",
+                component="vendor_costs",
                 operation=operation,
-                event_name="llm.usage",
+                event_name="vendor.usage",
                 status="degraded",
                 request_id=request_id,
                 task_id=task_id,
@@ -210,11 +216,11 @@ def record_llm_usage(
         return None
 
     logger.info(
-        "Recorded LLM usage",
+        "Recorded vendor usage",
         extra=build_log_extra(
-            component="llm_costs",
+            component="vendor_costs",
             operation=operation,
-            event_name="llm.usage",
+            event_name="vendor.usage",
             status="completed",
             request_id=request_id,
             task_id=task_id,
@@ -227,9 +233,11 @@ def record_llm_usage(
                 "provider": provider_name,
                 "model": model,
                 "feature": feature,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_tokens": total_tokens,
+                "input_tokens": normalized_usage.get("input_tokens"),
+                "output_tokens": normalized_usage.get("output_tokens"),
+                "total_tokens": normalized_usage.get("total_tokens"),
+                "request_count": normalized_usage.get("request_count"),
+                "resource_count": normalized_usage.get("resource_count"),
                 "cost_usd": cost_usd,
                 "pricing_version": PRICING_VERSION,
             },
@@ -239,7 +247,7 @@ def record_llm_usage(
     return record
 
 
-def record_llm_usage_out_of_band(
+def record_vendor_usage_out_of_band(
     *,
     provider: str | None,
     model: str,
@@ -254,14 +262,14 @@ def record_llm_usage_out_of_band(
     message_id: int | None = None,
     user_id: int | None = None,
     metadata: dict[str, Any] | None = None,
-) -> LlmUsageRecord | None:
-    """Persist one LLM usage record using a dedicated short-lived session."""
+) -> VendorUsageRecord | None:
+    """Persist one vendor usage record using a dedicated short-lived session."""
     if usage is None:
         return None
 
     try:
         with get_db() as db:
-            return record_llm_usage(
+            return record_vendor_usage(
                 db,
                 provider=provider,
                 model=model,
@@ -279,11 +287,11 @@ def record_llm_usage_out_of_band(
             )
     except SQLAlchemyError:
         logger.warning(
-            "Failed to persist out-of-band LLM usage record; continuing without telemetry",
+            "Failed to persist out-of-band vendor usage record; continuing without telemetry",
             extra=build_log_extra(
-                component="llm_costs",
+                component="vendor_costs",
                 operation=operation,
-                event_name="llm.usage",
+                event_name="vendor.usage",
                 status="degraded",
                 request_id=request_id,
                 task_id=task_id,
@@ -303,15 +311,44 @@ def record_llm_usage_out_of_band(
         return None
 
 
-def estimate_cost_usd(
+def estimate_vendor_cost_usd(
+    *,
+    provider: str,
+    model: str,
+    usage: dict[str, int | None],
+) -> float | None:
+    """Estimate USD cost from token or unit pricing registries."""
+    normalized_usage = _normalize_usage(usage)
+    if normalized_usage is None:
+        return None
+
+    token_cost = _estimate_token_cost_usd(
+        provider=provider,
+        model=model,
+        input_tokens=normalized_usage.get("input_tokens"),
+        output_tokens=normalized_usage.get("output_tokens"),
+    )
+    unit_cost = _estimate_unit_cost_usd(
+        provider=provider,
+        model=model,
+        request_count=normalized_usage.get("request_count"),
+        resource_count=normalized_usage.get("resource_count"),
+    )
+
+    contributions = [value for value in (token_cost, unit_cost) if value is not None]
+    if not contributions:
+        return None
+    return round(sum(contributions), 8)
+
+
+def _estimate_token_cost_usd(
     *,
     provider: str,
     model: str,
     input_tokens: int | None,
     output_tokens: int | None,
 ) -> float | None:
-    """Estimate USD cost from the configured local pricing registry."""
-    pricing = _resolve_pricing(provider=provider, model=model)
+    pricing = _resolve_model_pricing(provider=provider, model=model)
     if pricing is None:
         return None
     if input_tokens is None or output_tokens is None:
@@ -333,11 +370,84 @@ def estimate_cost_usd(
     return round(cost, 8)
 
 
-def _resolve_pricing(*, provider: str, model: str) -> ModelPricing | None:
+def _estimate_unit_cost_usd(
+    *,
+    provider: str,
+    model: str,
+    request_count: int | None,
+    resource_count: int | None,
+) -> float | None:
+    pricing = _resolve_unit_pricing(provider=provider, model=model)
+    if pricing is None:
+        return None
+
+    total = 0.0
+    has_cost = False
+    if request_count is not None and pricing.request_usd is not None:
+        total += request_count * pricing.request_usd
+        has_cost = True
+    if resource_count is not None and pricing.resource_usd is not None:
+        total += resource_count * pricing.resource_usd
+        has_cost = True
+
+    if not has_cost:
+        return None
+    return round(total, 8)
+
+
+def _resolve_model_pricing(*, provider: str, model: str) -> ModelPricing | None:
     for candidate in _pricing_candidates(provider=provider, model=model):
         if candidate in MODEL_PRICING:
             return MODEL_PRICING[candidate]
     return MODEL_PRICING.get(provider)
+
+
+def _resolve_unit_pricing(*, provider: str, model: str) -> UnitPricing | None:
+    settings = get_settings()
+    unit_pricing: dict[str, UnitPricing] = {
+        "exa:search": UnitPricing(
+            request_usd=settings.exa_search_request_cost_usd,
+            resource_usd=settings.exa_content_result_cost_usd,
+        ),
+        "exa:contents": UnitPricing(resource_usd=settings.exa_content_result_cost_usd),
+        "x:posts.read": UnitPricing(resource_usd=settings.x_posts_read_cost_usd),
+        "x:users.read": UnitPricing(resource_usd=settings.x_users_read_cost_usd),
+    }
+    for candidate in _pricing_candidates(provider=provider, model=model):
+        if candidate in unit_pricing:
+            return unit_pricing[candidate]
+    return unit_pricing.get(provider)
+
+
+def _normalize_usage(usage: dict[str, int | None] | None) -> dict[str, int | None] | None:
+    if usage is None:
+        return None
+
+    input_tokens = _coerce_int(usage.get("input_tokens", usage.get("input")))
+    output_tokens = _coerce_int(usage.get("output_tokens", usage.get("output")))
+    total_tokens = _coerce_int(usage.get("total_tokens", usage.get("total")))
+    request_count = _coerce_int(usage.get("request_count", usage.get("requests")))
+    resource_count = _coerce_int(usage.get("resource_count", usage.get("resources")))
+
+    if total_tokens is None and input_tokens is not None and output_tokens is not None:
+        total_tokens = input_tokens + output_tokens
+
+    if (
+        input_tokens is None
+        and output_tokens is None
+        and total_tokens is None
+        and request_count is None
+        and resource_count is None
+    ):
+        return None
+
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "request_count": request_count,
+        "resource_count": resource_count,
+    }
 
 
 def _pricing_candidates(*, provider: str, model: str) -> list[str]:

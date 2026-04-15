@@ -21,13 +21,14 @@ from app.models.metadata import (
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
-from app.services.llm_usage import record_usage
 from app.services.summarization_templates import is_editorial_prompt_type
+from app.services.vendor_usage import record_model_usage
 
 logger = get_logger(__name__)
 
 MAX_SUMMARIZATION_PAYLOAD_CHARS = 220_000
 DEFAULT_ARTICLE_MODEL_SPEC = "openai:gpt-5.4-mini"
+MIN_SUMMARY_QUOTE_CHARS = 20
 
 SummarizationPromptType = Literal[
     "structured",
@@ -74,15 +75,21 @@ def _finalize_summary(summary: SummaryPayload) -> SummaryPayload:
     """Apply lightweight cleanup to keep summaries consistent."""
     if isinstance(summary, StructuredSummary) and summary.quotes:
         summary.quotes = [
-            quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
+            quote
+            for quote in summary.quotes
+            if len((quote.text or "").strip()) >= MIN_SUMMARY_QUOTE_CHARS
         ]
     if isinstance(summary, InterleavedSummaryV2) and summary.quotes:
         summary.quotes = [
-            quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
+            quote
+            for quote in summary.quotes
+            if len((quote.text or "").strip()) >= MIN_SUMMARY_QUOTE_CHARS
         ]
     if isinstance(summary, EditorialNarrativeSummary) and summary.quotes:
         summary.quotes = [
-            quote for quote in summary.quotes if len((quote.text or "").strip()) >= 10
+            quote
+            for quote in summary.quotes
+            if len((quote.text or "").strip()) >= MIN_SUMMARY_QUOTE_CHARS
         ]
     return summary
 
@@ -297,7 +304,7 @@ class ContentSummarizer:
                     system_prompt=system_prompt,
                     user_message=user_message,
                 )
-                record_usage(
+                record_model_usage(
                     "summarize",
                     result,
                     model_spec=model_spec,

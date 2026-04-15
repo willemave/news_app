@@ -7,6 +7,7 @@ from exa_py import Exa
 
 from app.core.logging import get_logger
 from app.core.settings import get_settings
+from app.services.vendor_costs import record_vendor_usage_out_of_band
 
 logger = get_logger(__name__)
 
@@ -164,6 +165,7 @@ def exa_search(
     include_domains: list[str] | None = None,
     exclude_domains: list[str] | None = None,
     raise_on_error: bool = False,
+    telemetry: dict[str, Any] | None = None,
 ) -> list[ExaSearchResult]:
     """Search the web using Exa and return results with full content.
 
@@ -284,6 +286,19 @@ def exa_search(
             )
 
         logger.info(f"[Exa] Search completed | query='{query[:50]}' results={len(results)}")
+        _record_exa_usage(
+            model="search",
+            usage={"request_count": 1, "resource_count": len(results)},
+            telemetry=telemetry,
+            metadata={
+                "query": query[:500],
+                "requested_num_results": num_results,
+                "returned_num_results": len(results),
+                "category": category,
+                "include_domains": include_domains,
+                "exclude_domains": effective_excludes,
+            },
+        )
         return results
 
     except Exception as e:
@@ -300,6 +315,7 @@ def exa_get_contents(
     livecrawl: Literal["always", "fallback", "never", "auto", "preferred"] | None = None,
     max_age_hours: int | None = None,
     raise_on_error: bool = False,
+    telemetry: dict[str, Any] | None = None,
 ) -> list[ExaContentResult]:
     """Fetch content for already-selected URLs via Exa's contents API."""
 
@@ -346,6 +362,18 @@ def exa_get_contents(
             len(clean_urls),
             len(results),
         )
+        _record_exa_usage(
+            model="contents",
+            usage={"request_count": 1, "resource_count": len(clean_urls)},
+            telemetry=telemetry,
+            metadata={
+                "url_count": len(clean_urls),
+                "returned_num_results": len(results),
+                "max_characters": max_characters,
+                "livecrawl": livecrawl,
+                "max_age_hours": max_age_hours,
+            },
+        )
         return results
     except Exception as exc:  # noqa: BLE001
         logger.error(
@@ -379,3 +407,34 @@ def format_exa_results_for_context(results: list[ExaSearchResult]) -> str:
             lines.append(f"    {result.snippet[:300]}...")
 
     return "\n".join(lines)
+
+
+def _record_exa_usage(
+    *,
+    model: str,
+    usage: dict[str, int | None],
+    telemetry: dict[str, Any] | None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    telemetry_data = telemetry or {}
+    merged_metadata: dict[str, Any] = {}
+    if isinstance(telemetry_data.get("metadata"), dict):
+        merged_metadata.update(telemetry_data["metadata"])
+    if metadata:
+        merged_metadata.update(metadata)
+
+    record_vendor_usage_out_of_band(
+        provider="exa",
+        model=model,
+        feature=telemetry_data.get("feature") or "exa",
+        operation=telemetry_data.get("operation") or f"exa.{model}",
+        source=telemetry_data.get("source"),
+        usage=usage,
+        request_id=telemetry_data.get("request_id"),
+        task_id=telemetry_data.get("task_id"),
+        content_id=telemetry_data.get("content_id"),
+        session_id=telemetry_data.get("session_id"),
+        message_id=telemetry_data.get("message_id"),
+        user_id=telemetry_data.get("user_id"),
+        metadata=merged_metadata or None,
+    )

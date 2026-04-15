@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     elevenlabs_agent_id: str = "agent_4701khf4v6jef3vskb8sd2a30m36"
     elevenlabs_agent_text_only: bool = True
     elevenlabs_agent_turn_timeout_seconds: int = 25
+    exa_search_request_cost_usd: float | None = Field(default=0.03, ge=0.0)
+    exa_content_result_cost_usd: float | None = Field(default=0.03134, ge=0.0)
     admin_conversational_session_ttl_minutes: int = 120
     admin_conversational_max_turns: int = 20
     admin_conversational_ws_max_queue: int = 500
@@ -172,6 +174,8 @@ class Settings(BaseSettings):
     x_oauth_token_url: str = "https://api.x.com/2/oauth2/token"
     x_token_encryption_key: str | None = None
     x_bookmark_sync_enabled: bool = False
+    x_posts_read_cost_usd: float | None = Field(default=0.005, ge=0.0)
+    x_users_read_cost_usd: float | None = Field(default=0.01, ge=0.0)
     x_sync_min_interval_minutes: int = Field(default=60, ge=1)
     x_bookmark_sync_min_interval_minutes: int = Field(default=360, ge=1)
 

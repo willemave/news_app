@@ -1,4 +1,4 @@
-"""Shared LLM usage tracking for per-run aggregation."""
+"""Shared vendor usage tracking helpers for per-run aggregation."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from contextvars import ContextVar, Token
 from copy import deepcopy
 from typing import Any
 
-from app.services.llm_costs import extract_usage_from_result, record_llm_usage_out_of_band
+from app.services.vendor_costs import extract_usage_from_result, record_vendor_usage_out_of_band
 
-_USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("llm_usage_context", default=None)
+_USAGE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("vendor_usage_context", default=None)
 
 
 def start_usage_context() -> Token:
@@ -31,16 +31,16 @@ def snapshot_usage() -> dict[str, Any] | None:
     return deepcopy(usage)
 
 
-def record_usage(
+def record_model_usage(
     step: str,
     result: object,
     *,
     model_spec: str | None = None,
     persist: dict[str, Any] | None = None,
 ) -> None:
-    """Record usage for a single LLM call into the current context."""
+    """Record usage for a single model call into the current context."""
     usage_context = _USAGE_CONTEXT.get()
-    usage = _extract_usage(result)
+    usage = extract_usage_from_result(result)
     if not usage:
         return
 
@@ -61,7 +61,7 @@ def record_usage(
             usage_context["total"][key] += value
 
     if persist:
-        record_llm_usage_out_of_band(
+        record_vendor_usage_out_of_band(
             provider=persist.get("provider"),
             model=model_spec or persist.get("model") or "unknown",
             feature=persist["feature"],
@@ -76,18 +76,3 @@ def record_usage(
             user_id=persist.get("user_id"),
             metadata=persist.get("metadata"),
         )
-
-
-def _extract_usage(result: object) -> dict[str, int | None] | None:
-    return extract_usage_from_result(result)
-
-
-def _coerce_int(value: object | None) -> int | None:
-    if value is None:
-        return None
-    if not isinstance(value, (int, float, str, bytes, bytearray)):
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None

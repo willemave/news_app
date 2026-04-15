@@ -8,6 +8,8 @@ from decimal import Decimal
 from typing import Any, cast
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from admin.remote_ops import (
     RemoteContext,
@@ -18,7 +20,7 @@ from admin.remote_ops import (
     usage_by_user,
     usage_summary,
 )
-from app.models.schema import Content, LlmUsageRecord, ProcessingTask
+from app.models.schema import Content, ProcessingTask, VendorUsageRecord
 from app.models.user import User
 from app.testing.postgres_harness import create_temporary_postgres_harness
 
@@ -31,7 +33,7 @@ def remote_context(tmp_path) -> Iterator[RemoteContext]:
             User.__table__,
             Content.__table__,
             ProcessingTask.__table__,
-            LlmUsageRecord.__table__,
+            VendorUsageRecord.__table__,
         ],
     )
     try:
@@ -58,7 +60,7 @@ def remote_context(tmp_path) -> Iterator[RemoteContext]:
             )
             session.add_all(
                 [
-                    LlmUsageRecord(
+                    VendorUsageRecord(
                         provider="openai",
                         model="gpt-5.4-mini",
                         feature="summarization",
@@ -75,7 +77,7 @@ def remote_context(tmp_path) -> Iterator[RemoteContext]:
                         metadata_json={"access_token": "secret"},
                         created_at=datetime(2026, 3, 28, 12, 0, tzinfo=UTC).replace(tzinfo=None),
                     ),
-                    LlmUsageRecord(
+                    VendorUsageRecord(
                         provider="anthropic",
                         model="claude-haiku",
                         feature="summarization",
@@ -137,9 +139,65 @@ def test_usage_summary_groups_by_feature(remote_context):
             "input_tokens": 16,
             "output_tokens": 9,
             "total_tokens": 25,
+            "request_count": 0,
+            "resource_count": 0,
             "cost_usd": 0.2,
         }
     ]
+
+
+def test_usage_summary_includes_unit_metered_vendor_costs(remote_context):
+    engine = create_engine(remote_context.database_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine)
+    try:
+        with session_factory() as session:
+            session.add_all(
+                [
+                    VendorUsageRecord(
+                        provider="exa",
+                        model="search",
+                        feature="external_search",
+                        operation="exa.search",
+                        source="chat",
+                        request_count=1,
+                        resource_count=8,
+                        cost_usd=cast(Any, Decimal("0.28072")),
+                        currency="USD",
+                        pricing_version="2026-03-28",
+                        metadata_json={},
+                        created_at=datetime(2026, 3, 28, 13, 0, tzinfo=UTC).replace(tzinfo=None),
+                    ),
+                    VendorUsageRecord(
+                        provider="x",
+                        model="posts.read",
+                        feature="x_api",
+                        operation="x_api.list_tweets",
+                        source="scraper",
+                        request_count=1,
+                        resource_count=100,
+                        cost_usd=cast(Any, Decimal("0.5")),
+                        currency="USD",
+                        pricing_version="2026-03-28",
+                        metadata_json={},
+                        created_at=datetime(2026, 3, 28, 13, 5, tzinfo=UTC).replace(tzinfo=None),
+                    ),
+                ]
+            )
+            session.commit()
+
+        summary = usage_summary(remote_context, group_by="vendor")
+
+        groups = {group["key"]: group for group in summary["groups"]}
+        assert groups["exa"]["request_count"] == 1
+        assert groups["exa"]["resource_count"] == 8
+        assert groups["exa"]["cost_usd"] == 0.28072
+        assert groups["x"]["request_count"] == 1
+        assert groups["x"]["resource_count"] == 100
+        assert groups["x"]["cost_usd"] == 0.5
+        assert summary["totals"]["request_count"] == 2
+        assert summary["totals"]["resource_count"] == 108
+    finally:
+        engine.dispose()
 
 
 def test_usage_by_user_redacts_metadata(remote_context):
