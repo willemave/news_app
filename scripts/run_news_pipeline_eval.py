@@ -10,9 +10,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import get_logger, setup_logging
 from app.services.news_pipeline_eval import load_eval_cases, run_eval_cases, write_eval_artifact
 from app.services.news_pipeline_eval_report import write_news_pipeline_eval_html_report
+
+from app.core.logging import get_logger, setup_logging
 
 logger = get_logger(__name__)
 

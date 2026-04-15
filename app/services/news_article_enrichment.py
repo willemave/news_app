@@ -271,7 +271,7 @@ def enrich_news_item_article(
                 source="content",
                 article_url=article_url,
                 final_url=normalize_http_url(existing_article.url or existing_article.source_url),
-                extracted_chars=len(text),
+                extracted_chars=len(existing_text),
             )
 
     registry = strategy_registry or get_strategy_registry()

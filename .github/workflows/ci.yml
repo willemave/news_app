@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DATABASE_URL: sqlite:///./news_app_ci.db
+  DATABASE_URL: postgresql+psycopg://newsly:newsly@127.0.0.1:5432/newsly
   JWT_SECRET_KEY: ci-jwt-secret-key
   ADMIN_PASSWORD: ci-admin-password
   LANGFUSE_ENABLED: "false"
@@ -73,6 +73,21 @@ jobs:
     name: Pytest
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: newsly
+          POSTGRES_PASSWORD: newsly
+          POSTGRES_DB: newsly
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newsly -d newsly"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout repository

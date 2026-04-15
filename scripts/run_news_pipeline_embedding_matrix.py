@@ -12,16 +12,17 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.logging import get_logger, setup_logging
-from app.core.settings import get_settings
 from app.models.news_pipeline_eval_models import (
     NewsPipelineEvalRunConfig,
     NewsPipelineEvalRunResult,
     NewsPipelineEvalSuiteResult,
 )
-from app.services.news_embeddings import get_news_embedding_model
 from app.services.news_pipeline_eval import load_eval_cases, run_eval_case, write_eval_artifact
 from app.services.news_pipeline_eval_report import write_news_pipeline_eval_html_report
+
+from app.core.logging import get_logger, setup_logging
+from app.core.settings import get_settings
+from app.services.news_embeddings import get_news_embedding_model
 
 logger = get_logger(__name__)
 

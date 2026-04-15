@@ -14,9 +14,10 @@ from sqlalchemy import and_, func, or_
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from app.models.news_pipeline_eval_models import NewsPipelineEvalCase, NewsPipelineEvalUserContext
+
 from app.core.db import get_db
 from app.core.logging import get_logger, setup_logging
-from app.models.news_pipeline_eval_models import NewsPipelineEvalCase, NewsPipelineEvalUserContext
 from app.models.schema import NewsItem
 from app.models.user import User
 
@@ -147,9 +148,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with get_db() as db:
         source_user = (
-            db.query(User).filter(User.id == args.user_id).first()
-            if args.user_id
-            else None
+            db.query(User).filter(User.id == args.user_id).first() if args.user_id else None
         )
         query = db.query(NewsItem)
         filters = []
@@ -174,9 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.real_summaries_only:
             query = query.filter(_real_summary_filter())
         rows = (
-            query.order_by(NewsItem.ingested_at.desc(), NewsItem.id.desc())
-            .limit(args.limit)
-            .all()
+            query.order_by(NewsItem.ingested_at.desc(), NewsItem.id.desc()).limit(args.limit).all()
         )
         if not rows:
             raise SystemExit("No news_items matched the requested export filters")
