@@ -19,7 +19,6 @@ from app.models.chat_message_metadata import ChatMessageRenderMetadata
 from app.models.schema import ChatMessage, ChatSession, Content, MessageProcessingStatus
 from app.services.exa_client import exa_search, get_exa_client
 from app.services.langfuse_tracing import langfuse_trace_context
-from app.services.llm_costs import extract_usage_from_result, record_llm_usage_out_of_band
 from app.services.llm_models import (
     DEFAULT_MODEL,
     build_pydantic_model,
@@ -35,6 +34,7 @@ from app.services.sandbox_runtime import (
     SandboxRuntimeUnavailableError,
     create_personal_library_sandbox_session,
 )
+from app.services.vendor_costs import extract_usage_from_result, record_vendor_usage_out_of_band
 
 logger = get_logger(__name__)
 
@@ -456,6 +456,12 @@ def get_chat_agent(
                 query,
                 num_results=num_results,
                 category=category,
+                telemetry={
+                    "feature": "chat_agent",
+                    "operation": "chat_agent.search_web",
+                    "session_id": session_id,
+                    "user_id": ctx.deps.session.user_id,
+                },
             )
             logger.info(
                 f"[Tool:exa_web_search] Success | session_id={session_id} "
@@ -915,7 +921,7 @@ def _log_chat_usage(
     provider = resolve_model_provider(model_spec)
 
     try:
-        usage = record_llm_usage_out_of_band(
+        usage = record_vendor_usage_out_of_band(
             provider=provider,
             model=model_spec,
             feature="chat",

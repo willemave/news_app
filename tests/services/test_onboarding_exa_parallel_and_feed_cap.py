@@ -80,6 +80,7 @@ def test_run_discovery_exa_queries_uses_query_metadata(monkeypatch) -> None:
         category: str | None = None,
         include_domains: list[str] | None = None,
         exclude_domains: list[str] | None = None,
+        **_kwargs,
     ) -> list[ExaSearchResult]:
         _ = (num_results, max_characters, category, include_domains, exclude_domains)
         return [

@@ -83,7 +83,7 @@ def test_create_chat_session_with_content(
     assert session["llm_provider"] == "openai"
     assert session["llm_model"] == "openai:gpt-5.4"
     assert session["session_type"] == "knowledge_chat"
-    assert session["article_title"] == "Test Article About AI"
+    assert session["article_title"] == "Test Article"
     assert session["article_summary"] is not None
     assert session["article_source"] == "Test Source"
 
@@ -616,8 +616,11 @@ def test_start_council_chat_after_parent_turn_begins_skips_processing_placeholde
     db_session.commit()
     db_session.refresh(parent)
 
-    _seed_turn(db_session, parent.id, "Completed turn", "Completed answer.")
-    create_processing_message(db_session, parent.id, "Still thinking about this one")
+    parent_id = parent.id
+    assert parent_id is not None
+
+    _seed_turn(db_session, parent_id, "Completed turn", "Completed answer.")
+    create_processing_message(db_session, parent_id, "Still thinking about this one")
 
     async def _fake_run_chat_turn(db, session, user_prompt, source="chat"):
         del source

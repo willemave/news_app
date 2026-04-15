@@ -89,7 +89,11 @@ def test_fast_discover_defaults_backfills_rationale() -> None:
         assert item.rationale.strip()
 
 
-def test_build_discovery_response_backfills_merged_rationale() -> None:
+def test_build_discovery_response_backfills_merged_rationale(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.onboarding.resolve_feed_candidate",
+        lambda **kwargs: {"feed_url": kwargs["candidate_feed_urls"][0]},
+    )
     output = _DiscoverOutput(
         substacks=[
             _DiscoverSuggestion(

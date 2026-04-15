@@ -757,7 +757,15 @@ def run_discover_enrich(
         return None
     curated = _load_curated_defaults()
     queries = _build_discovery_queries(request, max_queries=ENRICH_MAX_QUERIES)
-    results = _run_discovery_exa_queries(queries, num_results=ENRICH_EXA_RESULTS)
+    results = _run_discovery_exa_queries(
+        queries,
+        num_results=ENRICH_EXA_RESULTS,
+        telemetry={
+            "feature": "onboarding",
+            "operation": "onboarding.discover_enrich.search",
+            "user_id": user_id,
+        },
+    )
     prompt_results = _select_prompt_results(results)
     if not prompt_results:
         return None
@@ -832,6 +840,12 @@ def run_audio_discovery(db: Session, run_id: int) -> None:
                         include_social=(lane.target == "reddit"),
                         lane_name=lane.lane_name,
                         lane_target=_normalize_lane_target(lane.target),
+                        telemetry={
+                            "feature": "onboarding",
+                            "operation": "onboarding.audio_discovery.search",
+                            "user_id": run.user_id,
+                            "metadata": {"lane_name": lane.lane_name, "lane_target": lane.target},
+                        },
                     )
                 )
                 lane.completed_queries = idx + 1
@@ -954,6 +968,7 @@ def _run_exa_queries(
     *,
     num_results: int,
     include_social: bool = False,
+    telemetry: dict[str, Any] | None = None,
 ) -> list[ExaSearchResult]:
     results: list[ExaSearchResult] = []
     exclude_domains: list[str] | None = [] if include_social else None
@@ -964,6 +979,7 @@ def _run_exa_queries(
                 num_results=num_results,
                 max_characters=1200,
                 exclude_domains=exclude_domains,
+                telemetry=telemetry,
             )
         )
     return results
@@ -976,6 +992,7 @@ def _run_discovery_exa_queries(
     include_social: bool = False,
     lane_name: str | None = None,
     lane_target: Literal["feeds", "podcasts", "reddit"] | None = None,
+    telemetry: dict[str, Any] | None = None,
 ) -> list[_DiscoveryWebResult]:
     """Run Exa queries and attach onboarding discovery metadata."""
     results: list[_DiscoveryWebResult] = []
@@ -996,6 +1013,7 @@ def _run_discovery_exa_queries(
                 num_results=num_results,
                 max_characters=1200,
                 exclude_domains=exclude_domains,
+                telemetry=telemetry,
             ),
         )
 

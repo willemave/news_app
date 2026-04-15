@@ -8,7 +8,7 @@ from app.services.feed_detection import FeedClassificationResult
 def test_find_feed_options_extracts_and_validates_feed_urls(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_search",
-        lambda query, num_results, max_characters=1200: [
+        lambda query, num_results, max_characters=1200, **_kwargs: [
             ExaSearchResult(
                 title="lucumr",
                 url="https://lucumr.pocoo.org/",
@@ -18,7 +18,7 @@ def test_find_feed_options_extracts_and_validates_feed_urls(monkeypatch) -> None
     )
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_get_contents",
-        lambda urls, max_characters=5000: [
+        lambda urls, max_characters=5000, **_kwargs: [
             ExaContentResult(
                 title="lucumr",
                 url="https://lucumr.pocoo.org/",
@@ -62,7 +62,7 @@ def test_find_feed_options_extracts_and_validates_feed_urls(monkeypatch) -> None
 def test_find_feed_options_dedupes_normalized_feed_urls(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_search",
-        lambda query, num_results, max_characters=1200: [
+        lambda query, num_results, max_characters=1200, **_kwargs: [
             ExaSearchResult(
                 title="Primary",
                 url="https://example.com/blog",
@@ -77,7 +77,7 @@ def test_find_feed_options_dedupes_normalized_feed_urls(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_get_contents",
-        lambda urls, max_characters=5000: [
+        lambda urls, max_characters=5000, **_kwargs: [
             ExaContentResult(title="Primary", url=urls[0], text="https://example.com/feed.xml"),
             ExaContentResult(title="Duplicate", url=urls[1], text="https://example.com/feed.xml/"),
         ],
@@ -112,7 +112,7 @@ def test_find_feed_options_dedupes_normalized_feed_urls(monkeypatch) -> None:
 def test_find_feed_options_truncates_long_option_fields(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_search",
-        lambda query, num_results, max_characters=1200: [
+        lambda query, num_results, max_characters=1200, **_kwargs: [
             ExaSearchResult(
                 title="A" * 500,
                 url="https://example.com/blog",
@@ -122,7 +122,7 @@ def test_find_feed_options_truncates_long_option_fields(monkeypatch) -> None:
     )
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_get_contents",
-        lambda urls, max_characters=5000: [
+        lambda urls, max_characters=5000, **_kwargs: [
             ExaContentResult(
                 title="ignored",
                 url=urls[0],
@@ -168,7 +168,7 @@ def test_find_feed_options_truncates_long_option_fields(monkeypatch) -> None:
 def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_search",
-        lambda query, num_results, max_characters=1200: [
+        lambda query, num_results, max_characters=1200, **_kwargs: [
             ExaSearchResult(
                 title="Bg2 Pod",
                 url="https://www.youtube.com/@bg2pod",
@@ -178,7 +178,7 @@ def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monke
     )
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_get_contents",
-        lambda urls, max_characters=5000: [
+        lambda urls, max_characters=5000, **_kwargs: [
             ExaContentResult(
                 title="Bg2 Pod",
                 url=urls[0],
@@ -205,15 +205,17 @@ def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monke
             self.status_code = status_code
             self.headers = {"content-type": content_type}
 
-    monkeypatch.setattr(
-        "app.services.http.HttpService.head",
-        lambda self,
+    def _fake_head(
+        self,
         url,
         headers=None,
         allow_statuses=None,
         log_client_errors=True,
-        log_exceptions=True: _Response(url, "", content_type="text/html; charset=utf-8"),
-    )
+        log_exceptions=True,
+    ):
+        return _Response(url, "", content_type="text/html; charset=utf-8")
+
+    monkeypatch.setattr("app.services.http.HttpService.head", _fake_head)
 
     monkeypatch.setattr(
         "app.services.http.HttpService.fetch",
@@ -246,9 +248,7 @@ def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monke
         lambda self, url: {
             "feed_url": url,
             "feed_format": "atom",
-            "title": "Chris Palmer SEO"
-            if "UC8P0dc0Zn2gf8L6tJi_k6xg" in url
-            else "Bg2 Pod",
+            "title": "Chris Palmer SEO" if "UC8P0dc0Zn2gf8L6tJi_k6xg" in url else "Bg2 Pod",
         },
     )
     monkeypatch.setattr(
@@ -265,14 +265,17 @@ def test_find_feed_options_uses_live_youtube_detection_over_stale_exa_feed(monke
     assert len(result.options) == 1
     option = result.options[0]
     assert option.title == "Bg2 Pod"
-    assert option.feed_url == "https://www.youtube.com/feeds/videos.xml?channel_id=UC-yRDvpR99LUc5l7i7jLzew"
+    assert (
+        option.feed_url
+        == "https://www.youtube.com/feeds/videos.xml?channel_id=UC-yRDvpR99LUc5l7i7jLzew"
+    )
     assert option.site_url == "https://www.youtube.com/@bg2pod"
 
 
 def test_find_feed_options_prefers_podcast_rss_for_podcast_queries(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_search",
-        lambda query, num_results, max_characters=1200: [
+        lambda query, num_results, max_characters=1200, **_kwargs: [
             ExaSearchResult(
                 title="Bg2 Pod YouTube",
                 url="https://www.youtube.com/@bg2pod",
@@ -287,7 +290,7 @@ def test_find_feed_options_prefers_podcast_rss_for_podcast_queries(monkeypatch) 
     )
     monkeypatch.setattr(
         "app.services.assistant_feed_finder.exa_get_contents",
-        lambda urls, max_characters=5000: [
+        lambda urls, max_characters=5000, **_kwargs: [
             ExaContentResult(
                 title="Bg2 Pod YouTube",
                 url=urls[0],
@@ -325,9 +328,7 @@ def test_find_feed_options_prefers_podcast_rss_for_podcast_queries(monkeypatch) 
     monkeypatch.setattr(
         "app.services.feed_detection.FeedDetector.classify_feed_type",
         lambda self, **kwargs: FeedClassificationResult(
-            feed_type="atom"
-            if "youtube.com" in kwargs["feed_url"]
-            else "podcast_rss",
+            feed_type="atom" if "youtube.com" in kwargs["feed_url"] else "podcast_rss",
             confidence=0.95,
             reasoning="Validated feed.",
         ),

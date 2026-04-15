@@ -43,9 +43,9 @@ from app.services.feed_detection import FeedDetector
 from app.services.http import HttpService
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import build_pydantic_model
-from app.services.llm_usage import (
+from app.services.vendor_usage import (
     end_usage_context,
-    record_usage,
+    record_model_usage,
     snapshot_usage,
     start_usage_context,
 )
@@ -572,7 +572,7 @@ def _select_directions_llm(
         deps=DiscoveryToolDeps(user_id=user_id),
         model_settings={"timeout": settings.worker_timeout_seconds},
     )
-    record_usage(
+    record_model_usage(
         "direction_select",
         result,
         model_spec=model_spec,
@@ -663,7 +663,7 @@ def _plan_lanes_llm(
         },
     )
     result = agent.run_sync(prompt, model_settings={"timeout": settings.worker_timeout_seconds})
-    record_usage(
+    record_model_usage(
         "lane_plan",
         result,
         model_spec=model_spec,
@@ -726,7 +726,7 @@ def _extract_candidates_llm(
         },
     )
     result = agent.run_sync(prompt, model_settings={"timeout": settings.worker_timeout_seconds})
-    record_usage(
+    record_model_usage(
         f"candidate_extract:{lane.name}",
         result,
         model_spec=model_spec,

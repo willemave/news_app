@@ -570,7 +570,15 @@ def _get_or_create_agent(
     ) -> str:
         """Search the web for current context or discovery."""
         normalized_limit = max(1, min(limit, 8))
-        results = exa_search(query=query, num_results=normalized_limit)
+        results = exa_search(
+            query=query,
+            num_results=normalized_limit,
+            telemetry={
+                "feature": "assistant_router",
+                "operation": "assistant_router.search_web",
+                "user_id": ctx.deps.user_id,
+            },
+        )
         if not results:
             return "No web results found."
 
@@ -594,8 +602,7 @@ def _get_or_create_agent(
     ) -> dict[str, object]:
         """Find validated blog/newsletter/podcast feeds without subscribing yet."""
 
-        del ctx
-        result = find_feed_options_service(query=query, limit=limit)
+        result = find_feed_options_service(query=query, limit=limit, user_id=ctx.deps.user_id)
         return result.model_dump(mode="json")
 
     @agent.tool(name="search_knowledge")

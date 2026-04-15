@@ -19,7 +19,7 @@ from app.models.schema import (
 )
 from app.services.exa_client import ExaSearchResult
 from app.services.feed_discovery import FeedDiscoveryDeps, run_feed_discovery
-from app.services.llm_usage import record_usage
+from app.services.vendor_usage import record_model_usage
 
 
 class _FakeUsage:
@@ -34,7 +34,7 @@ class _FakeResult:
 
 
 def _stub_direction_selector(db_session, user_id: int) -> DiscoveryDirectionPlan:
-    record_usage("direction_select", _FakeResult(), model_spec="test-model")
+    record_model_usage("direction_select", _FakeResult(), model_spec="test-model")
     rows = (
         db_session.query(ContentKnowledgeSave, Content)
         .join(Content, Content.id == ContentKnowledgeSave.content_id)

@@ -23,7 +23,11 @@ PODCAST_QUERY_HINTS = ("podcast", "podcasts", "episode", "episodes", "show", "sh
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com"}
 
 
-def find_feed_options(query: str, limit: int = MAX_FEED_OPTIONS) -> AssistantFeedOptionsResult:
+def find_feed_options(
+    query: str,
+    limit: int = MAX_FEED_OPTIONS,
+    user_id: int | None = None,
+) -> AssistantFeedOptionsResult:
     """Find validated subscribable feed options for an assistant request."""
 
     normalized_query = query.strip()
@@ -35,8 +39,13 @@ def find_feed_options(query: str, limit: int = MAX_FEED_OPTIONS) -> AssistantFee
         normalized_query,
         num_results=min(MAX_FEED_SEARCH_RESULTS, max(normalized_limit * 3, normalized_limit)),
         max_characters=1200,
+        telemetry={
+            "feature": "assistant_feed_finder",
+            "operation": "assistant_feed_finder.search",
+            "user_id": user_id,
+        },
     )
-    content_by_url = _content_results_by_url(search_results)
+    content_by_url = _content_results_by_url(search_results, user_id=user_id)
     detector = FeedDetector(use_exa_search=True, use_llm=True)
 
     options: list[AssistantFeedOption] = []
@@ -62,9 +71,19 @@ def find_feed_options(query: str, limit: int = MAX_FEED_OPTIONS) -> AssistantFee
 
 def _content_results_by_url(
     search_results: list[ExaSearchResult],
+    *,
+    user_id: int | None = None,
 ) -> dict[str, ExaContentResult]:
     urls = [result.url for result in search_results if result.url]
-    content_results = exa_get_contents(urls, max_characters=MAX_FEED_CONTENT_CHARACTERS)
+    content_results = exa_get_contents(
+        urls,
+        max_characters=MAX_FEED_CONTENT_CHARACTERS,
+        telemetry={
+            "feature": "assistant_feed_finder",
+            "operation": "assistant_feed_finder.get_contents",
+            "user_id": user_id,
+        },
+    )
     return {result.url: result for result in content_results if result.url}
 
 

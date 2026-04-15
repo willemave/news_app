@@ -69,6 +69,15 @@ async def _send_ws_event(websocket: WebSocket, payload: dict[str, Any]) -> bool:
         return False
 
 
+async def _close_agent_runtime(runtime: AgentConversationRuntime) -> None:
+    """Close a runtime even if the websocket task is cancelled during shutdown."""
+    try:
+        await asyncio.to_thread(close_agent_session, runtime)
+    except asyncio.CancelledError:
+        close_agent_session(runtime)
+        raise
+
+
 class _TurnEventEmitter:
     """Thread-safe event bridge from worker thread to async websocket queue."""
 
@@ -242,9 +251,7 @@ def _build_user_lifecycle(
 ) -> tuple[dict[str, int], dict[str, int]]:
     """Build user lifecycle and latest onboarding status aggregates."""
     total_users = int(db.query(func.count(User.id)).scalar() or 0)
-    active_users = int(
-        db.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0
-    )
+    active_users = int(db.query(func.count(User.id)).filter(User.is_active.is_(True)).scalar() or 0)
     tutorial_completed_users = int(
         db.query(func.count(User.id))
         .filter(User.has_completed_new_user_tutorial.is_(True))
@@ -254,9 +261,7 @@ def _build_user_lifecycle(
     new_users_24h = int(
         db.query(func.count(User.id)).filter(User.created_at >= recent_cutoff).scalar() or 0
     )
-    admin_users = int(
-        db.query(func.count(User.id)).filter(User.is_admin.is_(True)).scalar() or 0
-    )
+    admin_users = int(db.query(func.count(User.id)).filter(User.is_admin.is_(True)).scalar() or 0)
     users_with_onboarding = int(
         db.query(func.count(func.distinct(OnboardingDiscoveryRun.user_id))).scalar() or 0
     )
@@ -278,8 +283,7 @@ def _build_user_lifecycle(
             latest_onboarding_subquery,
             and_(
                 OnboardingDiscoveryRun.user_id == latest_onboarding_subquery.c.user_id,
-                OnboardingDiscoveryRun.created_at
-                == latest_onboarding_subquery.c.latest_created_at,
+                OnboardingDiscoveryRun.created_at == latest_onboarding_subquery.c.latest_created_at,
             ),
         )
         .group_by(OnboardingDiscoveryRun.status)
@@ -650,7 +654,7 @@ async def admin_conversational_ws(
 
                 if runtime is not None:
                     with contextlib.suppress(Exception):
-                        await asyncio.to_thread(close_agent_session, runtime)
+                        await _close_agent_runtime(runtime)
                     runtime = None
 
                 bootstrap_context = build_available_knowledge_context(
@@ -845,4 +849,4 @@ async def admin_conversational_ws(
     finally:
         if runtime is not None:
             with contextlib.suppress(Exception):
-                await asyncio.to_thread(close_agent_session, runtime)
+                close_agent_session(runtime)

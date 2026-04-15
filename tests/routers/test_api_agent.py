@@ -97,6 +97,7 @@ def test_agent_onboarding_routes_delegate_to_wrappers(client, monkeypatch):
             status="completed",
             task_id=91,
             inbox_count_estimate=5,
+            configured_source_count=2,
             longform_status="queued",
             has_completed_onboarding=True,
             has_completed_new_user_tutorial=True,
