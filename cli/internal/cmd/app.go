@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/willem/news_app/cli/internal/config"
-	"github.com/willem/news_app/cli/internal/output"
-	"github.com/willem/news_app/cli/internal/runtime"
+	"github.com/willem/newsbuddy/cli/internal/config"
+	"github.com/willem/newsbuddy/cli/internal/output"
+	"github.com/willem/newsbuddy/cli/internal/runtime"
 )
 
 type App struct {

@@ -9,8 +9,8 @@ import (
 	"github.com/mdp/qrterminal/v3"
 	"github.com/spf13/cobra"
 
-	"github.com/willem/news_app/cli/internal/config"
-	"github.com/willem/news_app/cli/internal/runtime"
+	"github.com/willem/newsbuddy/cli/internal/config"
+	"github.com/willem/newsbuddy/cli/internal/runtime"
 )
 
 func (a *App) newAuthCommand() *cobra.Command {

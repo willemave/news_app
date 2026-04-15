@@ -1,4 +1,4 @@
-module github.com/willem/news_app/cli
+module github.com/willem/newsbuddy/cli
 
 go 1.26.0
 

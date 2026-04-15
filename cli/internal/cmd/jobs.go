@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/willem/news_app/cli/internal/runtime"
+	"github.com/willem/newsbuddy/cli/internal/runtime"
 )
 
 func (a *App) newJobsCommand() *cobra.Command {

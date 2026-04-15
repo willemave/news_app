@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/willem/news_app/cli/internal/cmd"
+	"github.com/willem/newsbuddy/cli/internal/cmd"
 )
 
 var version = "dev"

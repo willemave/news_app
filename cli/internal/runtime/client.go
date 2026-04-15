@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/willem/news_app/cli/internal/api"
-	"github.com/willem/news_app/cli/internal/config"
+	"github.com/willem/newsbuddy/cli/internal/api"
+	"github.com/willem/newsbuddy/cli/internal/config"
 )
 
 var terminalJobStatuses = map[string]struct{}{

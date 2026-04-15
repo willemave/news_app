@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/willem/news_app/cli/internal/api"
-	"github.com/willem/news_app/cli/internal/runtime"
+	"github.com/willem/newsbuddy/cli/internal/api"
+	"github.com/willem/newsbuddy/cli/internal/runtime"
 )
 
 var supportedFeedTypes = []string{"atom", "substack", "podcast_rss"}

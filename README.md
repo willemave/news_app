@@ -15,7 +15,7 @@
   <a href="#getting-started"><img src="https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI"></a>
   <a href="#cli"><img src="https://img.shields.io/badge/Go_CLI-1.23+-00add8?style=flat-square&logo=go&logoColor=white" alt="Go CLI"></a>
   <a href="#ios-app"><img src="https://img.shields.io/badge/SwiftUI-iOS_17+-007aff?style=flat-square&logo=swift&logoColor=white" alt="SwiftUI"></a>
-  <a href="https://github.com/willemave/news_app/actions"><img src="https://img.shields.io/github/actions/workflow/status/willemave/news_app/docker-racknerd-deploy.yml?branch=main&style=flat-square&label=deploy" alt="Deploy"></a>
+  <a href="https://github.com/willemave/newsbuddy/actions"><img src="https://img.shields.io/github/actions/workflow/status/willemave/newsbuddy/docker-racknerd-deploy.yml?branch=main&style=flat-square&label=deploy" alt="Deploy"></a>
   <a href="docs/architecture.md"><img src="https://img.shields.io/badge/docs-architecture-8b5cf6?style=flat-square" alt="Docs"></a>
 </p>
 
@@ -186,8 +186,8 @@ This is the default local-development path. For day-to-day local work, run the a
 
 ```bash
 # Clone
-git clone https://github.com/willemave/news_app.git
-cd news_app
+git clone https://github.com/willemave/newsbuddy.git
+cd newsbuddy
 
 # Install/start PostgreSQL, create the local app DB/user, and update .env
 ./scripts/setup_local_postgres.sh
@@ -207,8 +207,8 @@ Use this for staging or production-style container runs. Docker is not required 
 
 ```bash
 # Clone
-git clone https://github.com/willemave/news_app.git
-cd news_app
+git clone https://github.com/willemave/newsbuddy.git
+cd newsbuddy
 
 # Configure environment
 cp .env.docker.example .env.docker.local

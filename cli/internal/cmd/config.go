@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/willem/news_app/cli/internal/config"
+	"github.com/willem/newsbuddy/cli/internal/config"
 )
 
 func (a *App) newConfigCommand() *cobra.Command {

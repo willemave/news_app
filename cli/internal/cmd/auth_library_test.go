@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/willem/news_app/cli/internal/config"
+	"github.com/willem/newsbuddy/cli/internal/config"
 )
 
 func TestAuthLoginPersistsAPIKey(t *testing.T) {
