@@ -14,49 +14,36 @@ struct OnboardingSuggestionCard: View {
 
     var body: some View {
         Button(action: onToggle) {
-            VStack(alignment: .leading, spacing: 8) {
-                // Metadata bar
-                HStack(spacing: 6) {
-                    Image(systemName: typeIcon)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(typeAccentColor)
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundColor(isSelected ? .watercolorSlate : Color(.tertiaryLabel))
 
-                    Text(sourceLabel.uppercased())
-                        .font(.editorialMeta)
-                        .foregroundColor(.editorialSub)
-                        .tracking(0.5)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.displayTitle)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.watercolorSlate)
                         .lineLimit(1)
 
-                    Spacer()
-
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.body)
-                        .foregroundColor(isSelected ? .watercolorSlate : Color(.tertiaryLabel))
+                    if let rationale = suggestion.rationale, !rationale.isEmpty {
+                        Text(rationale)
+                            .font(.caption)
+                            .foregroundColor(.watercolorSlate.opacity(0.55))
+                            .lineLimit(1)
+                    }
                 }
 
-                // Headline
-                Text(suggestion.displayTitle)
-                    .font(.editorialHeadline)
-                    .foregroundColor(.watercolorSlate)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                // Rationale
-                if let rationale = suggestion.rationale, !rationale.isEmpty {
-                    Text(rationale)
-                        .font(.caption)
-                        .foregroundColor(.watercolorSlate.opacity(0.6))
-                        .lineLimit(2)
-                }
+                Spacer(minLength: 0)
             }
-            .padding(16)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.watercolorSlate.opacity(isSelected ? 0.1 : 0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.watercolorSlate.opacity(0.15), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.watercolorSlate.opacity(isSelected ? 0.2 : 0.12), lineWidth: 1)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(EditorialCardButtonStyle())
         .accessibilityIdentifier("onboarding.suggestion.\(suggestion.stableKey)")

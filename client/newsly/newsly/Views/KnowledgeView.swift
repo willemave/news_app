@@ -286,7 +286,7 @@ struct KnowledgeView: View {
                     VStack(spacing: 10) {
                         ForEach(viewModel.recentSessions) { session in
                             Button {
-                                onSelectSession?(ChatSessionRoute(sessionId: session.id))
+                                onSelectSession?(ChatSessionRoute(session: session))
                             } label: {
                                 ChatSessionCard(session: session)
                             }

@@ -31,7 +31,6 @@ struct LandingView: View {
             }
         }
         .accessibilityIdentifier("auth.landing.screen")
-        .preferredColorScheme(.light)
         .sheet(isPresented: $showingDebugMenu) {
             DebugMenuView()
                 .environmentObject(authViewModel)

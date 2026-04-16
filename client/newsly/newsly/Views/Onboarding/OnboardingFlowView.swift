@@ -405,7 +405,7 @@ struct OnboardingFlowView: View {
             .padding(.top, 16)
             .padding(.bottom, 4)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 ForEach(Array(items.enumerated()), id: \.element.stableKey) { _, suggestion in
                     OnboardingSuggestionCard(
                         suggestion: suggestion,
