@@ -9,6 +9,7 @@ from app.models.api.chat import (
     ChatMessageDisplayType,
     ChatMessageDto,
     ChatMessageRole,
+    CouncilRetryRequest,
     CouncilSelectRequest,
     CouncilStartRequest,
 )
@@ -36,6 +37,36 @@ def test_chat_message_dto_defaults_to_standard_display_type() -> None:
 
     assert message.display_type is ChatMessageDisplayType.MESSAGE
     assert message.process_label is None
+    assert message.display_key == "server|1|assistant|message"
+
+
+def test_chat_message_dto_display_key_uses_source_message_id() -> None:
+    """ChatMessageDto display keys should be stable across endpoint display IDs."""
+    message = ChatMessageDto(
+        id=1_000_000_9,
+        source_message_id=9,
+        session_id=2,
+        role=ChatMessageRole.ASSISTANT,
+        content="Answer",
+        timestamp=datetime.now(UTC),
+    )
+
+    assert message.display_key == "server|9|assistant|message"
+
+
+def test_chat_message_dto_preserves_explicit_display_key() -> None:
+    """ChatMessageDto should not rewrite an explicit display key."""
+    message = ChatMessageDto(
+        id=1_000_000_9,
+        source_message_id=9,
+        display_key="server|custom|assistant|message",
+        session_id=2,
+        role=ChatMessageRole.ASSISTANT,
+        content="Answer",
+        timestamp=datetime.now(UTC),
+    )
+
+    assert message.display_key == "server|custom|assistant|message"
 
 
 def test_chat_message_dto_accepts_council_candidates() -> None:
@@ -69,9 +100,11 @@ def test_council_request_models_validate_basic_payloads() -> None:
     """Council request DTOs should accept the expected payload shape."""
     start_request = CouncilStartRequest.model_validate({"message": "Debate this topic."})
     select_request = CouncilSelectRequest.model_validate({"child_session_id": 12})
+    retry_request = CouncilRetryRequest.model_validate({"child_session_id": 12})
 
     assert start_request.message == "Debate this topic."
     assert select_request.child_session_id == 12
+    assert retry_request.child_session_id == 12
 
 
 def test_assistant_screen_context_truncates_visible_content_ids() -> None:

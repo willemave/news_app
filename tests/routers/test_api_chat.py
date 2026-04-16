@@ -328,6 +328,157 @@ def test_start_council_chat_creates_hidden_child_sessions_and_hides_them_from_hi
     assert [session["id"] for session in history_payload] == [parent.id]
 
 
+def test_start_council_chat_preserves_failed_branch_candidate(
+    client: TestClient,
+    db_session: Session,
+    test_user,
+    monkeypatch,
+) -> None:
+    """One failed branch should render as a failed candidate instead of failing the council."""
+    test_user.council_personas = TEST_COUNCIL_EXPERTS
+    db_session.commit()
+
+    parent = ChatSession(
+        user_id=test_user.id,
+        title="Partially Failed Council",
+        session_type="knowledge_chat",
+        context_snapshot="Parent context",
+        llm_model="openai:gpt-5.4",
+        llm_provider="openai",
+    )
+    db_session.add(parent)
+    db_session.commit()
+    db_session.refresh(parent)
+
+    async def _fake_run_chat_turn(db, session, user_prompt, source="chat"):
+        del source
+        if session.council_persona_id == "ben_thompson":
+            raise RuntimeError("provider unavailable")
+        assistant_text = f"{session.council_persona_name} branch on: {user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(content=user_prompt)]),
+            ModelResponse(parts=[TextPart(content=assistant_text)]),
+        ]
+        save_messages(db, session.id, messages, display_user_prompt=user_prompt)
+        return ChatRunResult(
+            output_text=assistant_text,
+            new_messages=messages,
+            all_messages=messages,
+            tool_calls=[],
+        )
+
+    monkeypatch.setattr("app.services.council_chat.run_chat_turn", _fake_run_chat_turn)
+
+    response = client.post(
+        f"/api/content/chat/sessions/{parent.id}/council/start",
+        json={"message": "Open a council."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    council_row = next(
+        message
+        for message in payload["messages"]
+        if message["role"] == "assistant" and message["council_candidates"]
+    )
+    statuses = {
+        candidate["persona_id"]: candidate["status"]
+        for candidate in council_row["council_candidates"]
+    }
+    assert statuses == {
+        "paul_graham": "completed",
+        "ben_thompson": "failed",
+        "byrne_hobart": "completed",
+    }
+    failed_candidate = next(
+        candidate
+        for candidate in council_row["council_candidates"]
+        if candidate["persona_id"] == "ben_thompson"
+    )
+    assert "provider unavailable" in failed_candidate["content"]
+
+
+def test_retry_council_branch_regenerates_failed_candidate(
+    client: TestClient,
+    db_session: Session,
+    test_user,
+    monkeypatch,
+) -> None:
+    """Retrying one failed branch should update only that candidate and select it."""
+    test_user.council_personas = TEST_COUNCIL_EXPERTS
+    db_session.commit()
+
+    parent = ChatSession(
+        user_id=test_user.id,
+        title="Retryable Council",
+        session_type="knowledge_chat",
+        context_snapshot="Parent context",
+        llm_model="openai:gpt-5.4",
+        llm_provider="openai",
+    )
+    db_session.add(parent)
+    db_session.commit()
+    db_session.refresh(parent)
+
+    failed_personas = {"ben_thompson"}
+
+    async def _fake_run_chat_turn(db, session, user_prompt, source="chat"):
+        del source
+        if session.council_persona_id in failed_personas:
+            raise RuntimeError("provider unavailable")
+        assistant_text = f"{session.council_persona_name} regenerated: {user_prompt}"
+        messages = [
+            ModelRequest(parts=[UserPromptPart(content=user_prompt)]),
+            ModelResponse(parts=[TextPart(content=assistant_text)]),
+        ]
+        save_messages(db, session.id, messages, display_user_prompt=user_prompt)
+        return ChatRunResult(
+            output_text=assistant_text,
+            new_messages=messages,
+            all_messages=messages,
+            tool_calls=[],
+        )
+
+    monkeypatch.setattr("app.services.council_chat.run_chat_turn", _fake_run_chat_turn)
+
+    start_response = client.post(
+        f"/api/content/chat/sessions/{parent.id}/council/start",
+        json={"message": "Open a council."},
+    )
+    assert start_response.status_code == 200
+    failed_candidate = next(
+        candidate
+        for message in start_response.json()["messages"]
+        for candidate in message.get("council_candidates", [])
+        if candidate["persona_id"] == "ben_thompson"
+    )
+
+    failed_personas.clear()
+    retry_response = client.post(
+        f"/api/content/chat/sessions/{parent.id}/council/retry",
+        json={"child_session_id": failed_candidate["child_session_id"]},
+    )
+
+    assert retry_response.status_code == 200
+    payload = retry_response.json()
+    assert payload["session"]["active_child_session_id"] == failed_candidate["child_session_id"]
+    council_row = next(
+        message
+        for message in payload["messages"]
+        if message["role"] == "assistant" and message["council_candidates"]
+    )
+    retried_candidate = next(
+        candidate
+        for candidate in council_row["council_candidates"]
+        if candidate["persona_id"] == "ben_thompson"
+    )
+    assert retried_candidate["status"] == "completed"
+    assert retried_candidate["content"] == "Ben Thompson regenerated: Open a council."
+    assert "Ben Thompson regenerated: Open a council." in [
+        message["content"] for message in payload["messages"]
+    ]
+
+
 def test_start_council_chat_builds_child_context_from_linked_content(
     client: TestClient,
     db_session: Session,
@@ -943,6 +1094,7 @@ def test_get_chat_session_detail_exposes_source_message_id_for_pending_rows(
     data = response.json()
     assert data["messages"][0]["status"] == "processing"
     assert data["messages"][0]["source_message_id"] == db_message.id
+    assert data["messages"][0]["display_key"] == f"server|{db_message.id}|user|message"
 
 
 def test_get_chat_session_not_found(client: TestClient) -> None:
@@ -1464,6 +1616,9 @@ def test_message_status_returns_distinct_assistant_display_id(
     payload = response.json()
     assert payload["message_id"] == db_message.id
     assert payload["assistant_message"]["id"] != db_message.id
+    assert (
+        payload["assistant_message"]["display_key"] == f"server|{db_message.id}|assistant|message"
+    )
     assert payload["assistant_message"]["role"] == "assistant"
     assert "AI Infrastructure Update" in payload["assistant_message"]["content"]
     assert payload["assistant_message"]["feed_options"][0]["title"] == "lucumr"

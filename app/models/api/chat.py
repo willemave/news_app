@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.chat_message_metadata import AssistantFeedOption, CouncilCandidate
 from app.models.internal.assistant import AssistantScreenContext
@@ -106,6 +107,12 @@ class CouncilSelectRequest(BaseModel):
     child_session_id: int = Field(..., ge=1)
 
 
+class CouncilRetryRequest(BaseModel):
+    """Request to retry one failed council branch."""
+
+    child_session_id: int = Field(..., ge=1)
+
+
 class AssistantScreenContextDto(AssistantScreenContext):
     """API schema wrapper for assistant screen context."""
 
@@ -125,6 +132,12 @@ class ChatMessageDto(BaseModel):
     source_message_id: int | None = Field(
         default=None,
         description="Backing async chat_messages row ID used for status polling",
+    )
+    display_key: str = Field(
+        default="",
+        description=(
+            "Stable transcript row identity shared by session-detail and status endpoints"
+        ),
     )
     session_id: int = Field(..., description="Chat session ID")
     role: ChatMessageRole = Field(..., description="Message role")
@@ -155,6 +168,14 @@ class ChatMessageDto(BaseModel):
         default=None,
         description="Currently selected council branch for council candidate rows",
     )
+
+    @model_validator(mode="after")
+    def populate_display_key(self) -> Self:
+        """Derive a stable row key when callers do not provide one explicitly."""
+        if not self.display_key:
+            source_id = self.source_message_id if self.source_message_id is not None else self.id
+            self.display_key = f"server|{source_id}|{self.role.value}|{self.display_type.value}"
+        return self
 
 
 class ChatSessionSummaryDto(BaseModel):

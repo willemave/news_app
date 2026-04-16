@@ -272,6 +272,61 @@ def _update_council_message_content(
     ).decode("utf-8")
 
 
+def _failed_council_candidate(
+    child_session: ChatSession,
+    *,
+    order: int,
+    error: BaseException,
+) -> CouncilCandidate:
+    persona_name = child_session.council_persona_name or f"Persona {order + 1}"
+    return CouncilCandidate(
+        persona_id=child_session.council_persona_id or f"persona_{order}",
+        persona_name=persona_name,
+        child_session_id=_require_session_id(child_session),
+        content=f"{persona_name} could not respond. {error}",
+        status="failed",
+        order=order,
+    )
+
+
+def _completed_council_candidate(
+    branch_result: CouncilBranchExecutionResult,
+    *,
+    order: int,
+) -> CouncilCandidate:
+    return CouncilCandidate(
+        persona_id=branch_result.persona_id or f"persona_{order}",
+        persona_name=branch_result.persona_name or f"Persona {order + 1}",
+        child_session_id=branch_result.child_session_id,
+        content=branch_result.assistant_text,
+        status="completed",
+        order=order,
+    )
+
+
+def _load_council_message(db: Session, parent_session: ChatSession) -> ChatMessage:
+    if not parent_session.council_message_id:
+        raise ValueError("Council message not found")
+
+    council_message = (
+        db.query(ChatMessage).filter(ChatMessage.id == parent_session.council_message_id).first()
+    )
+    if council_message is None:
+        raise ValueError("Council message not found")
+    return council_message
+
+
+def _load_council_prompt(council_message: ChatMessage) -> str:
+    message_list_json = council_message.message_list
+    if not isinstance(message_list_json, str):
+        raise ValueError("Council message payload missing")
+
+    user_prompt = _extract_user_prompt(ModelMessagesTypeAdapter.validate_json(message_list_json))
+    if not user_prompt:
+        raise ValueError("Council prompt missing")
+    return user_prompt
+
+
 async def _run_council_branch_turn(
     *,
     session_factory: sessionmaker[Session],
@@ -364,7 +419,8 @@ async def start_council_chat(
                 user_prompt=user_prompt,
             )
             for child_session in child_sessions
-        ]
+        ],
+        return_exceptions=True,
     )
     db.expire_all()
 
@@ -372,20 +428,25 @@ async def start_council_chat(
     active_child_session_id: int | None = None
     active_child_assistant_text = ""
 
-    for order, branch_result in enumerate(branch_results):
-        candidates.append(
-            CouncilCandidate(
-                persona_id=branch_result.persona_id or f"persona_{order}",
-                persona_name=branch_result.persona_name or f"Persona {order + 1}",
-                child_session_id=branch_result.child_session_id,
-                content=branch_result.assistant_text,
-                status="completed",
+    for order, (child_session, branch_result) in enumerate(
+        zip(child_sessions, branch_results, strict=True)
+    ):
+        if isinstance(branch_result, BaseException):
+            candidate = _failed_council_candidate(
+                child_session,
                 order=order,
+                error=branch_result,
             )
-        )
-        if active_child_session_id is None:
-            active_child_session_id = branch_result.child_session_id
-            active_child_assistant_text = branch_result.assistant_text
+        else:
+            candidate = _completed_council_candidate(branch_result, order=order)
+            if active_child_session_id is None:
+                active_child_session_id = branch_result.child_session_id
+                active_child_assistant_text = branch_result.assistant_text
+        candidates.append(candidate)
+
+    if active_child_session_id is None and candidates:
+        active_child_session_id = candidates[0].child_session_id
+        active_child_assistant_text = candidates[0].content
 
     council_message = save_messages(
         db,
@@ -414,6 +475,90 @@ async def start_council_chat(
         child_sessions=child_sessions,
         council_message=council_message,
     )
+
+
+async def retry_council_branch(
+    db: Session,
+    *,
+    parent_session: ChatSession,
+    child_session_id: int,
+) -> None:
+    """Rerun one hidden council branch and refresh the parent council row."""
+
+    if not parent_session.council_mode:
+        raise ValueError("Council mode is not active for this chat")
+
+    child_session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == child_session_id,
+            ChatSession.parent_session_id == parent_session.id,
+            ChatSession.is_hidden_from_history == True,  # noqa: E712
+        )
+        .first()
+    )
+    if child_session is None:
+        raise ValueError("Council branch not found")
+
+    council_message = _load_council_message(db, parent_session)
+    user_prompt = _load_council_prompt(council_message)
+    candidates = get_parent_council_candidates(db, parent_session)
+    candidate_index = next(
+        (
+            index
+            for index, candidate in enumerate(candidates)
+            if candidate.child_session_id == child_session_id
+        ),
+        None,
+    )
+    if candidate_index is None:
+        raise ValueError("Council candidate not found")
+
+    branch_session_factory = sessionmaker(
+        bind=db.get_bind(),
+        autocommit=False,
+        autoflush=False,
+    )
+    try:
+        branch_result = await _run_council_branch_turn(
+            session_factory=branch_session_factory,
+            child_session_id=child_session_id,
+            user_prompt=user_prompt,
+        )
+        db.expire_all()
+        updated_candidate = _completed_council_candidate(
+            branch_result,
+            order=candidates[candidate_index].order,
+        )
+        active_child_session_id = child_session_id
+        active_child_assistant_text = branch_result.assistant_text
+    except Exception as exc:  # noqa: BLE001
+        updated_candidate = _failed_council_candidate(
+            child_session,
+            order=candidates[candidate_index].order,
+            error=exc,
+        )
+        active_child_session_id = (
+            parent_session.active_child_session_id or candidates[candidate_index].child_session_id
+        )
+        active_child_assistant_text = updated_candidate.content
+
+    candidates[candidate_index] = updated_candidate
+    parent_session.active_child_session_id = active_child_session_id
+    parent_session.updated_at = datetime.now(UTC)
+    parent_session.last_message_at = datetime.now(UTC)
+    _update_council_message_content(
+        council_message,
+        user_prompt=user_prompt,
+        assistant_text=active_child_assistant_text,
+    )
+    council_message.render_metadata = ChatMessageRenderMetadata(
+        council_candidates=candidates,
+        active_council_child_session_id=active_child_session_id,
+    ).model_dump(mode="json")
+
+    db.commit()
+    db.refresh(parent_session)
 
 
 def select_council_branch(

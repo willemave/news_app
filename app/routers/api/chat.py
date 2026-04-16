@@ -28,6 +28,7 @@ from app.models.api.chat import (
     ChatMessageRole,
     ChatSessionDetailDto,
     ChatSessionSummaryDto,
+    CouncilRetryRequest,
     CouncilSelectRequest,
     CouncilStartRequest,
     CreateChatSessionRequest,
@@ -63,6 +64,7 @@ from app.services.chat_agent import (
     process_message_async,
 )
 from app.services.council_chat import (
+    retry_council_branch,
     select_council_branch,
     start_council_chat,
 )
@@ -1351,6 +1353,39 @@ async def select_council_mode_branch(
 
     try:
         select_council_branch(
+            db,
+            parent_session=session,
+            child_session_id=request.child_session_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return await get_session(session_id=session_id, db=db, current_user=current_user)
+
+
+@router.post(
+    "/sessions/{session_id}/council/retry",
+    response_model=ChatSessionDetailDto,
+    summary="Retry council branch",
+)
+async def retry_council_mode_branch(
+    session_id: Annotated[int, Path(..., description="Chat session ID", gt=0)],
+    request: CouncilRetryRequest,
+    db: Annotated[Session, Depends(get_db_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ChatSessionDetailDto:
+    """Regenerate one council branch and return the merged parent transcript."""
+
+    session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
+    if not session.council_mode:
+        raise HTTPException(status_code=400, detail="Council mode is not active for this chat")
+
+    try:
+        await retry_council_branch(
             db,
             parent_session=session,
             child_session_id=request.child_session_id,
