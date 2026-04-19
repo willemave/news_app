@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import and_, desc, func
+from sqlalchemy import and_, case, desc, func
 from sqlalchemy.orm import Session
 
 from app.commands import create_api_key, revoke_api_key
@@ -23,7 +23,7 @@ from app.models.internal.admin_eval import (
     LONGFORM_TEMPLATE_LABELS,
     AdminEvalRunRequest,
 )
-from app.models.schema import Content, OnboardingDiscoveryRun, ProcessingTask
+from app.models.schema import Content, OnboardingDiscoveryRun, ProcessingTask, VendorUsageRecord
 from app.models.user import User
 from app.queries import list_api_keys
 from app.services.admin_eval import get_default_pricing, run_admin_eval
@@ -38,6 +38,64 @@ DASHBOARD_STATS_RANGE_OPTIONS = (
     ("30d", "30d", timedelta(days=30)),
     ("all", "All time", None),
 )
+COST_BUCKET_OPTIONS = (
+    ("day", "Daily", timedelta(days=30), 30, "last 30 days"),
+    ("week", "Weekly", timedelta(weeks=12), 12, "last 12 weeks"),
+    ("month", "Monthly", timedelta(days=365), 12, "last 12 months"),
+)
+COST_DEFAULT_BUCKET = "day"
+COST_AVERAGE_LABELS = {
+    "day": "Day",
+    "week": "Week",
+    "month": "Month",
+}
+COST_AREA_LABELS = {
+    "chat": "Chat",
+    "summarization": "Summarization",
+    "image_generation": "Image Generation",
+}
+COST_FEATURE_GROUPS = {
+    "chat": {"chat"},
+    "summarization": {"news_processing", "summarization"},
+    "image_generation": {"image_generation"},
+}
+COST_EXTERNAL_FEATURES = (
+    "x_api",
+    "exa",
+    "transcription",
+    "narration_tts",
+    "podcast_search",
+    "object_storage",
+    "chat_sandbox",
+)
+COST_TRACKED_FEATURES = tuple(
+    sorted({feature for features in COST_FEATURE_GROUPS.values() for feature in features})
+)
+COST_AREA_ORDER = ("chat", "summarization", "image_generation")
+COST_FEATURE_TO_AREA = {
+    feature: area for area, features in COST_FEATURE_GROUPS.items() for feature in features
+}
+COST_BUCKET_CONFIGS = {
+    value: {
+        "value": value,
+        "label": label,
+        "lookback": lookback,
+        "bucket_count": bucket_count,
+        "window_label": window_label,
+    }
+    for value, label, lookback, bucket_count, window_label in COST_BUCKET_OPTIONS
+}
+EXTERNAL_PROVIDER_LABELS = {
+    "x": "X API",
+    "exa": "Exa",
+    "openai": "OpenAI",
+    "elevenlabs": "ElevenLabs",
+    "listen_notes": "Listen Notes",
+    "spotify": "Spotify",
+    "podcast_index": "Podcast Index",
+    "s3_compatible": "Object Storage",
+    "e2b": "E2B Sandbox",
+}
 
 
 def _normalize_dashboard_stats_range(stats_range: str | None) -> str:
@@ -76,6 +134,37 @@ def _build_dashboard_stats_range_links(
                 "label": label,
                 "href": href,
                 "active": value == selected_stats_range,
+            }
+        )
+
+    return options
+
+
+def _normalize_cost_bucket(cost_bucket: str | None) -> str:
+    """Return a supported cost bucket value."""
+    if cost_bucket in COST_BUCKET_CONFIGS:
+        return str(cost_bucket)
+    return COST_DEFAULT_BUCKET
+
+
+def _build_cost_bucket_links(
+    request: Request, *, selected_cost_bucket: str
+) -> list[dict[str, Any]]:
+    """Build cost bucket tabs while preserving other query params."""
+    base_params = dict(request.query_params)
+    options: list[dict[str, Any]] = []
+
+    for value, label, _delta, _bucket_count, _window_label in COST_BUCKET_OPTIONS:
+        params = {**base_params, "cost_bucket": value}
+        href = request.url.path
+        if params:
+            href = f"{href}?{urlencode(params)}"
+        options.append(
+            {
+                "value": value,
+                "label": label,
+                "href": href,
+                "active": value == selected_cost_bucket,
             }
         )
 
@@ -299,6 +388,339 @@ def _build_user_lifecycle(
     return lifecycle, latest_onboarding_status_counts
 
 
+def _cost_bucket_config(cost_bucket: str) -> dict[str, Any]:
+    """Return dashboard cost window config for the requested bucket."""
+    return COST_BUCKET_CONFIGS.get(cost_bucket, COST_BUCKET_CONFIGS[COST_DEFAULT_BUCKET])
+
+
+def _format_cost_user_label(user_id: int | None, email: str | None, full_name: str | None) -> str:
+    """Return a stable dashboard label for a user cost row."""
+    if full_name and email:
+        return f"{full_name} ({email})"
+    if email:
+        return email
+    if full_name:
+        return full_name
+    if user_id is not None:
+        return f"User {user_id}"
+    return "Unattributed"
+
+
+def _build_cost_bucket_label_expr(db: Session, cost_bucket: str) -> Any:
+    """Return a dialect-aware SQL expression for cost bucket labels."""
+    dialect_name = ""
+    if db.bind is not None and db.bind.dialect is not None:
+        dialect_name = db.bind.dialect.name
+
+    if cost_bucket == "day":
+        return func.date(VendorUsageRecord.created_at)
+
+    if cost_bucket == "week":
+        if dialect_name == "sqlite":
+            return func.printf(
+                "%s-W%s",
+                func.strftime("%Y", VendorUsageRecord.created_at),
+                func.strftime("%W", VendorUsageRecord.created_at),
+            )
+        return func.to_char(
+            func.date_trunc("week", VendorUsageRecord.created_at),
+            'IYYY-"W"IW',
+        )
+
+    if dialect_name == "sqlite":
+        return func.strftime("%Y-%m", VendorUsageRecord.created_at)
+    return func.to_char(
+        func.date_trunc("month", VendorUsageRecord.created_at),
+        "YYYY-MM",
+    )
+
+
+def _build_cost_analysis(
+    db: Session,
+    *,
+    cost_bucket: str,
+    now: datetime,
+) -> dict[str, Any]:
+    """Build admin dashboard cost analysis for tracked LLM areas."""
+    config = _cost_bucket_config(cost_bucket)
+    start_dt = now - config["lookback"]
+    bucket_expr = _build_cost_bucket_label_expr(db, cost_bucket)
+    cost_expr = func.coalesce(VendorUsageRecord.cost_usd, 0.0)
+    filters = (
+        VendorUsageRecord.feature.in_(COST_TRACKED_FEATURES),
+        VendorUsageRecord.created_at >= start_dt,
+    )
+
+    (
+        total_cost_usd,
+        total_rows,
+        attributed_cost_usd,
+        unattributed_cost_usd,
+        attributed_user_count,
+    ) = (
+        db.query(
+            func.coalesce(func.sum(cost_expr), 0.0),
+            func.count(VendorUsageRecord.id),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (VendorUsageRecord.user_id.is_not(None), cost_expr),
+                        else_=0.0,
+                    )
+                ),
+                0.0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (VendorUsageRecord.user_id.is_(None), cost_expr),
+                        else_=0.0,
+                    )
+                ),
+                0.0,
+            ),
+            func.count(func.distinct(VendorUsageRecord.user_id)),
+        )
+        .filter(*filters)
+        .one()
+    )
+
+    area_rollups: dict[str, dict[str, Any]] = {
+        area: {
+            "area": area,
+            "label": COST_AREA_LABELS[area],
+            "row_count": 0,
+            "cost_usd": 0.0,
+            "attributed_cost_usd": 0.0,
+            "share_of_total": 0.0,
+        }
+        for area in COST_AREA_ORDER
+    }
+    area_rows = (
+        db.query(
+            VendorUsageRecord.feature.label("feature"),
+            func.count(VendorUsageRecord.id).label("row_count"),
+            func.coalesce(func.sum(cost_expr), 0.0).label("cost_usd"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (VendorUsageRecord.user_id.is_not(None), cost_expr),
+                        else_=0.0,
+                    )
+                ),
+                0.0,
+            ).label("attributed_cost_usd"),
+        )
+        .filter(*filters)
+        .group_by(VendorUsageRecord.feature)
+        .all()
+    )
+    for row in area_rows:
+        area = COST_FEATURE_TO_AREA.get(row.feature)
+        if area is None:
+            continue
+        area_rollup = area_rollups[area]
+        area_rollup["row_count"] += int(row.row_count or 0)
+        area_rollup["cost_usd"] += float(row.cost_usd or 0.0)
+        area_rollup["attributed_cost_usd"] += float(row.attributed_cost_usd or 0.0)
+
+    total_cost = float(total_cost_usd or 0.0)
+    for area in COST_AREA_ORDER:
+        area_rollup = area_rollups[area]
+        area_rollup["cost_usd"] = round(area_rollup["cost_usd"], 8)
+        area_rollup["attributed_cost_usd"] = round(area_rollup["attributed_cost_usd"], 8)
+        area_rollup["average_cost_usd"] = round(
+            area_rollup["cost_usd"] / config["bucket_count"],
+            8,
+        )
+        area_rollup["share_of_total"] = round(
+            (area_rollup["cost_usd"] / total_cost * 100.0) if total_cost > 0 else 0.0,
+            2,
+        )
+
+    bucket_rows = (
+        db.query(
+            bucket_expr.label("bucket_label"),
+            VendorUsageRecord.feature.label("feature"),
+            func.coalesce(func.sum(cost_expr), 0.0).label("cost_usd"),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (VendorUsageRecord.user_id.is_not(None), cost_expr),
+                        else_=0.0,
+                    )
+                ),
+                0.0,
+            ).label("attributed_cost_usd"),
+        )
+        .filter(*filters)
+        .group_by(bucket_expr, VendorUsageRecord.feature)
+        .order_by(bucket_expr.desc())
+        .all()
+    )
+    bucket_rollups: dict[str, dict[str, Any]] = {}
+    for row in bucket_rows:
+        bucket_label = str(row.bucket_label)
+        bucket_rollup = bucket_rollups.setdefault(
+            bucket_label,
+            {
+                "bucket_label": bucket_label,
+                "total_cost_usd": 0.0,
+                "attributed_cost_usd": 0.0,
+                "chat_cost_usd": 0.0,
+                "summarization_cost_usd": 0.0,
+                "image_generation_cost_usd": 0.0,
+            },
+        )
+        area = COST_FEATURE_TO_AREA.get(row.feature)
+        if area is None:
+            continue
+        cost_value = float(row.cost_usd or 0.0)
+        attributed_value = float(row.attributed_cost_usd or 0.0)
+        bucket_rollup["total_cost_usd"] += cost_value
+        bucket_rollup["attributed_cost_usd"] += attributed_value
+        bucket_rollup[f"{area}_cost_usd"] += cost_value
+
+    period_rows = sorted(
+        (
+            {
+                **row,
+                "total_cost_usd": round(float(row["total_cost_usd"]), 8),
+                "attributed_cost_usd": round(float(row["attributed_cost_usd"]), 8),
+                "chat_cost_usd": round(float(row["chat_cost_usd"]), 8),
+                "summarization_cost_usd": round(float(row["summarization_cost_usd"]), 8),
+                "image_generation_cost_usd": round(float(row["image_generation_cost_usd"]), 8),
+            }
+            for row in bucket_rollups.values()
+        ),
+        key=lambda row: str(row["bucket_label"]),
+        reverse=True,
+    )[: int(config["bucket_count"])]
+
+    user_rows = (
+        db.query(
+            VendorUsageRecord.user_id.label("user_id"),
+            User.email.label("email"),
+            User.full_name.label("full_name"),
+            VendorUsageRecord.feature.label("feature"),
+            func.coalesce(func.sum(cost_expr), 0.0).label("cost_usd"),
+            func.count(VendorUsageRecord.id).label("row_count"),
+        )
+        .outerjoin(User, User.id == VendorUsageRecord.user_id)
+        .filter(*filters)
+        .filter(VendorUsageRecord.user_id.is_not(None))
+        .group_by(
+            VendorUsageRecord.user_id,
+            User.email,
+            User.full_name,
+            VendorUsageRecord.feature,
+        )
+        .all()
+    )
+    user_rollups: dict[int, dict[str, Any]] = {}
+    for row in user_rows:
+        user_id = int(row.user_id)
+        user_rollup = user_rollups.setdefault(
+            user_id,
+            {
+                "user_id": user_id,
+                "user_label": _format_cost_user_label(user_id, row.email, row.full_name),
+                "total_cost_usd": 0.0,
+                "row_count": 0,
+                "chat_cost_usd": 0.0,
+                "summarization_cost_usd": 0.0,
+                "image_generation_cost_usd": 0.0,
+            },
+        )
+        area = COST_FEATURE_TO_AREA.get(row.feature)
+        if area is None:
+            continue
+        cost_value = float(row.cost_usd or 0.0)
+        user_rollup["total_cost_usd"] += cost_value
+        user_rollup["row_count"] += int(row.row_count or 0)
+        user_rollup[f"{area}_cost_usd"] += cost_value
+
+    user_rollup_rows = sorted(
+        (
+            {
+                **row,
+                "total_cost_usd": round(float(row["total_cost_usd"]), 8),
+                "chat_cost_usd": round(float(row["chat_cost_usd"]), 8),
+                "summarization_cost_usd": round(float(row["summarization_cost_usd"]), 8),
+                "image_generation_cost_usd": round(float(row["image_generation_cost_usd"]), 8),
+                "average_cost_usd": round(
+                    float(row["total_cost_usd"]) / config["bucket_count"],
+                    8,
+                ),
+            }
+            for row in user_rollups.values()
+        ),
+        key=lambda row: float(row["total_cost_usd"]),
+        reverse=True,
+    )[:15]
+
+    return {
+        "selected_cost_bucket_label": config["label"],
+        "average_label": COST_AVERAGE_LABELS[config["value"]],
+        "cost_window_label": config["window_label"],
+        "total_cost_usd": round(total_cost, 8),
+        "total_rows": int(total_rows or 0),
+        "attributed_cost_usd": round(float(attributed_cost_usd or 0.0), 8),
+        "unattributed_cost_usd": round(float(unattributed_cost_usd or 0.0), 8),
+        "attributed_user_count": int(attributed_user_count or 0),
+        "average_cost_usd": round(total_cost / config["bucket_count"], 8),
+        "area_rows": [area_rollups[area] for area in COST_AREA_ORDER],
+        "period_rows": period_rows,
+        "user_rows": user_rollup_rows,
+    }
+
+
+def _build_external_api_analysis(
+    db: Session,
+    *,
+    cost_bucket: str,
+    now: datetime,
+) -> dict[str, Any]:
+    """Build provider-level external API rollups for non-LLM services."""
+    config = _cost_bucket_config(cost_bucket)
+    start_dt = now - config["lookback"]
+    cost_expr = func.coalesce(VendorUsageRecord.cost_usd, 0.0)
+    provider_rows = (
+        db.query(
+            VendorUsageRecord.provider.label("provider"),
+            func.count(VendorUsageRecord.id).label("row_count"),
+            func.coalesce(func.sum(cost_expr), 0.0).label("cost_usd"),
+            func.coalesce(func.sum(VendorUsageRecord.request_count), 0).label("request_count"),
+            func.coalesce(func.sum(VendorUsageRecord.resource_count), 0).label("resource_count"),
+        )
+        .filter(VendorUsageRecord.feature.in_(COST_EXTERNAL_FEATURES))
+        .filter(VendorUsageRecord.created_at >= start_dt)
+        .group_by(VendorUsageRecord.provider)
+        .order_by(
+            func.coalesce(func.sum(cost_expr), 0.0).desc(),
+            func.count(VendorUsageRecord.id).desc(),
+        )
+        .all()
+    )
+    rows = [
+        {
+            "provider": row.provider,
+            "label": EXTERNAL_PROVIDER_LABELS.get(str(row.provider), str(row.provider)),
+            "row_count": int(row.row_count or 0),
+            "cost_usd": round(float(row.cost_usd or 0.0), 8),
+            "request_count": int(row.request_count or 0),
+            "resource_count": int(row.resource_count or 0),
+            "average_cost_usd": round(float(row.cost_usd or 0.0) / config["bucket_count"], 8),
+        }
+        for row in provider_rows
+    ]
+    return {
+        "rows": rows[:12],
+        "window_label": config["window_label"],
+        "average_label": COST_AVERAGE_LABELS[config["value"]],
+    }
+
+
 @router.get("/", response_class=HTMLResponse)
 def admin_dashboard(
     request: Request,
@@ -307,6 +729,7 @@ def admin_dashboard(
     event_type: str | None = None,
     limit: int = 50,
     stats_range: str = "24h",
+    cost_bucket: str = "day",
 ):
     """Admin dashboard with system statistics and event logs."""
     now = datetime.now(UTC)
@@ -316,6 +739,11 @@ def admin_dashboard(
     stats_range_links = _build_dashboard_stats_range_links(
         request,
         selected_stats_range=selected_stats_range,
+    )
+    selected_cost_bucket = _normalize_cost_bucket(cost_bucket)
+    cost_bucket_links = _build_cost_bucket_links(
+        request,
+        selected_cost_bucket=selected_cost_bucket,
     )
     stats_range_label = next(
         label
@@ -360,6 +788,16 @@ def admin_dashboard(
     scraper_health = _build_scraper_health(db, recent_cutoff)
     watchdog_health = _build_queue_watchdog_health(db, recent_cutoff)
     user_stats, onboarding_latest_status_counts = _build_user_lifecycle(db, recent_cutoff)
+    cost_analysis = _build_cost_analysis(
+        db,
+        cost_bucket=selected_cost_bucket,
+        now=now,
+    )
+    external_api_analysis = _build_external_api_analysis(
+        db,
+        cost_bucket=selected_cost_bucket,
+        now=now,
+    )
 
     # EventLog has been removed; keep template context stable with empty values.
     event_logs: list[Any] = []
@@ -391,6 +829,9 @@ def admin_dashboard(
             "selected_stats_range": selected_stats_range,
             "selected_stats_range_label": stats_range_label,
             "stats_range_links": stats_range_links,
+            "cost_bucket_links": cost_bucket_links,
+            "cost_analysis": cost_analysis,
+            "external_api_analysis": external_api_analysis,
             "queue_status_rows": queue_status_rows,
             "phase_status_rows": phase_status_rows,
             "recent_failure_rows": recent_failure_rows,

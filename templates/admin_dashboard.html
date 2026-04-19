@@ -107,6 +107,207 @@
     </div>
   </div>
 
+  <!-- Cost Analysis -->
+  <div class="bg-white rounded-lg border border-gray-200 mb-6">
+    <div class="px-4 py-3 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div>
+        <h2 class="text-sm font-semibold text-gray-900">Cost Analysis</h2>
+        <p class="text-xs text-gray-500 mt-1">
+          Tracked LLM areas: chat, summarization, and image generation. Showing {{ cost_analysis.selected_cost_bucket_label.lower() }} rollups for the {{ cost_analysis.cost_window_label }}.
+          Per-user rows only include usage records with a stored user attribution.
+        </p>
+      </div>
+      <div class="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div class="inline-flex items-center rounded-lg border border-gray-200 bg-white p-1">
+          {% for option in cost_bucket_links %}
+          <a
+            href="{{ option.href }}"
+            class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors {% if option.active %}bg-gray-900 text-white{% else %}text-gray-600 hover:bg-gray-100{% endif %}"
+          >
+            {{ option.label }}
+          </a>
+          {% endfor %}
+        </div>
+        <a href="/admin/vendor-usage" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
+          Raw Usage
+        </a>
+      </div>
+    </div>
+
+    <div class="p-4">
+      <div class="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+        <div class="border border-gray-200 rounded-lg p-3">
+          <div class="text-xs text-gray-500 uppercase tracking-wide">Total Cost</div>
+          <div class="text-lg font-bold text-gray-900 tabular-nums mt-0.5">${{ "%.6f"|format(cost_analysis.total_cost_usd) }}</div>
+          <div class="text-xs text-gray-400 mt-1">{{ cost_analysis.total_rows }} tracked rows</div>
+        </div>
+        <div class="border border-gray-200 rounded-lg p-3">
+          <div class="text-xs text-gray-500 uppercase tracking-wide">Avg / {{ cost_analysis.average_label }}</div>
+          <div class="text-lg font-bold text-gray-900 tabular-nums mt-0.5">${{ "%.6f"|format(cost_analysis.average_cost_usd) }}</div>
+          <div class="text-xs text-gray-400 mt-1">{{ cost_analysis.cost_window_label }}</div>
+        </div>
+        <div class="border border-gray-200 rounded-lg p-3">
+          <div class="text-xs text-gray-500 uppercase tracking-wide">Attributed User Cost</div>
+          <div class="text-lg font-bold text-gray-900 tabular-nums mt-0.5">${{ "%.6f"|format(cost_analysis.attributed_cost_usd) }}</div>
+          <div class="text-xs text-gray-400 mt-1">{{ cost_analysis.attributed_user_count }} users with tracked spend</div>
+        </div>
+        <div class="border border-gray-200 rounded-lg p-3">
+          <div class="text-xs text-gray-500 uppercase tracking-wide">System / Unattributed</div>
+          <div class="text-lg font-bold text-gray-900 tabular-nums mt-0.5">${{ "%.6f"|format(cost_analysis.unattributed_cost_usd) }}</div>
+          <div class="text-xs text-gray-400 mt-1">Background or unassigned work</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100">
+            <h3 class="text-sm font-semibold text-gray-900">Cost By Area</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-100">
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Area</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Attributed</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Share</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                {% for row in cost_analysis.area_rows %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="px-4 py-2.5">
+                    <div class="font-medium text-gray-900">{{ row.label }}</div>
+                    <div class="text-xs text-gray-400">{{ row.row_count }} rows</div>
+                  </td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-900">${{ "%.6f"|format(row.cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.average_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.attributed_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">{{ "%.1f"|format(row.share_of_total) }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-lg overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100">
+            <h3 class="text-sm font-semibold text-gray-900">Top User Cost</h3>
+          </div>
+          {% if cost_analysis.user_rows %}
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead>
+                <tr class="border-b border-gray-100">
+                  <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Chat</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Summary</th>
+                  <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">
+                {% for row in cost_analysis.user_rows %}
+                <tr class="hover:bg-gray-50 transition-colors">
+                  <td class="px-4 py-2.5">
+                    <div class="font-medium text-gray-900">{{ row.user_label }}</div>
+                    <div class="text-xs text-gray-400">{{ row.row_count }} rows</div>
+                  </td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-900">${{ "%.6f"|format(row.total_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.average_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.chat_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.summarization_cost_usd) }}</td>
+                  <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.image_generation_cost_usd) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="px-4 py-10 text-sm text-gray-400">No user-attributed LLM cost in this window.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-lg overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-900">Recent {{ cost_analysis.selected_cost_bucket_label }} Cost</h3>
+        </div>
+        {% if cost_analysis.period_rows %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100">
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ cost_analysis.selected_cost_bucket_label }}</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Attributed</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Chat</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Summarization</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Image</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              {% for row in cost_analysis.period_rows %}
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-2.5 font-medium text-gray-900">{{ row.bucket_label }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-900">${{ "%.6f"|format(row.total_cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.attributed_cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.chat_cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.summarization_cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.image_generation_cost_usd) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="px-4 py-10 text-sm text-gray-400">No tracked LLM cost in this window.</div>
+        {% endif %}
+      </div>
+
+      <div class="border border-gray-200 rounded-lg overflow-hidden mt-4">
+        <div class="px-4 py-3 border-b border-gray-100">
+          <h3 class="text-sm font-semibold text-gray-900">External API Providers</h3>
+          <p class="text-xs text-gray-500 mt-1">Provider rollup for keyed non-LLM services over the {{ external_api_analysis.window_label }}.</p>
+        </div>
+        {% if external_api_analysis.rows %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100">
+                <th class="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg / {{ external_api_analysis.average_label }}</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Requests</th>
+                <th class="px-4 py-2.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Resources</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              {% for row in external_api_analysis.rows %}
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-4 py-2.5">
+                  <div class="font-medium text-gray-900">{{ row.label }}</div>
+                  <div class="text-xs text-gray-400">{{ row.row_count }} rows</div>
+                </td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-900">${{ "%.6f"|format(row.cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">${{ "%.6f"|format(row.average_cost_usd) }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">{{ row.request_count }}</td>
+                <td class="px-4 py-2.5 text-right tabular-nums text-gray-600">{{ row.resource_count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="px-4 py-10 text-sm text-gray-400">No external API usage rows in this window.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <!-- Queue Status -->
   <div class="bg-white rounded-lg border border-gray-200 mb-4">
     <details open>
