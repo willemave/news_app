@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import OperationalError
 
+from app.core.db import dispose_db_engine
 from app.core.logging import get_logger, setup_logging
 from app.core.observability import bound_log_context, build_log_extra, get_task_event_name
 from app.core.settings import get_settings
@@ -49,6 +50,12 @@ else:
     psycopg = _psycopg
 
 logger = get_logger(__name__)
+
+_TRANSIENT_DATABASE_ERROR_SNIPPETS = (
+    "database system is in recovery mode",
+    "server closed the connection unexpectedly",
+    "terminating connection due to administrator command",
+)
 
 
 def _psycopg_conninfo(database_url: str) -> str:
@@ -91,6 +98,16 @@ def _task_extra(
         source="queue",
         context_data=context_data,
     )
+
+
+def _is_transient_database_operational_error(exc: OperationalError) -> bool:
+    """Return whether an OperationalError looks like a transient DB restart/recovery."""
+    fragments = [str(exc).lower()]
+    original = getattr(exc, "orig", None)
+    if original is not None:
+        fragments.append(str(original).lower())
+    combined = " ".join(fragment for fragment in fragments if fragment)
+    return any(snippet in combined for snippet in _TRANSIENT_DATABASE_ERROR_SNIPPETS)
 
 
 class SequentialTaskProcessor:
@@ -206,6 +223,31 @@ class SequentialTaskProcessor:
             logger.debug("Queue notification listener close failed", exc_info=True)
         finally:
             self._queue_listener = None
+
+    def _recover_from_operational_error(self, exc: OperationalError) -> float:
+        """Dispose pooled DB state and drop the listener after a DB operational error."""
+        transient = _is_transient_database_operational_error(exc)
+        dispose_db_engine()
+        self._close_queue_listener()
+        logger_method = logger.warning if transient else logger.error
+        logger_method(
+            "Database operational error in worker loop; resetting DB connections",
+            exc_info=True,
+            extra=build_log_extra(
+                component="task_processor",
+                operation="worker_loop",
+                event_name="task.worker_loop_db_error",
+                status="degraded" if transient else "failed",
+                queue_name=self.queue_name,
+                worker_id=self.worker_id,
+                source="queue",
+                context_data={
+                    "failure_class": type(exc).__name__,
+                    "transient": transient,
+                },
+            ),
+        )
+        return 10.0 if transient else 5.0
 
     @contextmanager
     def _lease_heartbeat(self, task_id: int):
@@ -588,6 +630,8 @@ class SequentialTaskProcessor:
                     logger.info("Reached max tasks limit (%s), stopping", max_tasks)
                     break
 
+            except OperationalError as exc:
+                time.sleep(self._recover_from_operational_error(exc))
             except Exception as exc:  # noqa: BLE001
                 logger.error("Error in main loop: %s", exc, exc_info=True)
                 time.sleep(5)

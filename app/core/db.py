@@ -59,6 +59,14 @@ def get_engine() -> Engine:
     return _engine
 
 
+def dispose_db_engine() -> None:
+    """Dispose pooled DB connections so the next checkout starts fresh."""
+    global _engine
+    if _engine is None:
+        return
+    _engine.dispose()
+
+
 def get_session_factory() -> sessionmaker[Session]:
     """Get the session factory, initializing if necessary."""
     if _SessionLocal is None:

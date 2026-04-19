@@ -1,10 +1,19 @@
 """Tests for the queue watchdog recovery script."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+from sqlalchemy.exc import OperationalError
 
 from app.models.contracts import TaskQueue, TaskStatus, TaskType
 from app.models.schema import ProcessingTask
-from scripts.watchdog_queue_recovery import _parse_args, run_watchdog_once
+from scripts.watchdog_queue_recovery import (
+    ActionResult,
+    WatchdogRunResult,
+    _parse_args,
+    main,
+    run_watchdog_once,
+)
 
 
 def test_run_watchdog_once_requeues_stale_agent_digest(db_session) -> None:
@@ -85,3 +94,52 @@ def test_parse_args_supports_process_news_item_stale_hours() -> None:
     """CLI parsing should expose the news-item stale-hours option."""
     args = _parse_args(["--process-news-item-stale-hours", "6"])
     assert args.process_news_item_stale_hours == 6.0
+
+
+def test_main_retries_transient_operational_error() -> None:
+    """Transient DB recovery errors should be retried before failing the watchdog."""
+    session = MagicMock()
+    session_context = MagicMock()
+    session_context.__enter__.return_value = session
+    session_context.__exit__.return_value = None
+    session_factory = MagicMock(return_value=session_context)
+    engine = MagicMock()
+    result = WatchdogRunResult(
+        started_at=datetime.now(UTC),
+        finished_at=datetime.now(UTC),
+        dry_run=False,
+        moved_media=ActionResult("move_media", 0, [], {}),
+        requeued_media=ActionResult("requeue_stale_media", 0, [], {}),
+        requeued_process_content=ActionResult("requeue_stale_process_content", 0, [], {}),
+        requeued_process_news_item=ActionResult("requeue_stale_process_news_item", 0, [], {}),
+        requeued_generate_agent_digest=ActionResult(
+            "requeue_stale_generate_agent_digest", 0, [], {}
+        ),
+    )
+
+    with (
+        patch(
+            "scripts.watchdog_queue_recovery._create_session_factory",
+            return_value=(session_factory, engine, "postgresql://example/newsly"),
+        ),
+        patch(
+            "scripts.watchdog_queue_recovery.run_watchdog_once",
+            side_effect=[
+                OperationalError(
+                    "SELECT processing_tasks.id",
+                    {},
+                    Exception("server closed the connection unexpectedly"),
+                ),
+                result,
+            ],
+        ),
+        patch("scripts.watchdog_queue_recovery._print_result"),
+        patch("scripts.watchdog_queue_recovery.setup_logging"),
+        patch("scripts.watchdog_queue_recovery.time.sleep") as mock_sleep,
+    ):
+        exit_code = main([])
+
+    assert exit_code == 0
+    assert session.rollback.call_count == 1
+    engine.dispose.assert_called()
+    mock_sleep.assert_any_call(5)

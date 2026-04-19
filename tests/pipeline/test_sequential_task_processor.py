@@ -363,3 +363,34 @@ class TestSequentialTaskProcessor:
 
         assert processor.process_task.call_count == 1
         processor.queue_service.finalize_task.assert_called_once()
+
+    def test_run_recovers_from_transient_operational_error(self, processor):
+        """A transient DB recovery error should reset connections and continue looping."""
+        call_count = 0
+
+        def mock_dequeue(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise OperationalError(
+                    "SELECT processing_tasks.id",
+                    {},
+                    Exception("FATAL: the database system is in recovery mode"),
+                )
+            processor.running = False
+            return None
+
+        processor.queue_service.dequeue.side_effect = mock_dequeue
+
+        with (
+            patch("app.pipeline.sequential_task_processor.setup_logging"),
+            patch("app.pipeline.sequential_task_processor.dispose_db_engine") as mock_dispose,
+            patch.object(processor, "_close_queue_listener") as mock_close_listener,
+            patch("time.sleep") as mock_sleep,
+        ):
+            processor.run()
+
+        assert call_count == 2
+        mock_dispose.assert_called_once()
+        mock_close_listener.assert_called_once()
+        mock_sleep.assert_any_call(10.0)

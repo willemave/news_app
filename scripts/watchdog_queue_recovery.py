@@ -21,6 +21,8 @@ from typing import Any
 
 import httpx
 from sqlalchemy import create_engine, func
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 # Add parent directory for local imports.
@@ -33,6 +35,12 @@ from app.models.schema import ProcessingTask  # noqa: E402
 from app.services.queue import TASK_QUEUE_BY_TYPE, TaskQueue, TaskStatus, TaskType  # noqa: E402
 
 logger = get_logger(__name__)
+
+_TRANSIENT_DATABASE_ERROR_SNIPPETS = (
+    "database system is in recovery mode",
+    "server closed the connection unexpectedly",
+    "terminating connection due to administrator command",
+)
 
 PROCESSING_TIMESTAMP_EXPR = func.coalesce(
     ProcessingTask.started_at,
@@ -105,11 +113,22 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _create_session_factory(database_url: str | None = None) -> tuple[sessionmaker, str]:
+def _is_transient_database_operational_error(exc: OperationalError) -> bool:
+    """Return whether an OperationalError looks like a transient DB restart/recovery."""
+    fragments = [str(exc).lower()]
+    original = getattr(exc, "orig", None)
+    if original is not None:
+        fragments.append(str(original).lower())
+    combined = " ".join(fragment for fragment in fragments if fragment)
+    return any(snippet in combined for snippet in _TRANSIENT_DATABASE_ERROR_SNIPPETS)
+
+
+def _create_session_factory(database_url: str | None = None) -> tuple[sessionmaker, Engine, str]:
     """Create DB session factory from explicit URL or settings."""
     effective_database_url = database_url or str(get_settings().database_url)
-    engine = create_engine(effective_database_url)
-    return sessionmaker(bind=engine, autocommit=False, autoflush=False), effective_database_url
+    engine = create_engine(effective_database_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+    return session_factory, engine, effective_database_url
 
 
 def _move_media_tasks(
@@ -501,87 +520,139 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     setup_logging(level="DEBUG" if args.debug else "INFO")
 
-    session_factory, effective_database_url = _create_session_factory(args.database_url)
-    with bound_log_context(job_name="watchdog_queue_recovery", trigger="cron", source="cron"):
-        logger.info(
-            "Queue watchdog targeting database",
-            extra=build_log_extra(
-                component="queue_watchdog",
-                operation="startup",
-                event_name="cron.run",
-                status="started",
-                job_name="watchdog_queue_recovery",
-                trigger="cron",
-                context_data={
-                    "database_url": effective_database_url,
-                    "dry_run": bool(args.dry_run),
-                },
-            ),
-        )
+    session_factory, engine, effective_database_url = _create_session_factory(args.database_url)
+    try:
+        with bound_log_context(job_name="watchdog_queue_recovery", trigger="cron", source="cron"):
+            logger.info(
+                "Queue watchdog targeting database",
+                extra=build_log_extra(
+                    component="queue_watchdog",
+                    operation="startup",
+                    event_name="cron.run",
+                    status="started",
+                    job_name="watchdog_queue_recovery",
+                    trigger="cron",
+                    context_data={
+                        "database_url": effective_database_url,
+                        "dry_run": bool(args.dry_run),
+                    },
+                ),
+            )
 
-        def _run_cycle() -> int:
-            with session_factory() as session:
-                try:
-                    result = run_watchdog_once(
-                        session=session,
-                        media_stale_hours=float(args.media_stale_hours),
-                        generate_agent_digest_stale_hours=float(
-                            args.generate_agent_digest_stale_hours
-                        ),
-                        process_content_stale_hours=float(args.process_content_stale_hours),
-                        process_news_item_stale_hours=float(args.process_news_item_stale_hours),
-                        alert_threshold=max(int(args.alert_threshold), 1),
-                        slack_webhook_url=args.slack_webhook_url,
-                        dry_run=bool(args.dry_run),
-                        action_limit=args.action_limit,
-                    )
-                    if not args.dry_run:
-                        session.commit()
-                    _print_result(result)
-                    return 0
-                except Exception as exc:  # noqa: BLE001
-                    session.rollback()
-                    logger.exception(
-                        "Queue watchdog cycle failed",
-                        extra=build_log_extra(
-                            component="queue_watchdog",
-                            operation="queue_recovery",
-                            event_name="cron.run",
-                            status="failed",
-                            job_name="watchdog_queue_recovery",
-                            trigger="cron",
-                            context_data={"failure_class": type(exc).__name__},
-                        ),
-                    )
-                    return 1
+            def _run_cycle() -> int:
+                max_attempts = 3
+                for attempt in range(1, max_attempts + 1):
+                    with session_factory() as session:
+                        try:
+                            result = run_watchdog_once(
+                                session=session,
+                                media_stale_hours=float(args.media_stale_hours),
+                                generate_agent_digest_stale_hours=float(
+                                    args.generate_agent_digest_stale_hours
+                                ),
+                                process_content_stale_hours=float(args.process_content_stale_hours),
+                                process_news_item_stale_hours=float(
+                                    args.process_news_item_stale_hours
+                                ),
+                                alert_threshold=max(int(args.alert_threshold), 1),
+                                slack_webhook_url=args.slack_webhook_url,
+                                dry_run=bool(args.dry_run),
+                                action_limit=args.action_limit,
+                            )
+                            if not args.dry_run:
+                                session.commit()
+                            _print_result(result)
+                            return 0
+                        except OperationalError as exc:
+                            session.rollback()
+                            transient = _is_transient_database_operational_error(exc)
+                            if transient and attempt < max_attempts:
+                                logger.warning(
+                                    (
+                                        "Queue watchdog hit transient database recovery; "
+                                        "retrying cycle"
+                                    ),
+                                    exc_info=True,
+                                    extra=build_log_extra(
+                                        component="queue_watchdog",
+                                        operation="queue_recovery",
+                                        event_name="cron.run",
+                                        status="degraded",
+                                        job_name="watchdog_queue_recovery",
+                                        trigger="cron",
+                                        context_data={
+                                            "failure_class": type(exc).__name__,
+                                            "attempt": attempt,
+                                            "max_attempts": max_attempts,
+                                        },
+                                    ),
+                                )
+                                engine.dispose()
+                                time.sleep(5 * attempt)
+                                continue
+                            logger.exception(
+                                "Queue watchdog cycle failed",
+                                extra=build_log_extra(
+                                    component="queue_watchdog",
+                                    operation="queue_recovery",
+                                    event_name="cron.run",
+                                    status="failed",
+                                    job_name="watchdog_queue_recovery",
+                                    trigger="cron",
+                                    context_data={
+                                        "failure_class": type(exc).__name__,
+                                        "attempt": attempt,
+                                        "max_attempts": max_attempts,
+                                    },
+                                ),
+                            )
+                            return 1
+                        except Exception as exc:  # noqa: BLE001
+                            session.rollback()
+                            logger.exception(
+                                "Queue watchdog cycle failed",
+                                extra=build_log_extra(
+                                    component="queue_watchdog",
+                                    operation="queue_recovery",
+                                    event_name="cron.run",
+                                    status="failed",
+                                    job_name="watchdog_queue_recovery",
+                                    trigger="cron",
+                                    context_data={"failure_class": type(exc).__name__},
+                                ),
+                            )
+                            return 1
+                return 1
 
-        if not args.loop:
-            return _run_cycle()
+            if not args.loop:
+                return _run_cycle()
 
-        exit_code = 0
-        interval_seconds = max(int(args.interval_seconds), 30)
-        logger.info(
-            "Starting watchdog loop",
-            extra=build_log_extra(
-                component="queue_watchdog",
-                operation="loop",
-                event_name="cron.run",
-                status="started",
-                job_name="watchdog_queue_recovery",
-                trigger="cron",
-                context_data={"interval_seconds": interval_seconds},
-            ),
-        )
+            exit_code = 0
+            interval_seconds = max(int(args.interval_seconds), 30)
+            logger.info(
+                "Starting watchdog loop",
+                extra=build_log_extra(
+                    component="queue_watchdog",
+                    operation="loop",
+                    event_name="cron.run",
+                    status="started",
+                    job_name="watchdog_queue_recovery",
+                    trigger="cron",
+                    context_data={"interval_seconds": interval_seconds},
+                ),
+            )
 
-        try:
-            while True:
-                cycle_code = _run_cycle()
-                if cycle_code != 0:
-                    exit_code = cycle_code
-                time.sleep(interval_seconds)
-        except KeyboardInterrupt:
-            logger.info("Queue watchdog loop interrupted by user")
-        return exit_code
+            try:
+                while True:
+                    cycle_code = _run_cycle()
+                    if cycle_code != 0:
+                        exit_code = cycle_code
+                    time.sleep(interval_seconds)
+            except KeyboardInterrupt:
+                logger.info("Queue watchdog loop interrupted by user")
+            return exit_code
+    finally:
+        engine.dispose()
 
 
 if __name__ == "__main__":

@@ -49,7 +49,15 @@ Look for:
 Pull structured exceptions for the same window:
 
 ```bash
-uv run admin logs exceptions --since "$SINCE" --limit 50
+uv run admin logs exceptions --since "$SINCE" --limit 200
+```
+
+If one noisy component dominates the top of the list, de-bias before concluding the sweep:
+
+```bash
+uv run admin logs exceptions --since "$SINCE" --limit 200
+uv run admin logs search --source errors --query "OperationalError" --since "$SINCE" --limit 50
+uv run admin logs search --source errors --query "recovery mode" --since "$SINCE" --limit 50
 ```
 
 If needed, narrow further:
@@ -64,6 +72,7 @@ Focus on:
 - repeated identical failures
 - new exception types
 - errors tied to one feature or external dependency
+- whether one recurring error pattern is hiding older but higher-severity incidents earlier in the window
 
 ### 3) Recent LLM usage
 Inspect usage totals for the same window:
