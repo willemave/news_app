@@ -119,6 +119,26 @@ jobs:
             sudo mkdir -p /data
           '"
 
+          remote_cleanup_docker() {
+            ssh "${SSH_OPTS[@]}" "$REMOTE" "bash -lc '
+              set -euo pipefail
+              current_image=\$(sudo docker inspect --format \"{{.Config.Image}}\" newsly 2>/dev/null || true)
+              if [[ -n \"\${current_image}\" ]]; then
+                sudo docker images --format \"{{.Repository}}:{{.Tag}}\" \
+                  | awk '\''\$1 ~ /^newsly:/ { print \$1 }'\'' \
+                  | grep -Fvx \"\${current_image}\" \
+                  | xargs -r sudo docker rmi || true
+              fi
+              sudo docker images --filter dangling=true -q | xargs -r sudo docker rmi || true
+              sudo docker builder prune -af || true
+              sudo docker container prune -f || true
+              sudo docker system df || true
+            '"
+          }
+
+          echo "→ Cleaning up unused remote Docker artifacts before image load"
+          remote_cleanup_docker
+
           echo "→ Streaming image to remote host"
           docker save "$IMAGE_TAG" | gzip | ssh "${SSH_OPTS[@]}" "$REMOTE" "gunzip | sudo docker load"
 
@@ -134,6 +154,8 @@ jobs:
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
             STATUS=$(ssh "${SSH_OPTS[@]}" "$REMOTE" "sudo docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' newsly" 2>/dev/null || true)
             if [[ "$STATUS" == "healthy" ]]; then
+              echo "→ Cleaning up superseded remote Docker images"
+              remote_cleanup_docker
               ssh "${SSH_OPTS[@]}" "$REMOTE" "cd '$REMOTE_DIR' && sudo env NEWSLY_IMAGE='$IMAGE_TAG' NEWSLY_ENV_FILE=.env.racknerd docker compose --env-file .env.racknerd ps"
               exit 0
             fi
