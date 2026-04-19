@@ -6,7 +6,8 @@ Source folder: `app/scraping`
 Scheduled feed and site scrapers plus the orchestration runner that inserts new content rows and enqueues downstream processing.
 
 ## Runtime behavior
-- Implements scraper classes for Hacker News, Reddit, Substack, Techmeme, podcasts, Atom, Twitter, and YouTube.
+- Implements active scraper classes for Hacker News, Reddit, Substack, Techmeme, podcasts, and Atom.
+- Twitter/X and YouTube scraper implementations remain in the folder, but are not part of the default active runner.
 - Normalizes source metadata, deduplicates content creation, and records scraper/event telemetry as new content is inserted.
 - Bridges file-backed configs and DB-backed user scraper configs into runnable scraper payloads.
 
@@ -26,5 +27,5 @@ Scheduled feed and site scrapers plus the orchestration runner that inserts new 
 | `app/scraping/runner.py` | `ScraperRunner` | Types: `ScraperRunner` |
 | `app/scraping/substack_unified.py` | `SubstackScraper`, `load_substack_feeds`, `run_substack_scraper` | Unified Substack scraper following the new architecture. |
 | `app/scraping/techmeme_unified.py` | `TechmemeFeedSettings`, `TechmemeSettings`, `TechmemeScraper`, `load_techmeme_config` | Dedicated scraper for Techmeme clusters. |
-| `app/scraping/twitter_unified.py` | `TwitterUnifiedScraper` | Types: `TwitterUnifiedScraper` |
+| `app/scraping/twitter_unified.py` | `TwitterUnifiedScraper` | Legacy X scraper implementation kept on disk but no longer included in the default runner. |
 | `app/scraping/youtube_unified.py` | `YouTubeChannelConfig`, `YouTubeClientConfig`, `YouTubeUnifiedScraper`, `load_youtube_client_config`, `load_youtube_channels` | Unified YouTube channel scraper aligned with podcast ingestion flow. |

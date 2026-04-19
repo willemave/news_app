@@ -55,14 +55,30 @@ feeds:
     assert feeds[0]["limit"] == 10
 
 
-def test_atom_scraper_in_runner():
+def test_atom_scraper_in_runner(monkeypatch):
     """Test that AtomScraper is registered in ScraperRunner."""
-    from app.scraping.runner import ScraperRunner
+    from app.scraping import runner as scraping_runner
 
-    runner = ScraperRunner()
+    class _StubScraper:
+        def __init__(self, name: str):
+            self.name = name
+
+    monkeypatch.setattr(
+        scraping_runner,
+        "HackerNewsUnifiedScraper",
+        lambda: _StubScraper("HackerNews"),
+    )
+    monkeypatch.setattr(scraping_runner, "RedditUnifiedScraper", lambda: _StubScraper("Reddit"))
+    monkeypatch.setattr(scraping_runner, "SubstackScraper", lambda: _StubScraper("Substack"))
+    monkeypatch.setattr(scraping_runner, "TechmemeScraper", lambda: _StubScraper("Techmeme"))
+    monkeypatch.setattr(scraping_runner, "PodcastUnifiedScraper", lambda: _StubScraper("Podcast"))
+    monkeypatch.setattr(scraping_runner, "AtomScraper", lambda: _StubScraper("Atom"))
+
+    runner = scraping_runner.ScraperRunner()
     scraper_names = runner.list_scrapers()
 
     assert "Atom" in scraper_names
+    assert "Twitter" not in scraper_names
 
 
 def test_atom_scraper_no_feeds_logs_info(

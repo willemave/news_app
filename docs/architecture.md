@@ -252,7 +252,6 @@ Unified scrapers for scheduled or manual feed ingestion:
 - Substack
 - Techmeme
 - Podcast RSS
-- Twitter/X
 - Atom feeds
 - YouTube scraper code exists, but is disabled in the default runner
 
@@ -981,15 +980,20 @@ Narration text is generated from content and rendered to one-shot TTS audio via 
 
 ## 15. X Integration and External Connections
 
-`app/services/x_integration.py` owns per-user X integration state and sync.
+`app/services/x_integration.py` owns per-user X integration state and bookmark-first sync.
 
 Capabilities:
 
 - start and exchange OAuth flow
 - store encrypted access/refresh tokens
-- fetch bookmarks, timeline items, and lists
-- score/filter candidates into digest visibility or inbox flows
+- fetch bookmarks and persist bookmark-derived tweet snapshots
+- support downstream tweet lookup, thread lookup, linked tweet lookup, and linked article resolution
 - persist sync cursors and summaries
+
+Explicit non-goals in the active runtime:
+
+- no reverse-chronological home timeline ingestion into digest/news rows
+- no scheduled X list scraping in the default scraper runner
 
 Related storage:
 

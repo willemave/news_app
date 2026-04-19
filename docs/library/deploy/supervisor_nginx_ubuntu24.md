@@ -156,9 +156,9 @@ capacity instead.
 Each cron-managed job uses `flock -n` to prevent a new run from overlapping a
 previous still-running instance of the same job.
 
-The dedicated Twitter scheduler runs every 15 minutes. It runs the public
-Twitter list scraper and enqueues per-user bookmark/timeline/list refresh tasks when
-`X_BOOKMARK_SYNC_ENABLED=true`.
+The dedicated X scheduler runs every 15 minutes. It now only enqueues per-user
+bookmark sync tasks when `X_BOOKMARK_SYNC_ENABLED=true`. Scheduled X list
+scraping and home-timeline ingestion are retired from the active runtime.
 
 Retired SQLite-only defaults:
 - `SQLITE_BUSY_TIMEOUT_MS=30000`

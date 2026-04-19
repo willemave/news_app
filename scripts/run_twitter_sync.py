@@ -1,4 +1,4 @@
-"""Backward-compatible wrapper for the consolidated Twitter scheduler.
+"""Backward-compatible wrapper for the bookmark-first X scheduler.
 
 Suggested cron:
 */15 * * * * cd /opt/news_app && /opt/news_app/.venv/bin/python \

@@ -14,21 +14,12 @@ from pydantic import HttpUrl, TypeAdapter
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.constants import CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY
 from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.models.content_submission import SubmitContentRequest
-from app.models.contracts import TaskType
 from app.models.schema import Content, UserIntegrationConnection, UserIntegrationSyncState
 from app.models.user import User
 from app.services.content_submission import submit_user_content
-from app.services.gateways.task_queue_gateway import get_task_queue_gateway
-from app.services.news_ingestion import (
-    build_news_item_upsert_input_from_scraped_item,
-    should_enqueue_news_item_enrichment,
-    upsert_news_item,
-)
-from app.services.news_list_preferences import resolve_user_news_list_preference_prompt
 from app.services.token_crypto import decrypt_token, encrypt_token
 from app.services.twitter_share import canonical_tweet_url
 from app.services.x_api import (
@@ -37,14 +28,8 @@ from app.services.x_api import (
     build_oauth_authorize_url,
     exchange_oauth_code,
     fetch_bookmarks,
-    fetch_reverse_chronological_timeline,
     get_authenticated_user,
     refresh_oauth_token,
-)
-from app.services.x_digest_filter import (
-    X_DIGEST_FILTER_THRESHOLD,
-    XDigestFilterDecision,
-    score_x_digest_candidate,
 )
 from app.services.x_tweet_metadata import build_tweet_snapshot_metadata
 
@@ -56,12 +41,7 @@ OAUTH_PENDING_TTL_MINUTES = 20
 TOKEN_EXPIRY_SKEW_SECONDS = 60
 BOOKMARK_SYNC_MAX_PAGES = 5
 BOOKMARK_SYNC_PAGE_SIZE = 100
-TIMELINE_SYNC_MAX_PAGES = 5
-TIMELINE_SYNC_PAGE_SIZE = 100
-TIMELINE_EXCLUDE_TYPES = ("retweets",)
-TIMELINE_CHANNEL = "timeline"
 BOOKMARKS_CHANNEL = "bookmarks"
-REQUIRED_TIMELINE_SCOPES = frozenset({"tweet.read", "users.read"})
 USERNAME_REGEX = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 UNRECOVERABLE_X_REFRESH_ERROR_MARKERS = (
     "X API 400: invalid_request",
@@ -367,7 +347,7 @@ def disconnect_x_connection(db: Session, *, user: User) -> XConnectionView:
 
 
 def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -> XSyncSummary:
-    """Sync bookmarks plus digest-source X content for a connected user."""
+    """Sync bookmark-driven X content for a connected user."""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise ValueError(f"User {user_id} not found")
@@ -400,7 +380,6 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
     existing_sync_metadata = (
         dict(sync_state.sync_metadata) if isinstance(sync_state.sync_metadata, dict) else {}
     )
-    filter_prompt = resolve_user_news_list_preference_prompt(user)
 
     try:
         access_token = _ensure_valid_access_token(db, connection)
@@ -410,7 +389,6 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
             connection=connection,
             access_token=access_token,
         )
-        channel_errors: list[str] = []
         bookmark_state = _get_channel_state(existing_sync_metadata, BOOKMARKS_CHANNEL)
         if _should_skip_channel_sync(
             bookmark_state,
@@ -425,32 +403,9 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
                 provider_user_id=provider_user_id,
                 existing_sync_metadata=existing_sync_metadata,
             )
-        try:
-            timeline_summary = _sync_timeline_channel(
-                db,
-                user=user,
-                access_token=access_token,
-                provider_user_id=provider_user_id,
-                connection=connection,
-                existing_sync_metadata=existing_sync_metadata,
-                filter_prompt=filter_prompt,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.exception(
-                "X timeline sync failed",
-                extra={
-                    "component": "x_integration",
-                    "operation": "sync_timeline",
-                    "item_id": user.id,
-                    "context_data": {"error": str(exc)},
-                },
-            )
-            channel_errors.append(f"{TIMELINE_CHANNEL}: {exc}")
-            timeline_summary = _failed_channel_summary()
 
         channel_summaries = {
             BOOKMARKS_CHANNEL: bookmark_summary,
-            TIMELINE_CHANNEL: timeline_summary,
         }
         total_fetched = sum(channel.fetched for channel in channel_summaries.values())
         total_accepted = sum(channel.accepted for channel in channel_summaries.values())
@@ -462,15 +417,13 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
 
         sync_state.last_synced_at = _now_naive_utc()
         sync_state.last_status = overall_status
-        sync_state.last_error = "; ".join(channel_errors)[:2000] if channel_errors else None
-        bookmark_newest = bookmark_summary.newest_item_id or timeline_summary.newest_item_id
-        if bookmark_newest:
-            sync_state.last_synced_item_id = bookmark_newest
+        sync_state.last_error = None
+        if bookmark_summary.newest_item_id:
+            sync_state.last_synced_item_id = bookmark_summary.newest_item_id
         sync_state.cursor = None
         sync_state.sync_metadata = _build_sync_metadata_payload(
             existing_sync_metadata=existing_sync_metadata,
             bookmark_summary=bookmark_summary,
-            timeline_summary=timeline_summary,
         )
         db.commit()
 
@@ -509,7 +462,7 @@ def sync_x_sources_for_user(db: Session, *, user_id: int, force: bool = False) -
 
 
 def sync_x_bookmarks_for_user(db: Session, *, user_id: int) -> XSyncSummary:
-    """Backward-compatible wrapper for the newer combined X sync."""
+    """Backward-compatible wrapper for bookmark-first X sync."""
     return sync_x_sources_for_user(db, user_id=user_id)
 
 
@@ -523,9 +476,11 @@ def _sync_bookmark_channel(
 ) -> XSyncChannelSummary:
     bookmark_state = _get_channel_state(existing_sync_metadata, BOOKMARKS_CHANNEL)
     last_synced_id = _clean_optional_string(bookmark_state.get("last_synced_item_id"))
+    user_id = _require_user_id(user)
     newest_seen_id: str | None = None
     fetched = 0
     collected_new: list[XTweet] = []
+    included_tweets: dict[str, XTweet] = {}
     next_token: str | None = None
     reached_previous_sync = False
 
@@ -538,10 +493,11 @@ def _sync_bookmark_channel(
             telemetry={
                 "feature": "x_sync",
                 "operation": "x_sync.bookmarks.read",
-                "user_id": _require_user_id(user),
+                "user_id": user_id,
                 "metadata": {"channel": BOOKMARKS_CHANNEL},
             },
         )
+        included_tweets.update(page.included_tweets)
         if page.tweets and newest_seen_id is None:
             newest_seen_id = page.tweets[0].id
 
@@ -582,7 +538,7 @@ def _sync_bookmark_channel(
             db,
             content_id=result.content_id,
             tweet=tweet,
-            included_tweets=page.included_tweets,
+            included_tweets=included_tweets,
         )
         if result.already_exists:
             reused += 1
@@ -599,259 +555,6 @@ def _sync_bookmark_channel(
         reused=reused,
         newest_item_id=newest_seen_id,
     )
-
-
-def _sync_timeline_channel(
-    db: Session,
-    *,
-    user: User,
-    access_token: str,
-    provider_user_id: str,
-    connection: UserIntegrationConnection,
-    existing_sync_metadata: dict[str, Any],
-    filter_prompt: str,
-) -> XSyncChannelSummary:
-    if _missing_required_scopes(connection, REQUIRED_TIMELINE_SCOPES):
-        return XSyncChannelSummary(
-            status="missing_scopes",
-            fetched=0,
-            accepted=0,
-            filtered_out=0,
-            errored=0,
-            created=0,
-            reused=0,
-            newest_item_id=None,
-        )
-
-    timeline_state = _get_channel_state(existing_sync_metadata, TIMELINE_CHANNEL)
-    since_id = _clean_optional_string(timeline_state.get("last_synced_item_id"))
-    newest_seen_id: str | None = None
-    fetched = 0
-    accepted = 0
-    filtered_out = 0
-    errored = 0
-    created = 0
-    reused = 0
-    next_token: str | None = None
-    seen_ids: set[str] = set()
-
-    for _ in range(TIMELINE_SYNC_MAX_PAGES):
-        page = fetch_reverse_chronological_timeline(
-            access_token=access_token,
-            user_id=provider_user_id,
-            pagination_token=next_token,
-            since_id=since_id,
-            max_results=TIMELINE_SYNC_PAGE_SIZE,
-            exclude=list(TIMELINE_EXCLUDE_TYPES),
-            telemetry={
-                "feature": "x_sync",
-                "operation": "x_sync.timeline.read",
-                "user_id": _require_user_id(user),
-                "metadata": {"channel": TIMELINE_CHANNEL},
-            },
-        )
-        if page.tweets and newest_seen_id is None:
-            newest_seen_id = page.tweets[0].id
-
-        fetched += len(page.tweets)
-        if not page.tweets:
-            break
-
-        fresh_tweets: list[XTweet] = []
-        for tweet in page.tweets:
-            if tweet.id in seen_ids:
-                continue
-            if not _should_ingest_digest_tweet(tweet):
-                filtered_out += 1
-                continue
-            seen_ids.add(tweet.id)
-            fresh_tweets.append(tweet)
-        for tweet in reversed(fresh_tweets):
-            decision = score_x_digest_candidate(
-                tweet=tweet,
-                user_prompt=filter_prompt,
-                source_type="x_timeline",
-                source_label="X Following",
-            )
-            if decision.errored:
-                errored += 1
-            if not decision.accepted:
-                filtered_out += 1
-                continue
-            try:
-                was_created = _upsert_x_digest_tweet_content(
-                    db,
-                    user=user,
-                    tweet=tweet,
-                    source_type="x_timeline",
-                    source_label="X Following",
-                    submitted_via="x_timeline",
-                    filter_decision=decision,
-                    aggregator_metadata={"timeline_type": "reverse_chronological"},
-                )
-            except Exception as exc:  # noqa: BLE001
-                errored += 1
-                logger.exception(
-                    "Timeline digest tweet upsert failed",
-                    extra={
-                        "component": "x_integration",
-                        "operation": "sync_timeline",
-                        "item_id": tweet.id,
-                        "context_data": {"error": str(exc)},
-                    },
-                )
-                continue
-            accepted += 1
-            if was_created:
-                created += 1
-            else:
-                reused += 1
-
-        if not page.next_token:
-            break
-        next_token = page.next_token
-
-    return XSyncChannelSummary(
-        status=_resolve_channel_status(errored),
-        fetched=fetched,
-        accepted=accepted,
-        filtered_out=filtered_out,
-        errored=errored,
-        created=created,
-        reused=reused,
-        newest_item_id=newest_seen_id,
-    )
-
-
-def _upsert_x_digest_tweet_content(
-    db: Session,
-    *,
-    user: User,
-    tweet: XTweet,
-    source_type: str,
-    source_label: str,
-    submitted_via: str,
-    filter_decision: XDigestFilterDecision,
-    aggregator_metadata: dict[str, Any] | None = None,
-) -> bool:
-    user_id = _require_user_id(user)
-    tweet_url = canonical_tweet_url(tweet.id)
-    metadata = _build_digest_tweet_metadata(
-        tweet=tweet,
-        source_type=source_type,
-        source_label=source_label,
-        submitted_via=submitted_via,
-        submitted_by_user_id=user_id,
-        filter_decision=filter_decision,
-        aggregator_metadata=aggregator_metadata or {},
-    )
-    payload = build_news_item_upsert_input_from_scraped_item(
-        {
-            "url": tweet_url,
-            "title": _tweet_title(tweet),
-            "metadata": metadata,
-            "owner_user_id": user.id,
-            "visibility_scope": "user",
-            "source_type": source_type,
-            "source_label": source_label,
-            "source_external_id": tweet.id,
-        }
-    )
-
-    def _persist_news_item() -> tuple[Any, bool]:
-        try:
-            try:
-                news_item, was_created = upsert_news_item(db, payload)
-                db.commit()
-            except IntegrityError:
-                db.rollback()
-                news_item, was_created = upsert_news_item(db, payload)
-                db.commit()
-            db.refresh(news_item)
-            return news_item, was_created
-        except Exception:
-            db.rollback()
-            raise
-
-    news_item, was_created = _persist_news_item()
-    queue_gateway = get_task_queue_gateway()
-    if should_enqueue_news_item_enrichment(news_item=news_item, was_created=was_created):
-        queue_gateway.enqueue(
-            TaskType.ENRICH_NEWS_ITEM_ARTICLE,
-            payload={"news_item_id": news_item.id},
-        )
-    return was_created
-
-
-def _build_digest_tweet_metadata(
-    *,
-    tweet: XTweet,
-    source_type: str,
-    source_label: str,
-    submitted_via: str,
-    submitted_by_user_id: int,
-    filter_decision: XDigestFilterDecision,
-    aggregator_metadata: dict[str, Any],
-) -> dict[str, Any]:
-    author = tweet.author_name or (f"@{tweet.author_username}" if tweet.author_username else None)
-    tweet_url = canonical_tweet_url(tweet.id)
-    return {
-        "digest_visibility": CONTENT_DIGEST_VISIBILITY_DIGEST_ONLY,
-        "platform": "twitter",
-        "source_type": source_type,
-        "source_label": source_label,
-        "source": source_label,
-        "discussion_url": tweet_url,
-        "submitted_via": submitted_via,
-        "submitted_by_user_id": submitted_by_user_id,
-        "filter_score": filter_decision.score,
-        "filter_reason": filter_decision.reason,
-        "filter_threshold": X_DIGEST_FILTER_THRESHOLD,
-        "tweet_id": tweet.id,
-        "tweet_url": tweet_url,
-        "tweet_author": tweet.author_name,
-        "tweet_author_username": tweet.author_username,
-        "tweet_created_at": tweet.created_at,
-        "tweet_like_count": tweet.like_count,
-        "tweet_retweet_count": tweet.retweet_count,
-        "tweet_reply_count": tweet.reply_count,
-        "tweet_text": tweet.text,
-        "tweet_article_title": tweet.article_title,
-        "tweet_article_text": tweet.article_text,
-        "tweet_note_tweet_text": tweet.note_tweet_text,
-        "tweet_external_urls": list(tweet.external_urls),
-        "tweet_linked_tweet_ids": list(tweet.linked_tweet_ids),
-        **build_tweet_snapshot_metadata(
-            tweet=tweet,
-            included_tweets=None,
-            snapshot_source="x_timeline_sync",
-        ),
-        "article": {
-            "url": tweet_url,
-            "title": _tweet_title(tweet),
-            "source_domain": "x.com",
-        },
-        "aggregator": {
-            "name": "X",
-            "title": tweet.text,
-            "url": tweet_url,
-            "external_id": tweet.id,
-            "author": author,
-            "metadata": {
-                "likes": tweet.like_count,
-                "retweets": tweet.retweet_count,
-                "replies": tweet.reply_count,
-                **aggregator_metadata,
-            },
-        },
-    }
-
-
-def _tweet_title(tweet: XTweet) -> str:
-    first_line = tweet.text.splitlines()[0].strip() if tweet.text else ""
-    if first_line:
-        return first_line[:280]
-    return f"Post {tweet.id}"
 
 
 def _persist_bookmark_tweet_snapshot(
@@ -881,31 +584,6 @@ def _persist_bookmark_tweet_snapshot(
         ),
     }
     db.commit()
-
-
-def _tweet_has_long_form_signal(tweet: XTweet) -> bool:
-    if tweet.external_urls or tweet.article_title or tweet.article_text or tweet.note_tweet_text:
-        return True
-    return len(tweet.text.strip()) >= 120
-
-
-def _should_ingest_digest_tweet(tweet: XTweet) -> bool:
-    if not tweet.text.strip():
-        return False
-    reference_types = set(tweet.referenced_tweet_types)
-    if "retweeted" in reference_types:
-        return False
-    if tweet.in_reply_to_user_id:
-        return _tweet_has_long_form_signal(tweet)
-    return True
-
-
-def _missing_required_scopes(
-    connection: UserIntegrationConnection,
-    required_scopes: frozenset[str],
-) -> bool:
-    connection_scopes = set(_normalize_scopes(connection.scopes))
-    return not required_scopes.issubset(connection_scopes)
 
 
 def _get_channel_state(sync_metadata: dict[str, Any], channel: str) -> dict[str, Any]:
@@ -960,10 +638,8 @@ def _build_sync_metadata_payload(
     *,
     existing_sync_metadata: dict[str, Any],
     bookmark_summary: XSyncChannelSummary,
-    timeline_summary: XSyncChannelSummary,
 ) -> dict[str, Any]:
     previous_bookmark_state = _get_channel_state(existing_sync_metadata, BOOKMARKS_CHANNEL)
-    previous_timeline_state = _get_channel_state(existing_sync_metadata, TIMELINE_CHANNEL)
     return {
         BOOKMARKS_CHANNEL: {
             "status": bookmark_summary.status,
@@ -980,23 +656,6 @@ def _build_sync_metadata_payload(
             "last_synced_at": _resolve_channel_last_synced_at(
                 previous_bookmark_state,
                 bookmark_summary.status,
-            ),
-        },
-        TIMELINE_CHANNEL: {
-            "status": timeline_summary.status,
-            "fetched": timeline_summary.fetched,
-            "accepted": timeline_summary.accepted,
-            "filtered_out": timeline_summary.filtered_out,
-            "errored": timeline_summary.errored,
-            "created": timeline_summary.created,
-            "reused": timeline_summary.reused,
-            "last_synced_item_id": _resolve_last_synced_item_id(
-                previous_timeline_state,
-                timeline_summary.newest_item_id,
-            ),
-            "last_synced_at": _resolve_channel_last_synced_at(
-                previous_timeline_state,
-                timeline_summary.status,
             ),
         },
     }
@@ -1025,26 +684,6 @@ def _resolve_combined_sync_status(
     return "success"
 
 
-def _resolve_channel_status(error_count: int) -> str:
-    if error_count > 0:
-        return "partial_failure"
-    return "success"
-
-
-def _failed_channel_summary() -> XSyncChannelSummary:
-    """Return a summary for a channel-level failure without raising."""
-    return XSyncChannelSummary(
-        status="failed",
-        fetched=0,
-        accepted=0,
-        filtered_out=0,
-        errored=1,
-        created=0,
-        reused=0,
-        newest_item_id=None,
-    )
-
-
 def _skipped_channel_summary() -> XSyncChannelSummary:
     return XSyncChannelSummary(
         status="skipped_recently",
@@ -1056,10 +695,6 @@ def _skipped_channel_summary() -> XSyncChannelSummary:
         reused=0,
         newest_item_id=None,
     )
-
-
-def _digest_tweet_content_url(*, user_id: int, tweet_id: str) -> str:
-    return f"{canonical_tweet_url(tweet_id)}#newsly-digest-user-{user_id}"
 
 
 def _clean_optional_string(value: Any) -> str | None:
