@@ -766,7 +766,7 @@
       "Body_transcribeOpenaiTranscriptionsAudio": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -858,6 +858,12 @@
             },
             "title": "Council Candidates",
             "type": "array"
+          },
+          "display_key": {
+            "default": "",
+            "description": "Stable transcript row identity shared by session-detail and status endpoints",
+            "title": "Display Key",
+            "type": "string"
           },
           "display_type": {
             "$ref": "#/components/schemas/ChatMessageDisplayType",
@@ -1007,7 +1013,7 @@
           },
           "has_messages": {
             "default": true,
-            "description": "True if session has any messages (false for new favorites)",
+            "description": "True if session has any messages (false for new saved items)",
             "title": "Has Messages",
             "type": "boolean"
           },
@@ -1025,10 +1031,10 @@
             "title": "Is Archived",
             "type": "boolean"
           },
-          "is_favorite": {
+          "is_saved_to_knowledge": {
             "default": false,
-            "description": "True if the linked content is favorited by the user",
-            "title": "Is Favorite",
+            "description": "True if the linked content is saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "last_message_at": {
@@ -1489,16 +1495,16 @@
             "title": "Image Url",
             "type": "string"
           },
-          "is_favorited": {
-            "default": false,
-            "description": "Whether the content has been favorited",
-            "title": "Is Favorited",
-            "type": "boolean"
-          },
           "is_read": {
             "default": false,
             "description": "Whether the content has been marked as read",
             "title": "Is Read",
+            "type": "boolean"
+          },
+          "is_saved_to_knowledge": {
+            "default": false,
+            "description": "Whether the content has been saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "metadata": {
@@ -1520,7 +1526,7 @@
             "type": "string"
           },
           "news_key_points": {
-            "description": "Key points provided for news digests",
+            "description": "Key points provided for news items",
             "items": {
               "type": "string"
             },
@@ -1529,7 +1535,7 @@
             "type": "array"
           },
           "news_summary": {
-            "description": "Short overview synthesized for news digests",
+            "description": "Short overview synthesized for news items",
             "nullable": true,
             "title": "News Summary",
             "type": "string"
@@ -1814,6 +1820,7 @@
           "new",
           "pending",
           "processing",
+          "awaiting_image",
           "completed",
           "failed",
           "skipped"
@@ -1948,16 +1955,16 @@
             "title": "Image Url",
             "type": "string"
           },
-          "is_favorited": {
-            "default": false,
-            "description": "Whether the content has been favorited",
-            "title": "Is Favorited",
-            "type": "boolean"
-          },
           "is_read": {
             "default": false,
             "description": "Whether the content has been marked as read",
             "title": "Is Read",
+            "type": "boolean"
+          },
+          "is_saved_to_knowledge": {
+            "default": false,
+            "description": "Whether the content has been saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "news_article_url": {
@@ -1973,7 +1980,7 @@
             "type": "string"
           },
           "news_key_points": {
-            "description": "Key points provided for news digests",
+            "description": "Key points provided for news items",
             "items": {
               "type": "string"
             },
@@ -1982,7 +1989,7 @@
             "type": "array"
           },
           "news_summary": {
-            "description": "Short overview synthesized for news digests",
+            "description": "Short overview synthesized for news items",
             "nullable": true,
             "title": "News Summary",
             "type": "string"
@@ -2251,6 +2258,21 @@
           "sort_order"
         ],
         "title": "CouncilPersonaConfig",
+        "type": "object"
+      },
+      "CouncilRetryRequest": {
+        "description": "Request to retry one failed council branch.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "child_session_id"
+        ],
+        "title": "CouncilRetryRequest",
         "type": "object"
       },
       "CouncilSelectRequest": {
@@ -3085,28 +3107,8 @@
         "type": "string"
       },
       "LongFormStatsResponse": {
-        "description": "Response containing long-form content stats for a user.",
+        "description": "Response containing unread long-form count for a user.",
         "properties": {
-          "favorited_count": {
-            "description": "Favorited long-form items",
-            "title": "Favorited Count",
-            "type": "integer"
-          },
-          "processing_count": {
-            "description": "Long-form items pending or processing for the user",
-            "title": "Processing Count",
-            "type": "integer"
-          },
-          "read_count": {
-            "description": "Read long-form items",
-            "title": "Read Count",
-            "type": "integer"
-          },
-          "total_count": {
-            "description": "Total long-form items in the inbox",
-            "title": "Total Count",
-            "type": "integer"
-          },
           "unread_count": {
             "description": "Unread long-form items",
             "title": "Unread Count",
@@ -3114,11 +3116,7 @@
           }
         },
         "required": [
-          "total_count",
-          "unread_count",
-          "read_count",
-          "favorited_count",
-          "processing_count"
+          "unread_count"
         ],
         "title": "LongFormStatsResponse",
         "type": "object"
@@ -3497,6 +3495,10 @@
       "OnboardingCompleteResponse": {
         "description": "Response for onboarding completion.",
         "properties": {
+          "configured_source_count": {
+            "title": "Configured Source Count",
+            "type": "integer"
+          },
           "has_completed_new_user_tutorial": {
             "title": "Has Completed New User Tutorial",
             "type": "boolean"
@@ -3526,6 +3528,7 @@
         "required": [
           "status",
           "inbox_count_estimate",
+          "configured_source_count",
           "longform_status",
           "has_completed_onboarding",
           "has_completed_new_user_tutorial"
@@ -4404,9 +4407,9 @@
         "example": {
           "content_type": "podcast",
           "crawl_links": true,
-          "favorite_and_mark_read": false,
           "instruction": "Add all links mentioned in the episode page",
           "platform": "spotify",
+          "save_to_knowledge_and_mark_read": false,
           "share_and_chat": false,
           "subscribe_to_feed": false,
           "title": "Great interview about AI",
@@ -4424,12 +4427,6 @@
             "title": "Crawl Links",
             "type": "boolean"
           },
-          "favorite_and_mark_read": {
-            "default": false,
-            "description": "When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.",
-            "title": "Favorite And Mark Read",
-            "type": "boolean"
-          },
           "instruction": {
             "description": "Optional instruction for analyzing the submitted URL",
             "maxLength": 4000,
@@ -4443,6 +4440,12 @@
             "nullable": true,
             "title": "Platform",
             "type": "string"
+          },
+          "save_to_knowledge_and_mark_read": {
+            "default": false,
+            "description": "When true, download and summarize the submitted content, then mark it as read and save it to the user's knowledge library.",
+            "title": "Save To Knowledge And Mark Read",
+            "type": "boolean"
           },
           "share_and_chat": {
             "default": false,

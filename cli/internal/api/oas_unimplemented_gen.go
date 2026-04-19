@@ -103,6 +103,16 @@ func (UnimplementedHandler) GetOnboarding(ctx context.Context, params GetOnboard
 	return r, ht.ErrNotImplemented
 }
 
+// ListContentSubmissionStatuses implements listContentSubmissionStatuses operation.
+//
+// Returns self-submitted content items that are not yet completed, including processing, failed, and
+// skipped statuses.
+//
+// GET /api/content/submissions/list
+func (UnimplementedHandler) ListContentSubmissionStatuses(ctx context.Context, params ListContentSubmissionStatusesParams) (r ListContentSubmissionStatusesRes, _ error) {
+	return r, ht.ErrNotImplemented
+}
+
 // ListContents implements listContents operation.
 //
 // Retrieve a list of content items with optional filtering by content type and date. Supports

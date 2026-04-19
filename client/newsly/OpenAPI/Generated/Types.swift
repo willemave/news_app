@@ -87,13 +87,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /admin/evals/summaries/run`.
     /// - Remark: Generated from `#/paths//admin/evals/summaries/run/post(adminEvalSummariesRun)`.
     func adminEvalSummariesRun(_ input: Operations.AdminEvalSummariesRun.Input) async throws -> Operations.AdminEvalSummariesRun.Output
-    /// Llm Usage Dashboard
+    /// Legacy Llm Usage Redirect
     ///
-    /// Show recent persisted LLM usage rows with lightweight filtering.
+    /// Backwards-compatible redirect to the broader vendor usage dashboard.
     ///
     /// - Remark: HTTP `GET /admin/llm-usage`.
-    /// - Remark: Generated from `#/paths//admin/llm-usage/get(llmUsageDashboard)`.
-    func llmUsageDashboard(_ input: Operations.LlmUsageDashboard.Input) async throws -> Operations.LlmUsageDashboard.Output
+    /// - Remark: Generated from `#/paths//admin/llm-usage/get(legacyLlmUsageRedirect)`.
+    func legacyLlmUsageRedirect(_ input: Operations.LegacyLlmUsageRedirect.Input) async throws -> Operations.LegacyLlmUsageRedirect.Output
     /// List Logs
     ///
     /// List all log files with recent error logs.
@@ -129,6 +129,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /admin/onboarding/lane-preview`.
     /// - Remark: Generated from `#/paths//admin/onboarding/lane-preview/post(onboardingLanePreview)`.
     func onboardingLanePreview(_ input: Operations.OnboardingLanePreview.Input) async throws -> Operations.OnboardingLanePreview.Output
+    /// Vendor Usage Dashboard
+    ///
+    /// Show recent persisted vendor usage rows with aggregate cost views.
+    ///
+    /// - Remark: HTTP `GET /admin/vendor-usage`.
+    /// - Remark: Generated from `#/paths//admin/vendor-usage/get(vendorUsageDashboard)`.
+    func vendorUsageDashboard(_ input: Operations.VendorUsageDashboard.Input) async throws -> Operations.VendorUsageDashboard.Output
     /// Start Cli Link
     ///
     /// Create an unauthenticated QR approval session for the CLI.
@@ -269,6 +276,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `DELETE /api/content/chat/sessions/{session_id}`.
     /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/delete(deleteContentChatSession)`.
     func deleteContentChatSession(_ input: Operations.DeleteContentChatSession.Input) async throws -> Operations.DeleteContentChatSession.Output
+    /// Retry council branch
+    ///
+    /// Regenerate one council branch and return the merged parent transcript.
+    ///
+    /// - Remark: HTTP `POST /api/content/chat/sessions/{session_id}/council/retry`.
+    /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)`.
+    func retryContentChatSessionsCouncilModeBranch(_ input: Operations.RetryContentChatSessionsCouncilModeBranch.Input) async throws -> Operations.RetryContentChatSessionsCouncilModeBranch.Output
     /// Select council branch
     ///
     /// Switch the active council branch and return the merged parent transcript.
@@ -297,13 +311,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/content/chat/sessions/{session_id}/messages`.
     /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/messages/post(sendContentChatSessionsMessage)`.
     func sendContentChatSessionsMessage(_ input: Operations.SendContentChatSessionsMessage.Input) async throws -> Operations.SendContentChatSessionsMessage.Output
-    /// Get favorited content
+    /// Get saved knowledge library
     ///
-    /// Retrieve all favorited content items with cursor-based pagination.
+    /// Retrieve content saved to the user's knowledge library with pagination.
     ///
-    /// - Remark: HTTP `GET /api/content/favorites/list`.
-    /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)`.
-    func getContentListFavorites(_ input: Operations.GetContentListFavorites.Input) async throws -> Operations.GetContentListFavorites.Output
+    /// - Remark: HTTP `GET /api/content/knowledge/list`.
+    /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)`.
+    func getContentListKnowledgeLibrary(_ input: Operations.GetContentListKnowledgeLibrary.Input) async throws -> Operations.GetContentListKnowledgeLibrary.Output
     /// Get narration text or audio for a content target
     ///
     /// Return narration text or MP3 audio for one target.
@@ -357,7 +371,7 @@ internal protocol APIProtocol: Sendable {
     func deleteContentScraperConfigEndpoint(_ input: Operations.DeleteContentScraperConfigEndpoint.Input) async throws -> Operations.DeleteContentScraperConfigEndpoint.Output
     /// Search content across articles and podcasts
     ///
-    /// Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
+    /// PostgreSQL-backed search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
     ///
     /// - Remark: HTTP `GET /api/content/search`.
     /// - Remark: Generated from `#/paths//api/content/search/get(searchContents)`.
@@ -376,9 +390,9 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `GET /api/content/search/podcasts`.
     /// - Remark: Generated from `#/paths//api/content/search/podcasts/get(searchContentPodcastEpisodeMatches)`.
     func searchContentPodcastEpisodeMatches(_ input: Operations.SearchContentPodcastEpisodeMatches.Input) async throws -> Operations.SearchContentPodcastEpisodeMatches.Output
-    /// Get long-form content stats
+    /// Get long-form unread count
     ///
-    /// Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.
+    /// Return unread long-form count for the authenticated user.
     ///
     /// - Remark: HTTP `GET /api/content/stats/long-form`.
     /// - Remark: Generated from `#/paths//api/content/stats/long-form/get(getContentLongFormStats)`.
@@ -446,6 +460,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `GET /api/content/{content_id}/discussion`.
     /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/get(getContentDiscussion)`.
     func getContentDiscussion(_ input: Operations.GetContentDiscussion.Input) async throws -> Operations.GetContentDiscussion.Output
+    /// Refresh discussion payload for a content item
+    ///
+    /// Fetch the latest in-app discussion data for the content item, persist it, and return the refreshed payload.
+    ///
+    /// - Remark: HTTP `POST /api/content/{content_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)`.
+    func refreshContentDiscussion(_ input: Operations.RefreshContentDiscussion.Input) async throws -> Operations.RefreshContentDiscussion.Output
     /// Download more items from the same feed series
     ///
     /// Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.
@@ -453,13 +474,20 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/content/{content_id}/download-more`.
     /// - Remark: Generated from `#/paths//api/content/{content_id}/download-more/post(downloadContentMoreFromSeries)`.
     func downloadContentMoreFromSeries(_ input: Operations.DownloadContentMoreFromSeries.Input) async throws -> Operations.DownloadContentMoreFromSeries.Output
-    /// Toggle favorite status
+    /// Save content to knowledge
     ///
-    /// Toggle the favorite status of a specific content item.
+    /// Save a specific content item to the user's knowledge library.
     ///
-    /// - Remark: HTTP `POST /api/content/{content_id}/favorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)`.
-    func toggleContentFavorite(_ input: Operations.ToggleContentFavorite.Input) async throws -> Operations.ToggleContentFavorite.Output
+    /// - Remark: HTTP `POST /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)`.
+    func saveContentToKnowledge(_ input: Operations.SaveContentToKnowledge.Input) async throws -> Operations.SaveContentToKnowledge.Output
+    /// Remove content from knowledge
+    ///
+    /// Remove a specific content item from the user's knowledge library.
+    ///
+    /// - Remark: HTTP `DELETE /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)`.
+    func removeContentFromKnowledge(_ input: Operations.RemoveContentFromKnowledge.Input) async throws -> Operations.RemoveContentFromKnowledge.Output
     /// Mark content as read
     ///
     /// Mark a specific content item as read.
@@ -481,13 +509,6 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `POST /api/content/{content_id}/tweet-suggestions`.
     /// - Remark: Generated from `#/paths//api/content/{content_id}/tweet-suggestions/post(getContentTweetSuggestions)`.
     func getContentTweetSuggestions(_ input: Operations.GetContentTweetSuggestions.Input) async throws -> Operations.GetContentTweetSuggestions.Output
-    /// Remove from favorites
-    ///
-    /// Remove a specific content item from favorites.
-    ///
-    /// - Remark: HTTP `DELETE /api/content/{content_id}/unfavorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)`.
-    func unfavoriteContent(_ input: Operations.UnfavoriteContent.Input) async throws -> Operations.UnfavoriteContent.Output
     /// Add single items from discovery suggestions
     ///
     /// - Remark: HTTP `POST /api/discovery/add-item`.
@@ -626,6 +647,13 @@ internal protocol APIProtocol: Sendable {
     /// - Remark: HTTP `GET /api/news/items/{news_item_id}/discussion`.
     /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/get(getNewsItemDiscussion)`.
     func getNewsItemDiscussion(_ input: Operations.GetNewsItemDiscussion.Input) async throws -> Operations.GetNewsItemDiscussion.Output
+    /// Refresh one news item discussion
+    ///
+    /// Refresh discussion payload for one visible representative news item.
+    ///
+    /// - Remark: HTTP `POST /api/news/items/{news_item_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)`.
+    func refreshNewsItemDiscussion(_ input: Operations.RefreshNewsItemDiscussion.Input) async throws -> Operations.RefreshNewsItemDiscussion.Output
     /// Start onboarding audio discovery
     ///
     /// Start onboarding discovery from an audio transcript.
@@ -978,14 +1006,14 @@ extension APIProtocol {
             body: body
         ))
     }
-    /// Llm Usage Dashboard
+    /// Legacy Llm Usage Redirect
     ///
-    /// Show recent persisted LLM usage rows with lightweight filtering.
+    /// Backwards-compatible redirect to the broader vendor usage dashboard.
     ///
     /// - Remark: HTTP `GET /admin/llm-usage`.
-    /// - Remark: Generated from `#/paths//admin/llm-usage/get(llmUsageDashboard)`.
-    internal func llmUsageDashboard(headers: Operations.LlmUsageDashboard.Input.Headers = .init()) async throws -> Operations.LlmUsageDashboard.Output {
-        try await llmUsageDashboard(Operations.LlmUsageDashboard.Input(headers: headers))
+    /// - Remark: Generated from `#/paths//admin/llm-usage/get(legacyLlmUsageRedirect)`.
+    internal func legacyLlmUsageRedirect(headers: Operations.LegacyLlmUsageRedirect.Input.Headers = .init()) async throws -> Operations.LegacyLlmUsageRedirect.Output {
+        try await legacyLlmUsageRedirect(Operations.LegacyLlmUsageRedirect.Input(headers: headers))
     }
     /// List Logs
     ///
@@ -1049,6 +1077,15 @@ extension APIProtocol {
             headers: headers,
             body: body
         ))
+    }
+    /// Vendor Usage Dashboard
+    ///
+    /// Show recent persisted vendor usage rows with aggregate cost views.
+    ///
+    /// - Remark: HTTP `GET /admin/vendor-usage`.
+    /// - Remark: Generated from `#/paths//admin/vendor-usage/get(vendorUsageDashboard)`.
+    internal func vendorUsageDashboard(headers: Operations.VendorUsageDashboard.Input.Headers = .init()) async throws -> Operations.VendorUsageDashboard.Output {
+        try await vendorUsageDashboard(Operations.VendorUsageDashboard.Input(headers: headers))
     }
     /// Start Cli Link
     ///
@@ -1346,6 +1383,23 @@ extension APIProtocol {
             headers: headers
         ))
     }
+    /// Retry council branch
+    ///
+    /// Regenerate one council branch and return the merged parent transcript.
+    ///
+    /// - Remark: HTTP `POST /api/content/chat/sessions/{session_id}/council/retry`.
+    /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)`.
+    internal func retryContentChatSessionsCouncilModeBranch(
+        path: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Path,
+        headers: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Headers = .init(),
+        body: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Body
+    ) async throws -> Operations.RetryContentChatSessionsCouncilModeBranch.Output {
+        try await retryContentChatSessionsCouncilModeBranch(Operations.RetryContentChatSessionsCouncilModeBranch.Input(
+            path: path,
+            headers: headers,
+            body: body
+        ))
+    }
     /// Select council branch
     ///
     /// Switch the active council branch and return the merged parent transcript.
@@ -1412,17 +1466,17 @@ extension APIProtocol {
             body: body
         ))
     }
-    /// Get favorited content
+    /// Get saved knowledge library
     ///
-    /// Retrieve all favorited content items with cursor-based pagination.
+    /// Retrieve content saved to the user's knowledge library with pagination.
     ///
-    /// - Remark: HTTP `GET /api/content/favorites/list`.
-    /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)`.
-    internal func getContentListFavorites(
-        query: Operations.GetContentListFavorites.Input.Query = .init(),
-        headers: Operations.GetContentListFavorites.Input.Headers = .init()
-    ) async throws -> Operations.GetContentListFavorites.Output {
-        try await getContentListFavorites(Operations.GetContentListFavorites.Input(
+    /// - Remark: HTTP `GET /api/content/knowledge/list`.
+    /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)`.
+    internal func getContentListKnowledgeLibrary(
+        query: Operations.GetContentListKnowledgeLibrary.Input.Query = .init(),
+        headers: Operations.GetContentListKnowledgeLibrary.Input.Headers = .init()
+    ) async throws -> Operations.GetContentListKnowledgeLibrary.Output {
+        try await getContentListKnowledgeLibrary(Operations.GetContentListKnowledgeLibrary.Input(
             query: query,
             headers: headers
         ))
@@ -1532,7 +1586,7 @@ extension APIProtocol {
     }
     /// Search content across articles and podcasts
     ///
-    /// Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
+    /// PostgreSQL-backed search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
     ///
     /// - Remark: HTTP `GET /api/content/search`.
     /// - Remark: Generated from `#/paths//api/content/search/get(searchContents)`.
@@ -1575,9 +1629,9 @@ extension APIProtocol {
             headers: headers
         ))
     }
-    /// Get long-form content stats
+    /// Get long-form unread count
     ///
-    /// Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.
+    /// Return unread long-form count for the authenticated user.
     ///
     /// - Remark: HTTP `GET /api/content/stats/long-form`.
     /// - Remark: Generated from `#/paths//api/content/stats/long-form/get(getContentLongFormStats)`.
@@ -1709,6 +1763,21 @@ extension APIProtocol {
             headers: headers
         ))
     }
+    /// Refresh discussion payload for a content item
+    ///
+    /// Fetch the latest in-app discussion data for the content item, persist it, and return the refreshed payload.
+    ///
+    /// - Remark: HTTP `POST /api/content/{content_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)`.
+    internal func refreshContentDiscussion(
+        path: Operations.RefreshContentDiscussion.Input.Path,
+        headers: Operations.RefreshContentDiscussion.Input.Headers = .init()
+    ) async throws -> Operations.RefreshContentDiscussion.Output {
+        try await refreshContentDiscussion(Operations.RefreshContentDiscussion.Input(
+            path: path,
+            headers: headers
+        ))
+    }
     /// Download more items from the same feed series
     ///
     /// Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.
@@ -1726,17 +1795,32 @@ extension APIProtocol {
             body: body
         ))
     }
-    /// Toggle favorite status
+    /// Save content to knowledge
     ///
-    /// Toggle the favorite status of a specific content item.
+    /// Save a specific content item to the user's knowledge library.
     ///
-    /// - Remark: HTTP `POST /api/content/{content_id}/favorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)`.
-    internal func toggleContentFavorite(
-        path: Operations.ToggleContentFavorite.Input.Path,
-        headers: Operations.ToggleContentFavorite.Input.Headers = .init()
-    ) async throws -> Operations.ToggleContentFavorite.Output {
-        try await toggleContentFavorite(Operations.ToggleContentFavorite.Input(
+    /// - Remark: HTTP `POST /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)`.
+    internal func saveContentToKnowledge(
+        path: Operations.SaveContentToKnowledge.Input.Path,
+        headers: Operations.SaveContentToKnowledge.Input.Headers = .init()
+    ) async throws -> Operations.SaveContentToKnowledge.Output {
+        try await saveContentToKnowledge(Operations.SaveContentToKnowledge.Input(
+            path: path,
+            headers: headers
+        ))
+    }
+    /// Remove content from knowledge
+    ///
+    /// Remove a specific content item from the user's knowledge library.
+    ///
+    /// - Remark: HTTP `DELETE /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)`.
+    internal func removeContentFromKnowledge(
+        path: Operations.RemoveContentFromKnowledge.Input.Path,
+        headers: Operations.RemoveContentFromKnowledge.Input.Headers = .init()
+    ) async throws -> Operations.RemoveContentFromKnowledge.Output {
+        try await removeContentFromKnowledge(Operations.RemoveContentFromKnowledge.Input(
             path: path,
             headers: headers
         ))
@@ -1786,21 +1870,6 @@ extension APIProtocol {
             path: path,
             headers: headers,
             body: body
-        ))
-    }
-    /// Remove from favorites
-    ///
-    /// Remove a specific content item from favorites.
-    ///
-    /// - Remark: HTTP `DELETE /api/content/{content_id}/unfavorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)`.
-    internal func unfavoriteContent(
-        path: Operations.UnfavoriteContent.Input.Path,
-        headers: Operations.UnfavoriteContent.Input.Headers = .init()
-    ) async throws -> Operations.UnfavoriteContent.Output {
-        try await unfavoriteContent(Operations.UnfavoriteContent.Input(
-            path: path,
-            headers: headers
         ))
     }
     /// Add single items from discovery suggestions
@@ -2079,6 +2148,21 @@ extension APIProtocol {
         headers: Operations.GetNewsItemDiscussion.Input.Headers = .init()
     ) async throws -> Operations.GetNewsItemDiscussion.Output {
         try await getNewsItemDiscussion(Operations.GetNewsItemDiscussion.Input(
+            path: path,
+            headers: headers
+        ))
+    }
+    /// Refresh one news item discussion
+    ///
+    /// Refresh discussion payload for one visible representative news item.
+    ///
+    /// - Remark: HTTP `POST /api/news/items/{news_item_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)`.
+    internal func refreshNewsItemDiscussion(
+        path: Operations.RefreshNewsItemDiscussion.Input.Path,
+        headers: Operations.RefreshNewsItemDiscussion.Input.Headers = .init()
+    ) async throws -> Operations.RefreshNewsItemDiscussion.Output {
+        try await refreshNewsItemDiscussion(Operations.RefreshNewsItemDiscussion.Input(
             path: path,
             headers: headers
         ))
@@ -3313,6 +3397,10 @@ internal enum Components {
             ///
             /// - Remark: Generated from `#/components/schemas/ChatMessageDto/council_candidates`.
             internal var councilCandidates: [Components.Schemas.CouncilCandidate]?
+            /// Stable transcript row identity shared by session-detail and status endpoints
+            ///
+            /// - Remark: Generated from `#/components/schemas/ChatMessageDto/display_key`.
+            internal var displayKey: Swift.String?
             /// Display treatment for this row in the chat transcript
             ///
             /// - Remark: Generated from `#/components/schemas/ChatMessageDto/display_type`.
@@ -3346,6 +3434,7 @@ internal enum Components {
             /// - Parameters:
             ///   - content: Message content
             ///   - councilCandidates: Optional council reply candidates attached to the assistant message
+            ///   - displayKey: Stable transcript row identity shared by session-detail and status endpoints
             ///   - displayType: Display treatment for this row in the chat transcript
             ///   - feedOptions: Optional validated feed options attached to the assistant message
             ///   - id: Unique message identifier
@@ -3356,6 +3445,7 @@ internal enum Components {
             internal init(
                 content: Swift.String,
                 councilCandidates: [Components.Schemas.CouncilCandidate]? = nil,
+                displayKey: Swift.String? = nil,
                 displayType: Components.Schemas.ChatMessageDisplayType? = nil,
                 feedOptions: [Components.Schemas.AssistantFeedOption]? = nil,
                 id: Swift.Int,
@@ -3366,6 +3456,7 @@ internal enum Components {
             ) {
                 self.content = content
                 self.councilCandidates = councilCandidates
+                self.displayKey = displayKey
                 self.displayType = displayType
                 self.feedOptions = feedOptions
                 self.id = id
@@ -3377,6 +3468,7 @@ internal enum Components {
             internal enum CodingKeys: String, CodingKey {
                 case content
                 case councilCandidates = "council_candidates"
+                case displayKey = "display_key"
                 case displayType = "display_type"
                 case feedOptions = "feed_options"
                 case id
@@ -3430,7 +3522,7 @@ internal enum Components {
             internal var councilMode: Swift.Bool?
             /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/created_at`.
             internal var createdAt: Foundation.Date
-            /// True if session has any messages (false for new favorites)
+            /// True if session has any messages (false for new saved items)
             ///
             /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/has_messages`.
             internal var hasMessages: Swift.Bool?
@@ -3442,10 +3534,10 @@ internal enum Components {
             internal var id: Swift.Int
             /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/is_archived`.
             internal var isArchived: Swift.Bool
-            /// True if the linked content is favorited by the user
+            /// True if the linked content is saved to the user's knowledge library
             ///
-            /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/is_favorite`.
-            internal var isFavorite: Swift.Bool?
+            /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/is_saved_to_knowledge`.
+            internal var isSavedToKnowledge: Swift.Bool?
             /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/llm_model`.
             internal var llmModel: Swift.String
             /// - Remark: Generated from `#/components/schemas/ChatSessionSummaryDto/llm_provider`.
@@ -3455,11 +3547,11 @@ internal enum Components {
             /// - Parameters:
             ///   - councilMode: True when this visible session is using council chat mode
             ///   - createdAt:
-            ///   - hasMessages: True if session has any messages (false for new favorites)
+            ///   - hasMessages: True if session has any messages (false for new saved items)
             ///   - hasPendingMessage: True if session has a message currently being processed
             ///   - id:
             ///   - isArchived:
-            ///   - isFavorite: True if the linked content is favorited by the user
+            ///   - isSavedToKnowledge: True if the linked content is saved to the user's knowledge library
             ///   - llmModel:
             ///   - llmProvider:
             internal init(
@@ -3469,7 +3561,7 @@ internal enum Components {
                 hasPendingMessage: Swift.Bool? = nil,
                 id: Swift.Int,
                 isArchived: Swift.Bool,
-                isFavorite: Swift.Bool? = nil,
+                isSavedToKnowledge: Swift.Bool? = nil,
                 llmModel: Swift.String,
                 llmProvider: Swift.String
             ) {
@@ -3479,7 +3571,7 @@ internal enum Components {
                 self.hasPendingMessage = hasPendingMessage
                 self.id = id
                 self.isArchived = isArchived
-                self.isFavorite = isFavorite
+                self.isSavedToKnowledge = isSavedToKnowledge
                 self.llmModel = llmModel
                 self.llmProvider = llmProvider
             }
@@ -3490,7 +3582,7 @@ internal enum Components {
                 case hasPendingMessage = "has_pending_message"
                 case id
                 case isArchived = "is_archived"
-                case isFavorite = "is_favorite"
+                case isSavedToKnowledge = "is_saved_to_knowledge"
                 case llmModel = "llm_model"
                 case llmProvider = "llm_provider"
             }
@@ -3765,14 +3857,14 @@ internal enum Components {
             ///
             /// - Remark: Generated from `#/components/schemas/ContentDetailResponse/id`.
             internal var id: Swift.Int
-            /// Whether the content has been favorited
-            ///
-            /// - Remark: Generated from `#/components/schemas/ContentDetailResponse/is_favorited`.
-            internal var isFavorited: Swift.Bool?
             /// Whether the content has been marked as read
             ///
             /// - Remark: Generated from `#/components/schemas/ContentDetailResponse/is_read`.
             internal var isRead: Swift.Bool?
+            /// Whether the content has been saved to the user's knowledge library
+            ///
+            /// - Remark: Generated from `#/components/schemas/ContentDetailResponse/is_saved_to_knowledge`.
+            internal var isSavedToKnowledge: Swift.Bool?
             /// Content-specific metadata
             ///
             /// - Remark: Generated from `#/components/schemas/ContentDetailResponse/metadata`.
@@ -3849,8 +3941,8 @@ internal enum Components {
             ///   - createdAt: ISO timestamp when content was created
             ///   - displayTitle: Display title (prefers summary title over content title)
             ///   - id: Unique identifier
-            ///   - isFavorited: Whether the content has been favorited
             ///   - isRead: Whether the content has been marked as read
+            ///   - isSavedToKnowledge: Whether the content has been saved to the user's knowledge library
             ///   - metadata: Content-specific metadata
             ///   - quotes: Quotes from structured summary
             ///   - retryCount: Number of retry attempts
@@ -3865,8 +3957,8 @@ internal enum Components {
                 createdAt: Swift.String,
                 displayTitle: Swift.String,
                 id: Swift.Int,
-                isFavorited: Swift.Bool? = nil,
                 isRead: Swift.Bool? = nil,
+                isSavedToKnowledge: Swift.Bool? = nil,
                 metadata: Components.Schemas.ContentDetailResponse.MetadataPayload,
                 quotes: Components.Schemas.ContentDetailResponse.QuotesPayload,
                 retryCount: Swift.Int,
@@ -3881,8 +3973,8 @@ internal enum Components {
                 self.createdAt = createdAt
                 self.displayTitle = displayTitle
                 self.id = id
-                self.isFavorited = isFavorited
                 self.isRead = isRead
+                self.isSavedToKnowledge = isSavedToKnowledge
                 self.metadata = metadata
                 self.quotes = quotes
                 self.retryCount = retryCount
@@ -3898,8 +3990,8 @@ internal enum Components {
                 case createdAt = "created_at"
                 case displayTitle = "display_title"
                 case id
-                case isFavorited = "is_favorited"
                 case isRead = "is_read"
+                case isSavedToKnowledge = "is_saved_to_knowledge"
                 case metadata
                 case quotes
                 case retryCount = "retry_count"
@@ -4039,6 +4131,7 @@ internal enum Components {
             case new = "new"
             case pending = "pending"
             case processing = "processing"
+            case awaitingImage = "awaiting_image"
             case completed = "completed"
             case failed = "failed"
             case skipped = "skipped"
@@ -4112,14 +4205,14 @@ internal enum Components {
             ///
             /// - Remark: Generated from `#/components/schemas/ContentSummaryResponse/id`.
             internal var id: Swift.Int
-            /// Whether the content has been favorited
-            ///
-            /// - Remark: Generated from `#/components/schemas/ContentSummaryResponse/is_favorited`.
-            internal var isFavorited: Swift.Bool?
             /// Whether the content has been marked as read
             ///
             /// - Remark: Generated from `#/components/schemas/ContentSummaryResponse/is_read`.
             internal var isRead: Swift.Bool?
+            /// Whether the content has been saved to the user's knowledge library
+            ///
+            /// - Remark: Generated from `#/components/schemas/ContentSummaryResponse/is_saved_to_knowledge`.
+            internal var isSavedToKnowledge: Swift.Bool?
             /// Processing status
             ///
             /// - Remark: Generated from `#/components/schemas/ContentSummaryResponse/status`.
@@ -4134,24 +4227,24 @@ internal enum Components {
             ///   - contentType: Type of content (article/podcast/news)
             ///   - createdAt: ISO timestamp when content was created
             ///   - id: Unique identifier
-            ///   - isFavorited: Whether the content has been favorited
             ///   - isRead: Whether the content has been marked as read
+            ///   - isSavedToKnowledge: Whether the content has been saved to the user's knowledge library
             ///   - status: Processing status
             ///   - url: Canonical URL of the content
             internal init(
                 contentType: Components.Schemas.ContentType,
                 createdAt: Swift.String,
                 id: Swift.Int,
-                isFavorited: Swift.Bool? = nil,
                 isRead: Swift.Bool? = nil,
+                isSavedToKnowledge: Swift.Bool? = nil,
                 status: Components.Schemas.ContentStatus,
                 url: Swift.String
             ) {
                 self.contentType = contentType
                 self.createdAt = createdAt
                 self.id = id
-                self.isFavorited = isFavorited
                 self.isRead = isRead
+                self.isSavedToKnowledge = isSavedToKnowledge
                 self.status = status
                 self.url = url
             }
@@ -4159,8 +4252,8 @@ internal enum Components {
                 case contentType = "content_type"
                 case createdAt = "created_at"
                 case id
-                case isFavorited = "is_favorited"
                 case isRead = "is_read"
+                case isSavedToKnowledge = "is_saved_to_knowledge"
                 case status
                 case url
             }
@@ -4384,6 +4477,23 @@ internal enum Components {
                     "instruction_prompt",
                     "sort_order"
                 ])
+            }
+        }
+        /// Request to retry one failed council branch.
+        ///
+        /// - Remark: Generated from `#/components/schemas/CouncilRetryRequest`.
+        internal struct CouncilRetryRequest: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/CouncilRetryRequest/child_session_id`.
+            internal var childSessionId: Swift.Int
+            /// Creates a new `CouncilRetryRequest`.
+            ///
+            /// - Parameters:
+            ///   - childSessionId:
+            internal init(childSessionId: Swift.Int) {
+                self.childSessionId = childSessionId
+            }
+            internal enum CodingKeys: String, CodingKey {
+                case childSessionId = "child_session_id"
             }
         }
         /// Request to switch the active branch for a council chat.
@@ -5184,26 +5294,10 @@ internal enum Components {
             case cerebras = "cerebras"
             case deepResearch = "deep_research"
         }
-        /// Response containing long-form content stats for a user.
+        /// Response containing unread long-form count for a user.
         ///
         /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse`.
         internal struct LongFormStatsResponse: Codable, Hashable, Sendable {
-            /// Favorited long-form items
-            ///
-            /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse/favorited_count`.
-            internal var favoritedCount: Swift.Int
-            /// Long-form items pending or processing for the user
-            ///
-            /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse/processing_count`.
-            internal var processingCount: Swift.Int
-            /// Read long-form items
-            ///
-            /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse/read_count`.
-            internal var readCount: Swift.Int
-            /// Total long-form items in the inbox
-            ///
-            /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse/total_count`.
-            internal var totalCount: Swift.Int
             /// Unread long-form items
             ///
             /// - Remark: Generated from `#/components/schemas/LongFormStatsResponse/unread_count`.
@@ -5211,29 +5305,11 @@ internal enum Components {
             /// Creates a new `LongFormStatsResponse`.
             ///
             /// - Parameters:
-            ///   - favoritedCount: Favorited long-form items
-            ///   - processingCount: Long-form items pending or processing for the user
-            ///   - readCount: Read long-form items
-            ///   - totalCount: Total long-form items in the inbox
             ///   - unreadCount: Unread long-form items
-            internal init(
-                favoritedCount: Swift.Int,
-                processingCount: Swift.Int,
-                readCount: Swift.Int,
-                totalCount: Swift.Int,
-                unreadCount: Swift.Int
-            ) {
-                self.favoritedCount = favoritedCount
-                self.processingCount = processingCount
-                self.readCount = readCount
-                self.totalCount = totalCount
+            internal init(unreadCount: Swift.Int) {
                 self.unreadCount = unreadCount
             }
             internal enum CodingKeys: String, CodingKey {
-                case favoritedCount = "favorited_count"
-                case processingCount = "processing_count"
-                case readCount = "read_count"
-                case totalCount = "total_count"
                 case unreadCount = "unread_count"
             }
         }
@@ -5589,6 +5665,8 @@ internal enum Components {
         ///
         /// - Remark: Generated from `#/components/schemas/OnboardingCompleteResponse`.
         internal struct OnboardingCompleteResponse: Codable, Hashable, Sendable {
+            /// - Remark: Generated from `#/components/schemas/OnboardingCompleteResponse/configured_source_count`.
+            internal var configuredSourceCount: Swift.Int
             /// - Remark: Generated from `#/components/schemas/OnboardingCompleteResponse/has_completed_new_user_tutorial`.
             internal var hasCompletedNewUserTutorial: Swift.Bool
             /// - Remark: Generated from `#/components/schemas/OnboardingCompleteResponse/has_completed_onboarding`.
@@ -5602,18 +5680,21 @@ internal enum Components {
             /// Creates a new `OnboardingCompleteResponse`.
             ///
             /// - Parameters:
+            ///   - configuredSourceCount:
             ///   - hasCompletedNewUserTutorial:
             ///   - hasCompletedOnboarding:
             ///   - inboxCountEstimate:
             ///   - longformStatus:
             ///   - status:
             internal init(
+                configuredSourceCount: Swift.Int,
                 hasCompletedNewUserTutorial: Swift.Bool,
                 hasCompletedOnboarding: Swift.Bool,
                 inboxCountEstimate: Swift.Int,
                 longformStatus: Swift.String,
                 status: Swift.String
             ) {
+                self.configuredSourceCount = configuredSourceCount
                 self.hasCompletedNewUserTutorial = hasCompletedNewUserTutorial
                 self.hasCompletedOnboarding = hasCompletedOnboarding
                 self.inboxCountEstimate = inboxCountEstimate
@@ -5621,6 +5702,7 @@ internal enum Components {
                 self.status = status
             }
             internal enum CodingKeys: String, CodingKey {
+                case configuredSourceCount = "configured_source_count"
                 case hasCompletedNewUserTutorial = "has_completed_new_user_tutorial"
                 case hasCompletedOnboarding = "has_completed_onboarding"
                 case inboxCountEstimate = "inbox_count_estimate"
@@ -6441,10 +6523,10 @@ internal enum Components {
             ///
             /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/crawl_links`.
             internal var crawlLinks: Swift.Bool?
-            /// When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.
+            /// When true, download and summarize the submitted content, then mark it as read and save it to the user's knowledge library.
             ///
-            /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/favorite_and_mark_read`.
-            internal var favoriteAndMarkRead: Swift.Bool?
+            /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/save_to_knowledge_and_mark_read`.
+            internal var saveToKnowledgeAndMarkRead: Swift.Bool?
             /// When true, mark the submitted content as read and start a dig-deeper chat after processing completes.
             ///
             /// - Remark: Generated from `#/components/schemas/SubmitContentRequest/share_and_chat`.
@@ -6461,26 +6543,26 @@ internal enum Components {
             ///
             /// - Parameters:
             ///   - crawlLinks: Whether to create additional content items from relevant links discovered on the submitted page.
-            ///   - favoriteAndMarkRead: When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.
+            ///   - saveToKnowledgeAndMarkRead: When true, download and summarize the submitted content, then mark it as read and save it to the user's knowledge library.
             ///   - shareAndChat: When true, mark the submitted content as read and start a dig-deeper chat after processing completes.
             ///   - subscribeToFeed: When true, detect an RSS/Atom feed from the URL and subscribe to it instead of processing the URL as content.
             ///   - url: URL to submit (http/https only)
             internal init(
                 crawlLinks: Swift.Bool? = nil,
-                favoriteAndMarkRead: Swift.Bool? = nil,
+                saveToKnowledgeAndMarkRead: Swift.Bool? = nil,
                 shareAndChat: Swift.Bool? = nil,
                 subscribeToFeed: Swift.Bool? = nil,
                 url: Swift.String
             ) {
                 self.crawlLinks = crawlLinks
-                self.favoriteAndMarkRead = favoriteAndMarkRead
+                self.saveToKnowledgeAndMarkRead = saveToKnowledgeAndMarkRead
                 self.shareAndChat = shareAndChat
                 self.subscribeToFeed = subscribeToFeed
                 self.url = url
             }
             internal enum CodingKeys: String, CodingKey {
                 case crawlLinks = "crawl_links"
-                case favoriteAndMarkRead = "favorite_and_mark_read"
+                case saveToKnowledgeAndMarkRead = "save_to_knowledge_and_mark_read"
                 case shareAndChat = "share_and_chat"
                 case subscribeToFeed = "subscribe_to_feed"
                 case url
@@ -8612,32 +8694,32 @@ internal enum Operations {
             }
         }
     }
-    /// Llm Usage Dashboard
+    /// Legacy Llm Usage Redirect
     ///
-    /// Show recent persisted LLM usage rows with lightweight filtering.
+    /// Backwards-compatible redirect to the broader vendor usage dashboard.
     ///
     /// - Remark: HTTP `GET /admin/llm-usage`.
-    /// - Remark: Generated from `#/paths//admin/llm-usage/get(llmUsageDashboard)`.
-    internal enum LlmUsageDashboard {
-        internal static let id: Swift.String = "llmUsageDashboard"
+    /// - Remark: Generated from `#/paths//admin/llm-usage/get(legacyLlmUsageRedirect)`.
+    internal enum LegacyLlmUsageRedirect {
+        internal static let id: Swift.String = "legacyLlmUsageRedirect"
         internal struct Input: Sendable, Hashable {
             /// - Remark: Generated from `#/paths/admin/llm-usage/GET/header`.
             internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.LlmUsageDashboard.AcceptableContentType>]
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.LegacyLlmUsageRedirect.AcceptableContentType>]
                 /// Creates a new `Headers`.
                 ///
                 /// - Parameters:
                 ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.LlmUsageDashboard.AcceptableContentType>] = .defaultValues()) {
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.LegacyLlmUsageRedirect.AcceptableContentType>] = .defaultValues()) {
                     self.accept = accept
                 }
             }
-            internal var headers: Operations.LlmUsageDashboard.Input.Headers
+            internal var headers: Operations.LegacyLlmUsageRedirect.Input.Headers
             /// Creates a new `Input`.
             ///
             /// - Parameters:
             ///   - headers:
-            internal init(headers: Operations.LlmUsageDashboard.Input.Headers = .init()) {
+            internal init(headers: Operations.LegacyLlmUsageRedirect.Input.Headers = .init()) {
                 self.headers = headers
             }
         }
@@ -8661,26 +8743,26 @@ internal enum Operations {
                     }
                 }
                 /// Received HTTP response body
-                internal var body: Operations.LlmUsageDashboard.Output.Ok.Body
+                internal var body: Operations.LegacyLlmUsageRedirect.Output.Ok.Body
                 /// Creates a new `Ok`.
                 ///
                 /// - Parameters:
                 ///   - body: Received HTTP response body
-                internal init(body: Operations.LlmUsageDashboard.Output.Ok.Body) {
+                internal init(body: Operations.LegacyLlmUsageRedirect.Output.Ok.Body) {
                     self.body = body
                 }
             }
             /// Successful Response
             ///
-            /// - Remark: Generated from `#/paths//admin/llm-usage/get(llmUsageDashboard)/responses/200`.
+            /// - Remark: Generated from `#/paths//admin/llm-usage/get(legacyLlmUsageRedirect)/responses/200`.
             ///
             /// HTTP response code: `200 ok`.
-            case ok(Operations.LlmUsageDashboard.Output.Ok)
+            case ok(Operations.LegacyLlmUsageRedirect.Output.Ok)
             /// The associated value of the enum case if `self` is `.ok`.
             ///
             /// - Throws: An error if `self` is not `.ok`.
             /// - SeeAlso: `.ok`.
-            internal var ok: Operations.LlmUsageDashboard.Output.Ok {
+            internal var ok: Operations.LegacyLlmUsageRedirect.Output.Ok {
                 get throws {
                     switch self {
                     case let .ok(response):
@@ -9486,6 +9568,118 @@ internal enum Operations {
             internal static var allCases: [Self] {
                 [
                     .json
+                ]
+            }
+        }
+    }
+    /// Vendor Usage Dashboard
+    ///
+    /// Show recent persisted vendor usage rows with aggregate cost views.
+    ///
+    /// - Remark: HTTP `GET /admin/vendor-usage`.
+    /// - Remark: Generated from `#/paths//admin/vendor-usage/get(vendorUsageDashboard)`.
+    internal enum VendorUsageDashboard {
+        internal static let id: Swift.String = "vendorUsageDashboard"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/admin/vendor-usage/GET/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.VendorUsageDashboard.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.VendorUsageDashboard.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.VendorUsageDashboard.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - headers:
+            internal init(headers: Operations.VendorUsageDashboard.Input.Headers = .init()) {
+                self.headers = headers
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/admin/vendor-usage/GET/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/admin/vendor-usage/GET/responses/200/content/text\/html`.
+                    case html(OpenAPIRuntime.HTTPBody)
+                    /// The associated value of the enum case if `self` is `.html`.
+                    ///
+                    /// - Throws: An error if `self` is not `.html`.
+                    /// - SeeAlso: `.html`.
+                    internal var html: OpenAPIRuntime.HTTPBody {
+                        get throws {
+                            switch self {
+                            case let .html(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.VendorUsageDashboard.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.VendorUsageDashboard.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Successful Response
+            ///
+            /// - Remark: Generated from `#/paths//admin/vendor-usage/get(vendorUsageDashboard)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.VendorUsageDashboard.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.VendorUsageDashboard.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case html
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "text/html":
+                    self = .html
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .html:
+                    return "text/html"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .html
                 ]
             }
         }
@@ -13578,6 +13772,233 @@ internal enum Operations {
             }
         }
     }
+    /// Retry council branch
+    ///
+    /// Regenerate one council branch and return the merged parent transcript.
+    ///
+    /// - Remark: HTTP `POST /api/content/chat/sessions/{session_id}/council/retry`.
+    /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)`.
+    internal enum RetryContentChatSessionsCouncilModeBranch {
+        internal static let id: Swift.String = "retryContentChatSessionsCouncilModeBranch"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/path`.
+            internal struct Path: Sendable, Hashable {
+                /// Chat session ID
+                ///
+                /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/path/session_id`.
+                internal var sessionId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - sessionId: Chat session ID
+                internal init(sessionId: Swift.Int) {
+                    self.sessionId = sessionId
+                }
+            }
+            internal var path: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Path
+            /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RetryContentChatSessionsCouncilModeBranch.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RetryContentChatSessionsCouncilModeBranch.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Headers
+            /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/requestBody`.
+            internal enum Body: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/requestBody/content/application\/json`.
+                case json(Components.Schemas.CouncilRetryRequest)
+            }
+            internal var body: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Body
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            ///   - body:
+            internal init(
+                path: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Path,
+                headers: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Headers = .init(),
+                body: Operations.RetryContentChatSessionsCouncilModeBranch.Input.Body
+            ) {
+                self.path = path
+                self.headers = headers
+                self.body = body
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/responses/200/content/application\/json`.
+                    case json(Components.Schemas.ChatSessionDetailDto)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.ChatSessionDetailDto {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Successful Response
+            ///
+            /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.RetryContentChatSessionsCouncilModeBranch.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.RetryContentChatSessionsCouncilModeBranch.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct NotFound: Sendable, Hashable {
+                /// Creates a new `NotFound`.
+                internal init() {}
+            }
+            /// Not found
+            ///
+            /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Operations.RetryContentChatSessionsCouncilModeBranch.Output.NotFound)
+            /// Not found
+            ///
+            /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            internal static var notFound: Self {
+                .notFound(.init())
+            }
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            internal var notFound: Operations.RetryContentChatSessionsCouncilModeBranch.Output.NotFound {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct UnprocessableContent: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/responses/422/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/chat/sessions/{session_id}/council/retry/POST/responses/422/content/application\/json`.
+                    case json(Components.Schemas.HTTPValidationError)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.HTTPValidationError {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.UnprocessableContent.Body
+                /// Creates a new `UnprocessableContent`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.UnprocessableContent.Body) {
+                    self.body = body
+                }
+            }
+            /// Validation Error
+            ///
+            /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)/responses/422`.
+            ///
+            /// HTTP response code: `422 unprocessableContent`.
+            case unprocessableContent(Operations.RetryContentChatSessionsCouncilModeBranch.Output.UnprocessableContent)
+            /// The associated value of the enum case if `self` is `.unprocessableContent`.
+            ///
+            /// - Throws: An error if `self` is not `.unprocessableContent`.
+            /// - SeeAlso: `.unprocessableContent`.
+            internal var unprocessableContent: Operations.RetryContentChatSessionsCouncilModeBranch.Output.UnprocessableContent {
+                get throws {
+                    switch self {
+                    case let .unprocessableContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unprocessableContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
     /// Select council branch
     ///
     /// Switch the active council branch and return the merged parent transcript.
@@ -14477,20 +14898,20 @@ internal enum Operations {
             }
         }
     }
-    /// Get favorited content
+    /// Get saved knowledge library
     ///
-    /// Retrieve all favorited content items with cursor-based pagination.
+    /// Retrieve content saved to the user's knowledge library with pagination.
     ///
-    /// - Remark: HTTP `GET /api/content/favorites/list`.
-    /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)`.
-    internal enum GetContentListFavorites {
-        internal static let id: Swift.String = "getContentListFavorites"
+    /// - Remark: HTTP `GET /api/content/knowledge/list`.
+    /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)`.
+    internal enum GetContentListKnowledgeLibrary {
+        internal static let id: Swift.String = "getContentListKnowledgeLibrary"
         internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/query`.
+            /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/query`.
             internal struct Query: Sendable, Hashable {
                 /// Number of items per page (max 100)
                 ///
-                /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/query/limit`.
+                /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/query/limit`.
                 internal var limit: Swift.Int?
                 /// Creates a new `Query`.
                 ///
@@ -14500,27 +14921,27 @@ internal enum Operations {
                     self.limit = limit
                 }
             }
-            internal var query: Operations.GetContentListFavorites.Input.Query
-            /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/header`.
+            internal var query: Operations.GetContentListKnowledgeLibrary.Input.Query
+            /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/header`.
             internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.GetContentListFavorites.AcceptableContentType>]
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.GetContentListKnowledgeLibrary.AcceptableContentType>]
                 /// Creates a new `Headers`.
                 ///
                 /// - Parameters:
                 ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.GetContentListFavorites.AcceptableContentType>] = .defaultValues()) {
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.GetContentListKnowledgeLibrary.AcceptableContentType>] = .defaultValues()) {
                     self.accept = accept
                 }
             }
-            internal var headers: Operations.GetContentListFavorites.Input.Headers
+            internal var headers: Operations.GetContentListKnowledgeLibrary.Input.Headers
             /// Creates a new `Input`.
             ///
             /// - Parameters:
             ///   - query:
             ///   - headers:
             internal init(
-                query: Operations.GetContentListFavorites.Input.Query = .init(),
-                headers: Operations.GetContentListFavorites.Input.Headers = .init()
+                query: Operations.GetContentListKnowledgeLibrary.Input.Query = .init(),
+                headers: Operations.GetContentListKnowledgeLibrary.Input.Headers = .init()
             ) {
                 self.query = query
                 self.headers = headers
@@ -14528,9 +14949,9 @@ internal enum Operations {
         }
         internal enum Output: Sendable, Hashable {
             internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/responses/200/content`.
+                /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/responses/200/content`.
                 internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/responses/200/content/application\/json`.
+                    /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/responses/200/content/application\/json`.
                     case json(Components.Schemas.ContentListResponse)
                     /// The associated value of the enum case if `self` is `.json`.
                     ///
@@ -14546,26 +14967,26 @@ internal enum Operations {
                     }
                 }
                 /// Received HTTP response body
-                internal var body: Operations.GetContentListFavorites.Output.Ok.Body
+                internal var body: Operations.GetContentListKnowledgeLibrary.Output.Ok.Body
                 /// Creates a new `Ok`.
                 ///
                 /// - Parameters:
                 ///   - body: Received HTTP response body
-                internal init(body: Operations.GetContentListFavorites.Output.Ok.Body) {
+                internal init(body: Operations.GetContentListKnowledgeLibrary.Output.Ok.Body) {
                     self.body = body
                 }
             }
             /// Successful Response
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/200`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/200`.
             ///
             /// HTTP response code: `200 ok`.
-            case ok(Operations.GetContentListFavorites.Output.Ok)
+            case ok(Operations.GetContentListKnowledgeLibrary.Output.Ok)
             /// The associated value of the enum case if `self` is `.ok`.
             ///
             /// - Throws: An error if `self` is not `.ok`.
             /// - SeeAlso: `.ok`.
-            internal var ok: Operations.GetContentListFavorites.Output.Ok {
+            internal var ok: Operations.GetContentListKnowledgeLibrary.Output.Ok {
                 get throws {
                     switch self {
                     case let .ok(response):
@@ -14584,13 +15005,13 @@ internal enum Operations {
             }
             /// Authentication required
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/401`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/401`.
             ///
             /// HTTP response code: `401 unauthorized`.
-            case unauthorized(Operations.GetContentListFavorites.Output.Unauthorized)
+            case unauthorized(Operations.GetContentListKnowledgeLibrary.Output.Unauthorized)
             /// Authentication required
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/401`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/401`.
             ///
             /// HTTP response code: `401 unauthorized`.
             internal static var unauthorized: Self {
@@ -14600,7 +15021,7 @@ internal enum Operations {
             ///
             /// - Throws: An error if `self` is not `.unauthorized`.
             /// - SeeAlso: `.unauthorized`.
-            internal var unauthorized: Operations.GetContentListFavorites.Output.Unauthorized {
+            internal var unauthorized: Operations.GetContentListKnowledgeLibrary.Output.Unauthorized {
                 get throws {
                     switch self {
                     case let .unauthorized(response):
@@ -14619,13 +15040,13 @@ internal enum Operations {
             }
             /// Not found
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/404`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/404`.
             ///
             /// HTTP response code: `404 notFound`.
-            case notFound(Operations.GetContentListFavorites.Output.NotFound)
+            case notFound(Operations.GetContentListKnowledgeLibrary.Output.NotFound)
             /// Not found
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/404`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/404`.
             ///
             /// HTTP response code: `404 notFound`.
             internal static var notFound: Self {
@@ -14635,7 +15056,7 @@ internal enum Operations {
             ///
             /// - Throws: An error if `self` is not `.notFound`.
             /// - SeeAlso: `.notFound`.
-            internal var notFound: Operations.GetContentListFavorites.Output.NotFound {
+            internal var notFound: Operations.GetContentListKnowledgeLibrary.Output.NotFound {
                 get throws {
                     switch self {
                     case let .notFound(response):
@@ -14649,9 +15070,9 @@ internal enum Operations {
                 }
             }
             internal struct UnprocessableContent: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/responses/422/content`.
+                /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/responses/422/content`.
                 internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/favorites/list/GET/responses/422/content/application\/json`.
+                    /// - Remark: Generated from `#/paths/api/content/knowledge/list/GET/responses/422/content/application\/json`.
                     case json(Components.Schemas.HTTPValidationError)
                     /// The associated value of the enum case if `self` is `.json`.
                     ///
@@ -14667,26 +15088,26 @@ internal enum Operations {
                     }
                 }
                 /// Received HTTP response body
-                internal var body: Operations.GetContentListFavorites.Output.UnprocessableContent.Body
+                internal var body: Operations.GetContentListKnowledgeLibrary.Output.UnprocessableContent.Body
                 /// Creates a new `UnprocessableContent`.
                 ///
                 /// - Parameters:
                 ///   - body: Received HTTP response body
-                internal init(body: Operations.GetContentListFavorites.Output.UnprocessableContent.Body) {
+                internal init(body: Operations.GetContentListKnowledgeLibrary.Output.UnprocessableContent.Body) {
                     self.body = body
                 }
             }
             /// Validation Error
             ///
-            /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)/responses/422`.
+            /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)/responses/422`.
             ///
             /// HTTP response code: `422 unprocessableContent`.
-            case unprocessableContent(Operations.GetContentListFavorites.Output.UnprocessableContent)
+            case unprocessableContent(Operations.GetContentListKnowledgeLibrary.Output.UnprocessableContent)
             /// The associated value of the enum case if `self` is `.unprocessableContent`.
             ///
             /// - Throws: An error if `self` is not `.unprocessableContent`.
             /// - SeeAlso: `.unprocessableContent`.
-            internal var unprocessableContent: Operations.GetContentListFavorites.Output.UnprocessableContent {
+            internal var unprocessableContent: Operations.GetContentListKnowledgeLibrary.Output.UnprocessableContent {
                 get throws {
                     switch self {
                     case let .unprocessableContent(response):
@@ -16291,7 +16712,7 @@ internal enum Operations {
     }
     /// Search content across articles and podcasts
     ///
-    /// Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
+    /// PostgreSQL-backed search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
     ///
     /// - Remark: HTTP `GET /api/content/search`.
     /// - Remark: Generated from `#/paths//api/content/search/get(searchContents)`.
@@ -16985,9 +17406,9 @@ internal enum Operations {
             }
         }
     }
-    /// Get long-form content stats
+    /// Get long-form unread count
     ///
-    /// Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.
+    /// Return unread long-form count for the authenticated user.
     ///
     /// - Remark: HTTP `GET /api/content/stats/long-form`.
     /// - Remark: Generated from `#/paths//api/content/stats/long-form/get(getContentLongFormStats)`.
@@ -19079,6 +19500,240 @@ internal enum Operations {
             }
         }
     }
+    /// Refresh discussion payload for a content item
+    ///
+    /// Fetch the latest in-app discussion data for the content item, persist it, and return the refreshed payload.
+    ///
+    /// - Remark: HTTP `POST /api/content/{content_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)`.
+    internal enum RefreshContentDiscussion {
+        internal static let id: Swift.String = "refreshContentDiscussion"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/path`.
+            internal struct Path: Sendable, Hashable {
+                /// Content ID
+                ///
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/path/content_id`.
+                internal var contentId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - contentId: Content ID
+                internal init(contentId: Swift.Int) {
+                    self.contentId = contentId
+                }
+            }
+            internal var path: Operations.RefreshContentDiscussion.Input.Path
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RefreshContentDiscussion.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RefreshContentDiscussion.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.RefreshContentDiscussion.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            internal init(
+                path: Operations.RefreshContentDiscussion.Input.Path,
+                headers: Operations.RefreshContentDiscussion.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/200/content/application\/json`.
+                    case json(Components.Schemas.ContentDiscussionResponse)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.ContentDiscussionResponse {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RefreshContentDiscussion.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RefreshContentDiscussion.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Successful Response
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.RefreshContentDiscussion.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.RefreshContentDiscussion.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct NotFound: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/404/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/404/content/application\/json`.
+                    case json(OpenAPIRuntime.OpenAPIValueContainer)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: OpenAPIRuntime.OpenAPIValueContainer {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RefreshContentDiscussion.Output.NotFound.Body
+                /// Creates a new `NotFound`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RefreshContentDiscussion.Output.NotFound.Body) {
+                    self.body = body
+                }
+            }
+            /// Content not found
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Operations.RefreshContentDiscussion.Output.NotFound)
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            internal var notFound: Operations.RefreshContentDiscussion.Output.NotFound {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct UnprocessableContent: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/422/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/discussion/refresh/POST/responses/422/content/application\/json`.
+                    case json(Components.Schemas.HTTPValidationError)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.HTTPValidationError {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RefreshContentDiscussion.Output.UnprocessableContent.Body
+                /// Creates a new `UnprocessableContent`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RefreshContentDiscussion.Output.UnprocessableContent.Body) {
+                    self.body = body
+                }
+            }
+            /// Validation Error
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)/responses/422`.
+            ///
+            /// HTTP response code: `422 unprocessableContent`.
+            case unprocessableContent(Operations.RefreshContentDiscussion.Output.UnprocessableContent)
+            /// The associated value of the enum case if `self` is `.unprocessableContent`.
+            ///
+            /// - Throws: An error if `self` is not `.unprocessableContent`.
+            /// - SeeAlso: `.unprocessableContent`.
+            internal var unprocessableContent: Operations.RefreshContentDiscussion.Output.UnprocessableContent {
+                get throws {
+                    switch self {
+                    case let .unprocessableContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unprocessableContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
     /// Download more items from the same feed series
     ///
     /// Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.
@@ -19376,20 +20031,20 @@ internal enum Operations {
             }
         }
     }
-    /// Toggle favorite status
+    /// Save content to knowledge
     ///
-    /// Toggle the favorite status of a specific content item.
+    /// Save a specific content item to the user's knowledge library.
     ///
-    /// - Remark: HTTP `POST /api/content/{content_id}/favorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)`.
-    internal enum ToggleContentFavorite {
-        internal static let id: Swift.String = "toggleContentFavorite"
+    /// - Remark: HTTP `POST /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)`.
+    internal enum SaveContentToKnowledge {
+        internal static let id: Swift.String = "saveContentToKnowledge"
         internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/path`.
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/path`.
             internal struct Path: Sendable, Hashable {
                 /// Content ID
                 ///
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/path/content_id`.
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/path/content_id`.
                 internal var contentId: Swift.Int
                 /// Creates a new `Path`.
                 ///
@@ -19399,27 +20054,27 @@ internal enum Operations {
                     self.contentId = contentId
                 }
             }
-            internal var path: Operations.ToggleContentFavorite.Input.Path
-            /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/header`.
+            internal var path: Operations.SaveContentToKnowledge.Input.Path
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/header`.
             internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.ToggleContentFavorite.AcceptableContentType>]
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.SaveContentToKnowledge.AcceptableContentType>]
                 /// Creates a new `Headers`.
                 ///
                 /// - Parameters:
                 ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.ToggleContentFavorite.AcceptableContentType>] = .defaultValues()) {
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.SaveContentToKnowledge.AcceptableContentType>] = .defaultValues()) {
                     self.accept = accept
                 }
             }
-            internal var headers: Operations.ToggleContentFavorite.Input.Headers
+            internal var headers: Operations.SaveContentToKnowledge.Input.Headers
             /// Creates a new `Input`.
             ///
             /// - Parameters:
             ///   - path:
             ///   - headers:
             internal init(
-                path: Operations.ToggleContentFavorite.Input.Path,
-                headers: Operations.ToggleContentFavorite.Input.Headers = .init()
+                path: Operations.SaveContentToKnowledge.Input.Path,
+                headers: Operations.SaveContentToKnowledge.Input.Headers = .init()
             ) {
                 self.path = path
                 self.headers = headers
@@ -19427,9 +20082,9 @@ internal enum Operations {
         }
         internal enum Output: Sendable, Hashable {
             internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/responses/200/content`.
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/responses/200/content`.
                 internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/responses/200/content/json`.
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/responses/200/content/json`.
                     internal struct JsonPayload: Codable, Hashable, Sendable {
                         /// A container of undocumented properties.
                         internal var additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer
@@ -19447,13 +20102,13 @@ internal enum Operations {
                             try encoder.encodeAdditionalProperties(additionalProperties)
                         }
                     }
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/responses/200/content/application\/json`.
-                    case json(Operations.ToggleContentFavorite.Output.Ok.Body.JsonPayload)
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/responses/200/content/application\/json`.
+                    case json(Operations.SaveContentToKnowledge.Output.Ok.Body.JsonPayload)
                     /// The associated value of the enum case if `self` is `.json`.
                     ///
                     /// - Throws: An error if `self` is not `.json`.
                     /// - SeeAlso: `.json`.
-                    internal var json: Operations.ToggleContentFavorite.Output.Ok.Body.JsonPayload {
+                    internal var json: Operations.SaveContentToKnowledge.Output.Ok.Body.JsonPayload {
                         get throws {
                             switch self {
                             case let .json(body):
@@ -19463,26 +20118,26 @@ internal enum Operations {
                     }
                 }
                 /// Received HTTP response body
-                internal var body: Operations.ToggleContentFavorite.Output.Ok.Body
+                internal var body: Operations.SaveContentToKnowledge.Output.Ok.Body
                 /// Creates a new `Ok`.
                 ///
                 /// - Parameters:
                 ///   - body: Received HTTP response body
-                internal init(body: Operations.ToggleContentFavorite.Output.Ok.Body) {
+                internal init(body: Operations.SaveContentToKnowledge.Output.Ok.Body) {
                     self.body = body
                 }
             }
-            /// Favorite status toggled successfully
+            /// Content saved to knowledge successfully
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/200`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/200`.
             ///
             /// HTTP response code: `200 ok`.
-            case ok(Operations.ToggleContentFavorite.Output.Ok)
+            case ok(Operations.SaveContentToKnowledge.Output.Ok)
             /// The associated value of the enum case if `self` is `.ok`.
             ///
             /// - Throws: An error if `self` is not `.ok`.
             /// - SeeAlso: `.ok`.
-            internal var ok: Operations.ToggleContentFavorite.Output.Ok {
+            internal var ok: Operations.SaveContentToKnowledge.Output.Ok {
                 get throws {
                     switch self {
                     case let .ok(response):
@@ -19501,13 +20156,13 @@ internal enum Operations {
             }
             /// Authentication required
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/401`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/401`.
             ///
             /// HTTP response code: `401 unauthorized`.
-            case unauthorized(Operations.ToggleContentFavorite.Output.Unauthorized)
+            case unauthorized(Operations.SaveContentToKnowledge.Output.Unauthorized)
             /// Authentication required
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/401`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/401`.
             ///
             /// HTTP response code: `401 unauthorized`.
             internal static var unauthorized: Self {
@@ -19517,7 +20172,7 @@ internal enum Operations {
             ///
             /// - Throws: An error if `self` is not `.unauthorized`.
             /// - SeeAlso: `.unauthorized`.
-            internal var unauthorized: Operations.ToggleContentFavorite.Output.Unauthorized {
+            internal var unauthorized: Operations.SaveContentToKnowledge.Output.Unauthorized {
                 get throws {
                     switch self {
                     case let .unauthorized(response):
@@ -19536,13 +20191,13 @@ internal enum Operations {
             }
             /// Content not found
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/404`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/404`.
             ///
             /// HTTP response code: `404 notFound`.
-            case notFound(Operations.ToggleContentFavorite.Output.NotFound)
+            case notFound(Operations.SaveContentToKnowledge.Output.NotFound)
             /// Content not found
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/404`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/404`.
             ///
             /// HTTP response code: `404 notFound`.
             internal static var notFound: Self {
@@ -19552,7 +20207,7 @@ internal enum Operations {
             ///
             /// - Throws: An error if `self` is not `.notFound`.
             /// - SeeAlso: `.notFound`.
-            internal var notFound: Operations.ToggleContentFavorite.Output.NotFound {
+            internal var notFound: Operations.SaveContentToKnowledge.Output.NotFound {
                 get throws {
                     switch self {
                     case let .notFound(response):
@@ -19566,9 +20221,9 @@ internal enum Operations {
                 }
             }
             internal struct UnprocessableContent: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/responses/422/content`.
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/responses/422/content`.
                 internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/favorite/POST/responses/422/content/application\/json`.
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/POST/responses/422/content/application\/json`.
                     case json(Components.Schemas.HTTPValidationError)
                     /// The associated value of the enum case if `self` is `.json`.
                     ///
@@ -19584,26 +20239,297 @@ internal enum Operations {
                     }
                 }
                 /// Received HTTP response body
-                internal var body: Operations.ToggleContentFavorite.Output.UnprocessableContent.Body
+                internal var body: Operations.SaveContentToKnowledge.Output.UnprocessableContent.Body
                 /// Creates a new `UnprocessableContent`.
                 ///
                 /// - Parameters:
                 ///   - body: Received HTTP response body
-                internal init(body: Operations.ToggleContentFavorite.Output.UnprocessableContent.Body) {
+                internal init(body: Operations.SaveContentToKnowledge.Output.UnprocessableContent.Body) {
                     self.body = body
                 }
             }
             /// Validation Error
             ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)/responses/422`.
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)/responses/422`.
             ///
             /// HTTP response code: `422 unprocessableContent`.
-            case unprocessableContent(Operations.ToggleContentFavorite.Output.UnprocessableContent)
+            case unprocessableContent(Operations.SaveContentToKnowledge.Output.UnprocessableContent)
             /// The associated value of the enum case if `self` is `.unprocessableContent`.
             ///
             /// - Throws: An error if `self` is not `.unprocessableContent`.
             /// - SeeAlso: `.unprocessableContent`.
-            internal var unprocessableContent: Operations.ToggleContentFavorite.Output.UnprocessableContent {
+            internal var unprocessableContent: Operations.SaveContentToKnowledge.Output.UnprocessableContent {
+                get throws {
+                    switch self {
+                    case let .unprocessableContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unprocessableContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
+    /// Remove content from knowledge
+    ///
+    /// Remove a specific content item from the user's knowledge library.
+    ///
+    /// - Remark: HTTP `DELETE /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)`.
+    internal enum RemoveContentFromKnowledge {
+        internal static let id: Swift.String = "removeContentFromKnowledge"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/path`.
+            internal struct Path: Sendable, Hashable {
+                /// Content ID
+                ///
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/path/content_id`.
+                internal var contentId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - contentId: Content ID
+                internal init(contentId: Swift.Int) {
+                    self.contentId = contentId
+                }
+            }
+            internal var path: Operations.RemoveContentFromKnowledge.Input.Path
+            /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RemoveContentFromKnowledge.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RemoveContentFromKnowledge.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.RemoveContentFromKnowledge.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            internal init(
+                path: Operations.RemoveContentFromKnowledge.Input.Path,
+                headers: Operations.RemoveContentFromKnowledge.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/responses/200/content/json`.
+                    internal struct JsonPayload: Codable, Hashable, Sendable {
+                        /// A container of undocumented properties.
+                        internal var additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer
+                        /// Creates a new `JsonPayload`.
+                        ///
+                        /// - Parameters:
+                        ///   - additionalProperties: A container of undocumented properties.
+                        internal init(additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer = .init()) {
+                            self.additionalProperties = additionalProperties
+                        }
+                        internal init(from decoder: any Decoder) throws {
+                            additionalProperties = try decoder.decodeAdditionalProperties(knownKeys: [])
+                        }
+                        internal func encode(to encoder: any Encoder) throws {
+                            try encoder.encodeAdditionalProperties(additionalProperties)
+                        }
+                    }
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/responses/200/content/application\/json`.
+                    case json(Operations.RemoveContentFromKnowledge.Output.Ok.Body.JsonPayload)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Operations.RemoveContentFromKnowledge.Output.Ok.Body.JsonPayload {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RemoveContentFromKnowledge.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RemoveContentFromKnowledge.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Content removed from knowledge successfully
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.RemoveContentFromKnowledge.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.RemoveContentFromKnowledge.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct Unauthorized: Sendable, Hashable {
+                /// Creates a new `Unauthorized`.
+                internal init() {}
+            }
+            /// Authentication required
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/401`.
+            ///
+            /// HTTP response code: `401 unauthorized`.
+            case unauthorized(Operations.RemoveContentFromKnowledge.Output.Unauthorized)
+            /// Authentication required
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/401`.
+            ///
+            /// HTTP response code: `401 unauthorized`.
+            internal static var unauthorized: Self {
+                .unauthorized(.init())
+            }
+            /// The associated value of the enum case if `self` is `.unauthorized`.
+            ///
+            /// - Throws: An error if `self` is not `.unauthorized`.
+            /// - SeeAlso: `.unauthorized`.
+            internal var unauthorized: Operations.RemoveContentFromKnowledge.Output.Unauthorized {
+                get throws {
+                    switch self {
+                    case let .unauthorized(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unauthorized",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct NotFound: Sendable, Hashable {
+                /// Creates a new `NotFound`.
+                internal init() {}
+            }
+            /// Content not found
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Operations.RemoveContentFromKnowledge.Output.NotFound)
+            /// Content not found
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            internal static var notFound: Self {
+                .notFound(.init())
+            }
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            internal var notFound: Operations.RemoveContentFromKnowledge.Output.NotFound {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct UnprocessableContent: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/responses/422/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/content/{content_id}/knowledge/DELETE/responses/422/content/application\/json`.
+                    case json(Components.Schemas.HTTPValidationError)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.HTTPValidationError {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RemoveContentFromKnowledge.Output.UnprocessableContent.Body
+                /// Creates a new `UnprocessableContent`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RemoveContentFromKnowledge.Output.UnprocessableContent.Body) {
+                    self.body = body
+                }
+            }
+            /// Validation Error
+            ///
+            /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)/responses/422`.
+            ///
+            /// HTTP response code: `422 unprocessableContent`.
+            case unprocessableContent(Operations.RemoveContentFromKnowledge.Output.UnprocessableContent)
+            /// The associated value of the enum case if `self` is `.unprocessableContent`.
+            ///
+            /// - Throws: An error if `self` is not `.unprocessableContent`.
+            /// - SeeAlso: `.unprocessableContent`.
+            internal var unprocessableContent: Operations.RemoveContentFromKnowledge.Output.UnprocessableContent {
                 get throws {
                     switch self {
                     case let .unprocessableContent(response):
@@ -20450,277 +21376,6 @@ internal enum Operations {
                     default:
                         try throwUnexpectedResponseStatus(
                             expectedStatus: "badGateway",
-                            response: self
-                        )
-                    }
-                }
-            }
-            /// Undocumented response.
-            ///
-            /// A response with a code that is not documented in the OpenAPI document.
-            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
-        }
-        internal enum AcceptableContentType: AcceptableProtocol {
-            case json
-            case other(Swift.String)
-            internal init?(rawValue: Swift.String) {
-                switch rawValue.lowercased() {
-                case "application/json":
-                    self = .json
-                default:
-                    self = .other(rawValue)
-                }
-            }
-            internal var rawValue: Swift.String {
-                switch self {
-                case let .other(string):
-                    return string
-                case .json:
-                    return "application/json"
-                }
-            }
-            internal static var allCases: [Self] {
-                [
-                    .json
-                ]
-            }
-        }
-    }
-    /// Remove from favorites
-    ///
-    /// Remove a specific content item from favorites.
-    ///
-    /// - Remark: HTTP `DELETE /api/content/{content_id}/unfavorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)`.
-    internal enum UnfavoriteContent {
-        internal static let id: Swift.String = "unfavoriteContent"
-        internal struct Input: Sendable, Hashable {
-            /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/path`.
-            internal struct Path: Sendable, Hashable {
-                /// Content ID
-                ///
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/path/content_id`.
-                internal var contentId: Swift.Int
-                /// Creates a new `Path`.
-                ///
-                /// - Parameters:
-                ///   - contentId: Content ID
-                internal init(contentId: Swift.Int) {
-                    self.contentId = contentId
-                }
-            }
-            internal var path: Operations.UnfavoriteContent.Input.Path
-            /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/header`.
-            internal struct Headers: Sendable, Hashable {
-                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.UnfavoriteContent.AcceptableContentType>]
-                /// Creates a new `Headers`.
-                ///
-                /// - Parameters:
-                ///   - accept:
-                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.UnfavoriteContent.AcceptableContentType>] = .defaultValues()) {
-                    self.accept = accept
-                }
-            }
-            internal var headers: Operations.UnfavoriteContent.Input.Headers
-            /// Creates a new `Input`.
-            ///
-            /// - Parameters:
-            ///   - path:
-            ///   - headers:
-            internal init(
-                path: Operations.UnfavoriteContent.Input.Path,
-                headers: Operations.UnfavoriteContent.Input.Headers = .init()
-            ) {
-                self.path = path
-                self.headers = headers
-            }
-        }
-        internal enum Output: Sendable, Hashable {
-            internal struct Ok: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/responses/200/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/responses/200/content/json`.
-                    internal struct JsonPayload: Codable, Hashable, Sendable {
-                        /// A container of undocumented properties.
-                        internal var additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer
-                        /// Creates a new `JsonPayload`.
-                        ///
-                        /// - Parameters:
-                        ///   - additionalProperties: A container of undocumented properties.
-                        internal init(additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer = .init()) {
-                            self.additionalProperties = additionalProperties
-                        }
-                        internal init(from decoder: any Decoder) throws {
-                            additionalProperties = try decoder.decodeAdditionalProperties(knownKeys: [])
-                        }
-                        internal func encode(to encoder: any Encoder) throws {
-                            try encoder.encodeAdditionalProperties(additionalProperties)
-                        }
-                    }
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/responses/200/content/application\/json`.
-                    case json(Operations.UnfavoriteContent.Output.Ok.Body.JsonPayload)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Operations.UnfavoriteContent.Output.Ok.Body.JsonPayload {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.UnfavoriteContent.Output.Ok.Body
-                /// Creates a new `Ok`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.UnfavoriteContent.Output.Ok.Body) {
-                    self.body = body
-                }
-            }
-            /// Content removed from favorites successfully
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/200`.
-            ///
-            /// HTTP response code: `200 ok`.
-            case ok(Operations.UnfavoriteContent.Output.Ok)
-            /// The associated value of the enum case if `self` is `.ok`.
-            ///
-            /// - Throws: An error if `self` is not `.ok`.
-            /// - SeeAlso: `.ok`.
-            internal var ok: Operations.UnfavoriteContent.Output.Ok {
-                get throws {
-                    switch self {
-                    case let .ok(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "ok",
-                            response: self
-                        )
-                    }
-                }
-            }
-            internal struct Unauthorized: Sendable, Hashable {
-                /// Creates a new `Unauthorized`.
-                internal init() {}
-            }
-            /// Authentication required
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/401`.
-            ///
-            /// HTTP response code: `401 unauthorized`.
-            case unauthorized(Operations.UnfavoriteContent.Output.Unauthorized)
-            /// Authentication required
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/401`.
-            ///
-            /// HTTP response code: `401 unauthorized`.
-            internal static var unauthorized: Self {
-                .unauthorized(.init())
-            }
-            /// The associated value of the enum case if `self` is `.unauthorized`.
-            ///
-            /// - Throws: An error if `self` is not `.unauthorized`.
-            /// - SeeAlso: `.unauthorized`.
-            internal var unauthorized: Operations.UnfavoriteContent.Output.Unauthorized {
-                get throws {
-                    switch self {
-                    case let .unauthorized(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "unauthorized",
-                            response: self
-                        )
-                    }
-                }
-            }
-            internal struct NotFound: Sendable, Hashable {
-                /// Creates a new `NotFound`.
-                internal init() {}
-            }
-            /// Content not found
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/404`.
-            ///
-            /// HTTP response code: `404 notFound`.
-            case notFound(Operations.UnfavoriteContent.Output.NotFound)
-            /// Content not found
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/404`.
-            ///
-            /// HTTP response code: `404 notFound`.
-            internal static var notFound: Self {
-                .notFound(.init())
-            }
-            /// The associated value of the enum case if `self` is `.notFound`.
-            ///
-            /// - Throws: An error if `self` is not `.notFound`.
-            /// - SeeAlso: `.notFound`.
-            internal var notFound: Operations.UnfavoriteContent.Output.NotFound {
-                get throws {
-                    switch self {
-                    case let .notFound(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "notFound",
-                            response: self
-                        )
-                    }
-                }
-            }
-            internal struct UnprocessableContent: Sendable, Hashable {
-                /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/responses/422/content`.
-                internal enum Body: Sendable, Hashable {
-                    /// - Remark: Generated from `#/paths/api/content/{content_id}/unfavorite/DELETE/responses/422/content/application\/json`.
-                    case json(Components.Schemas.HTTPValidationError)
-                    /// The associated value of the enum case if `self` is `.json`.
-                    ///
-                    /// - Throws: An error if `self` is not `.json`.
-                    /// - SeeAlso: `.json`.
-                    internal var json: Components.Schemas.HTTPValidationError {
-                        get throws {
-                            switch self {
-                            case let .json(body):
-                                return body
-                            }
-                        }
-                    }
-                }
-                /// Received HTTP response body
-                internal var body: Operations.UnfavoriteContent.Output.UnprocessableContent.Body
-                /// Creates a new `UnprocessableContent`.
-                ///
-                /// - Parameters:
-                ///   - body: Received HTTP response body
-                internal init(body: Operations.UnfavoriteContent.Output.UnprocessableContent.Body) {
-                    self.body = body
-                }
-            }
-            /// Validation Error
-            ///
-            /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)/responses/422`.
-            ///
-            /// HTTP response code: `422 unprocessableContent`.
-            case unprocessableContent(Operations.UnfavoriteContent.Output.UnprocessableContent)
-            /// The associated value of the enum case if `self` is `.unprocessableContent`.
-            ///
-            /// - Throws: An error if `self` is not `.unprocessableContent`.
-            /// - SeeAlso: `.unprocessableContent`.
-            internal var unprocessableContent: Operations.UnfavoriteContent.Output.UnprocessableContent {
-                get throws {
-                    switch self {
-                    case let .unprocessableContent(response):
-                        return response
-                    default:
-                        try throwUnexpectedResponseStatus(
-                            expectedStatus: "unprocessableContent",
                             response: self
                         )
                     }
@@ -24505,6 +25160,222 @@ internal enum Operations {
             }
         }
     }
+    /// Refresh one news item discussion
+    ///
+    /// Refresh discussion payload for one visible representative news item.
+    ///
+    /// - Remark: HTTP `POST /api/news/items/{news_item_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)`.
+    internal enum RefreshNewsItemDiscussion {
+        internal static let id: Swift.String = "refreshNewsItemDiscussion"
+        internal struct Input: Sendable, Hashable {
+            /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/path`.
+            internal struct Path: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/path/news_item_id`.
+                internal var newsItemId: Swift.Int
+                /// Creates a new `Path`.
+                ///
+                /// - Parameters:
+                ///   - newsItemId:
+                internal init(newsItemId: Swift.Int) {
+                    self.newsItemId = newsItemId
+                }
+            }
+            internal var path: Operations.RefreshNewsItemDiscussion.Input.Path
+            /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/header`.
+            internal struct Headers: Sendable, Hashable {
+                internal var accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RefreshNewsItemDiscussion.AcceptableContentType>]
+                /// Creates a new `Headers`.
+                ///
+                /// - Parameters:
+                ///   - accept:
+                internal init(accept: [OpenAPIRuntime.AcceptHeaderContentType<Operations.RefreshNewsItemDiscussion.AcceptableContentType>] = .defaultValues()) {
+                    self.accept = accept
+                }
+            }
+            internal var headers: Operations.RefreshNewsItemDiscussion.Input.Headers
+            /// Creates a new `Input`.
+            ///
+            /// - Parameters:
+            ///   - path:
+            ///   - headers:
+            internal init(
+                path: Operations.RefreshNewsItemDiscussion.Input.Path,
+                headers: Operations.RefreshNewsItemDiscussion.Input.Headers = .init()
+            ) {
+                self.path = path
+                self.headers = headers
+            }
+        }
+        internal enum Output: Sendable, Hashable {
+            internal struct Ok: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/responses/200/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/responses/200/content/application\/json`.
+                    case json(Components.Schemas.ContentDiscussionResponse)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.ContentDiscussionResponse {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RefreshNewsItemDiscussion.Output.Ok.Body
+                /// Creates a new `Ok`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RefreshNewsItemDiscussion.Output.Ok.Body) {
+                    self.body = body
+                }
+            }
+            /// Successful Response
+            ///
+            /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)/responses/200`.
+            ///
+            /// HTTP response code: `200 ok`.
+            case ok(Operations.RefreshNewsItemDiscussion.Output.Ok)
+            /// The associated value of the enum case if `self` is `.ok`.
+            ///
+            /// - Throws: An error if `self` is not `.ok`.
+            /// - SeeAlso: `.ok`.
+            internal var ok: Operations.RefreshNewsItemDiscussion.Output.Ok {
+                get throws {
+                    switch self {
+                    case let .ok(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "ok",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct NotFound: Sendable, Hashable {
+                /// Creates a new `NotFound`.
+                internal init() {}
+            }
+            /// Not found
+            ///
+            /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            case notFound(Operations.RefreshNewsItemDiscussion.Output.NotFound)
+            /// Not found
+            ///
+            /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)/responses/404`.
+            ///
+            /// HTTP response code: `404 notFound`.
+            internal static var notFound: Self {
+                .notFound(.init())
+            }
+            /// The associated value of the enum case if `self` is `.notFound`.
+            ///
+            /// - Throws: An error if `self` is not `.notFound`.
+            /// - SeeAlso: `.notFound`.
+            internal var notFound: Operations.RefreshNewsItemDiscussion.Output.NotFound {
+                get throws {
+                    switch self {
+                    case let .notFound(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "notFound",
+                            response: self
+                        )
+                    }
+                }
+            }
+            internal struct UnprocessableContent: Sendable, Hashable {
+                /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/responses/422/content`.
+                internal enum Body: Sendable, Hashable {
+                    /// - Remark: Generated from `#/paths/api/news/items/{news_item_id}/discussion/refresh/POST/responses/422/content/application\/json`.
+                    case json(Components.Schemas.HTTPValidationError)
+                    /// The associated value of the enum case if `self` is `.json`.
+                    ///
+                    /// - Throws: An error if `self` is not `.json`.
+                    /// - SeeAlso: `.json`.
+                    internal var json: Components.Schemas.HTTPValidationError {
+                        get throws {
+                            switch self {
+                            case let .json(body):
+                                return body
+                            }
+                        }
+                    }
+                }
+                /// Received HTTP response body
+                internal var body: Operations.RefreshNewsItemDiscussion.Output.UnprocessableContent.Body
+                /// Creates a new `UnprocessableContent`.
+                ///
+                /// - Parameters:
+                ///   - body: Received HTTP response body
+                internal init(body: Operations.RefreshNewsItemDiscussion.Output.UnprocessableContent.Body) {
+                    self.body = body
+                }
+            }
+            /// Validation Error
+            ///
+            /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)/responses/422`.
+            ///
+            /// HTTP response code: `422 unprocessableContent`.
+            case unprocessableContent(Operations.RefreshNewsItemDiscussion.Output.UnprocessableContent)
+            /// The associated value of the enum case if `self` is `.unprocessableContent`.
+            ///
+            /// - Throws: An error if `self` is not `.unprocessableContent`.
+            /// - SeeAlso: `.unprocessableContent`.
+            internal var unprocessableContent: Operations.RefreshNewsItemDiscussion.Output.UnprocessableContent {
+                get throws {
+                    switch self {
+                    case let .unprocessableContent(response):
+                        return response
+                    default:
+                        try throwUnexpectedResponseStatus(
+                            expectedStatus: "unprocessableContent",
+                            response: self
+                        )
+                    }
+                }
+            }
+            /// Undocumented response.
+            ///
+            /// A response with a code that is not documented in the OpenAPI document.
+            case undocumented(statusCode: Swift.Int, OpenAPIRuntime.UndocumentedPayload)
+        }
+        internal enum AcceptableContentType: AcceptableProtocol {
+            case json
+            case other(Swift.String)
+            internal init?(rawValue: Swift.String) {
+                switch rawValue.lowercased() {
+                case "application/json":
+                    self = .json
+                default:
+                    self = .other(rawValue)
+                }
+            }
+            internal var rawValue: Swift.String {
+                switch self {
+                case let .other(string):
+                    return string
+                case .json:
+                    return "application/json"
+                }
+            }
+            internal static var allCases: [Self] {
+                [
+                    .json
+                ]
+            }
+        }
+    }
     /// Start onboarding audio discovery
     ///
     /// Start onboarding discovery from an audio transcript.
@@ -27166,12 +28037,12 @@ internal enum Operations {
                     /// - Remark: Generated from `#/paths/auth/admin/logout/POST/responses/200/content/json`.
                     internal struct JsonPayload: Codable, Hashable, Sendable {
                         /// A container of undocumented properties.
-                        internal var additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer
+                        internal var additionalProperties: [String: Swift.String]
                         /// Creates a new `JsonPayload`.
                         ///
                         /// - Parameters:
                         ///   - additionalProperties: A container of undocumented properties.
-                        internal init(additionalProperties: OpenAPIRuntime.OpenAPIObjectContainer = .init()) {
+                        internal init(additionalProperties: [String: Swift.String] = .init()) {
                             self.additionalProperties = additionalProperties
                         }
                         internal init(from decoder: any Decoder) throws {

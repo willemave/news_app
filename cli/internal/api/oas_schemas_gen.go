@@ -1115,19 +1115,19 @@ type ContentDetailResponse struct {
 	ID int `json:"id"`
 	// URL of full-size AI-generated image for this content.
 	ImageURL OptNilString `json:"image_url"`
-	// Whether the content has been favorited.
-	IsFavorited OptBool `json:"is_favorited"`
 	// Whether the content has been marked as read.
 	IsRead OptBool `json:"is_read"`
+	// Whether the content has been saved to the user's knowledge library.
+	IsSavedToKnowledge OptBool `json:"is_saved_to_knowledge"`
 	// Content-specific metadata.
 	Metadata ContentDetailResponseMetadata `json:"metadata"`
 	// Canonical article link for news content.
 	NewsArticleURL OptNilString `json:"news_article_url"`
 	// Aggregator discussion URL (HN thread, tweet, etc.).
 	NewsDiscussionURL OptNilString `json:"news_discussion_url"`
-	// Key points provided for news digests.
+	// Key points provided for news items.
 	NewsKeyPoints OptNilStringArray `json:"news_key_points"`
-	// Short overview synthesized for news digests.
+	// Short overview synthesized for news items.
 	NewsSummary OptNilString `json:"news_summary"`
 	// ISO timestamp when content was processed.
 	ProcessedAt OptNilString `json:"processed_at"`
@@ -1245,14 +1245,14 @@ func (s *ContentDetailResponse) GetImageURL() OptNilString {
 	return s.ImageURL
 }
 
-// GetIsFavorited returns the value of IsFavorited.
-func (s *ContentDetailResponse) GetIsFavorited() OptBool {
-	return s.IsFavorited
-}
-
 // GetIsRead returns the value of IsRead.
 func (s *ContentDetailResponse) GetIsRead() OptBool {
 	return s.IsRead
+}
+
+// GetIsSavedToKnowledge returns the value of IsSavedToKnowledge.
+func (s *ContentDetailResponse) GetIsSavedToKnowledge() OptBool {
+	return s.IsSavedToKnowledge
 }
 
 // GetMetadata returns the value of Metadata.
@@ -1445,14 +1445,14 @@ func (s *ContentDetailResponse) SetImageURL(val OptNilString) {
 	s.ImageURL = val
 }
 
-// SetIsFavorited sets the value of IsFavorited.
-func (s *ContentDetailResponse) SetIsFavorited(val OptBool) {
-	s.IsFavorited = val
-}
-
 // SetIsRead sets the value of IsRead.
 func (s *ContentDetailResponse) SetIsRead(val OptBool) {
 	s.IsRead = val
+}
+
+// SetIsSavedToKnowledge sets the value of IsSavedToKnowledge.
+func (s *ContentDetailResponse) SetIsSavedToKnowledge(val OptBool) {
+	s.IsSavedToKnowledge = val
 }
 
 // SetMetadata sets the value of Metadata.
@@ -1675,12 +1675,13 @@ func (*ContentListResponse) listNewsItemsRes() {}
 type ContentStatus string
 
 const (
-	ContentStatusNew        ContentStatus = "new"
-	ContentStatusPending    ContentStatus = "pending"
-	ContentStatusProcessing ContentStatus = "processing"
-	ContentStatusCompleted  ContentStatus = "completed"
-	ContentStatusFailed     ContentStatus = "failed"
-	ContentStatusSkipped    ContentStatus = "skipped"
+	ContentStatusNew           ContentStatus = "new"
+	ContentStatusPending       ContentStatus = "pending"
+	ContentStatusProcessing    ContentStatus = "processing"
+	ContentStatusAwaitingImage ContentStatus = "awaiting_image"
+	ContentStatusCompleted     ContentStatus = "completed"
+	ContentStatusFailed        ContentStatus = "failed"
+	ContentStatusSkipped       ContentStatus = "skipped"
 )
 
 // AllValues returns all ContentStatus values.
@@ -1689,6 +1690,7 @@ func (ContentStatus) AllValues() []ContentStatus {
 		ContentStatusNew,
 		ContentStatusPending,
 		ContentStatusProcessing,
+		ContentStatusAwaitingImage,
 		ContentStatusCompleted,
 		ContentStatusFailed,
 		ContentStatusSkipped,
@@ -1703,6 +1705,8 @@ func (s ContentStatus) MarshalText() ([]byte, error) {
 	case ContentStatusPending:
 		return []byte(s), nil
 	case ContentStatusProcessing:
+		return []byte(s), nil
+	case ContentStatusAwaitingImage:
 		return []byte(s), nil
 	case ContentStatusCompleted:
 		return []byte(s), nil
@@ -1726,6 +1730,9 @@ func (s *ContentStatus) UnmarshalText(data []byte) error {
 		return nil
 	case ContentStatusProcessing:
 		*s = ContentStatusProcessing
+		return nil
+	case ContentStatusAwaitingImage:
+		*s = ContentStatusAwaitingImage
 		return nil
 	case ContentStatusCompleted:
 		*s = ContentStatusCompleted
@@ -1859,17 +1866,17 @@ type ContentSummaryResponse struct {
 	ID int `json:"id"`
 	// URL of full-size AI-generated image for this content.
 	ImageURL OptNilString `json:"image_url"`
-	// Whether the content has been favorited.
-	IsFavorited OptBool `json:"is_favorited"`
 	// Whether the content has been marked as read.
 	IsRead OptBool `json:"is_read"`
+	// Whether the content has been saved to the user's knowledge library.
+	IsSavedToKnowledge OptBool `json:"is_saved_to_knowledge"`
 	// Canonical article link for news content.
 	NewsArticleURL OptNilString `json:"news_article_url"`
 	// Aggregator discussion URL (HN thread, tweet, etc.).
 	NewsDiscussionURL OptNilString `json:"news_discussion_url"`
-	// Key points provided for news digests.
+	// Key points provided for news items.
 	NewsKeyPoints OptNilStringArray `json:"news_key_points"`
-	// Short overview synthesized for news digests.
+	// Short overview synthesized for news items.
 	NewsSummary OptNilString `json:"news_summary"`
 	// Content platform (e.g., twitter, substack, youtube).
 	Platform OptNilString `json:"platform"`
@@ -1934,14 +1941,14 @@ func (s *ContentSummaryResponse) GetImageURL() OptNilString {
 	return s.ImageURL
 }
 
-// GetIsFavorited returns the value of IsFavorited.
-func (s *ContentSummaryResponse) GetIsFavorited() OptBool {
-	return s.IsFavorited
-}
-
 // GetIsRead returns the value of IsRead.
 func (s *ContentSummaryResponse) GetIsRead() OptBool {
 	return s.IsRead
+}
+
+// GetIsSavedToKnowledge returns the value of IsSavedToKnowledge.
+func (s *ContentSummaryResponse) GetIsSavedToKnowledge() OptBool {
+	return s.IsSavedToKnowledge
 }
 
 // GetNewsArticleURL returns the value of NewsArticleURL.
@@ -2064,14 +2071,14 @@ func (s *ContentSummaryResponse) SetImageURL(val OptNilString) {
 	s.ImageURL = val
 }
 
-// SetIsFavorited sets the value of IsFavorited.
-func (s *ContentSummaryResponse) SetIsFavorited(val OptBool) {
-	s.IsFavorited = val
-}
-
 // SetIsRead sets the value of IsRead.
 func (s *ContentSummaryResponse) SetIsRead(val OptBool) {
 	s.IsRead = val
+}
+
+// SetIsSavedToKnowledge sets the value of IsSavedToKnowledge.
+func (s *ContentSummaryResponse) SetIsSavedToKnowledge(val OptBool) {
+	s.IsSavedToKnowledge = val
 }
 
 // SetNewsArticleURL sets the value of NewsArticleURL.
@@ -2397,26 +2404,27 @@ func (s *HTTPValidationError) SetDetail(val []ValidationError) {
 	s.Detail = val
 }
 
-func (*HTTPValidationError) approveCliLinkRes()           {}
-func (*HTTPValidationError) completeOnboardingRes()       {}
-func (*HTTPValidationError) convertNewsItemToArticleRes() {}
-func (*HTTPValidationError) generateDigestRes()           {}
-func (*HTTPValidationError) getAgentLibraryFileRes()      {}
-func (*HTTPValidationError) getAgentLibraryManifestRes()  {}
-func (*HTTPValidationError) getContentDetailRes()         {}
-func (*HTTPValidationError) getJobRes()                   {}
-func (*HTTPValidationError) getNewsItemRes()              {}
-func (*HTTPValidationError) getOnboardingRes()            {}
-func (*HTTPValidationError) listContentsRes()             {}
-func (*HTTPValidationError) listNewsItemsRes()            {}
-func (*HTTPValidationError) listScraperConfigsRes()       {}
-func (*HTTPValidationError) markNewsItemsReadRes()        {}
-func (*HTTPValidationError) pollCliLinkRes()              {}
-func (*HTTPValidationError) searchAgentRes()              {}
-func (*HTTPValidationError) startCliLinkRes()             {}
-func (*HTTPValidationError) startOnboardingRes()          {}
-func (*HTTPValidationError) submitContentRes()            {}
-func (*HTTPValidationError) subscribeScrapersToFeedRes()  {}
+func (*HTTPValidationError) approveCliLinkRes()                {}
+func (*HTTPValidationError) completeOnboardingRes()            {}
+func (*HTTPValidationError) convertNewsItemToArticleRes()      {}
+func (*HTTPValidationError) generateDigestRes()                {}
+func (*HTTPValidationError) getAgentLibraryFileRes()           {}
+func (*HTTPValidationError) getAgentLibraryManifestRes()       {}
+func (*HTTPValidationError) getContentDetailRes()              {}
+func (*HTTPValidationError) getJobRes()                        {}
+func (*HTTPValidationError) getNewsItemRes()                   {}
+func (*HTTPValidationError) getOnboardingRes()                 {}
+func (*HTTPValidationError) listContentSubmissionStatusesRes() {}
+func (*HTTPValidationError) listContentsRes()                  {}
+func (*HTTPValidationError) listNewsItemsRes()                 {}
+func (*HTTPValidationError) listScraperConfigsRes()            {}
+func (*HTTPValidationError) markNewsItemsReadRes()             {}
+func (*HTTPValidationError) pollCliLinkRes()                   {}
+func (*HTTPValidationError) searchAgentRes()                   {}
+func (*HTTPValidationError) startCliLinkRes()                  {}
+func (*HTTPValidationError) startOnboardingRes()               {}
+func (*HTTPValidationError) submitContentRes()                 {}
+func (*HTTPValidationError) subscribeScrapersToFeedRes()       {}
 
 // Status payload for an async processing job.
 // Ref: #/components/schemas/JobStatusResponse
@@ -2556,6 +2564,11 @@ func (s *JobStatusResponsePayload) init() JobStatusResponsePayload {
 	}
 	return m
 }
+
+// ListContentSubmissionStatusesNotFound is response for ListContentSubmissionStatuses operation.
+type ListContentSubmissionStatusesNotFound struct{}
+
+func (*ListContentSubmissionStatusesNotFound) listContentSubmissionStatusesRes() {}
 
 // ListContentsNotFound is response for ListContents operation.
 type ListContentsNotFound struct{}
@@ -4330,6 +4343,174 @@ func (s *ScraperConfigStatsResponse) SetUnreadCount(val int) {
 	s.UnreadCount = val
 }
 
+// Response for user submission status list.
+// Ref: #/components/schemas/SubmissionStatusListResponse
+type SubmissionStatusListResponse struct {
+	// Pagination metadata for the response.
+	Meta PaginationMetadata `json:"meta"`
+	// List of user-submitted items still processing or failed.
+	Submissions []SubmissionStatusResponse `json:"submissions"`
+}
+
+// GetMeta returns the value of Meta.
+func (s *SubmissionStatusListResponse) GetMeta() PaginationMetadata {
+	return s.Meta
+}
+
+// GetSubmissions returns the value of Submissions.
+func (s *SubmissionStatusListResponse) GetSubmissions() []SubmissionStatusResponse {
+	return s.Submissions
+}
+
+// SetMeta sets the value of Meta.
+func (s *SubmissionStatusListResponse) SetMeta(val PaginationMetadata) {
+	s.Meta = val
+}
+
+// SetSubmissions sets the value of Submissions.
+func (s *SubmissionStatusListResponse) SetSubmissions(val []SubmissionStatusResponse) {
+	s.Submissions = val
+}
+
+func (*SubmissionStatusListResponse) listContentSubmissionStatusesRes() {}
+
+// Status information for a user-submitted content item.
+// Ref: #/components/schemas/SubmissionStatusResponse
+type SubmissionStatusResponse struct {
+	// Type of content (article/podcast/news/unknown).
+	ContentType ContentType `json:"content_type"`
+	// ISO timestamp when content was created.
+	CreatedAt string `json:"created_at"`
+	// Failure reason when status=failed/skipped.
+	ErrorMessage OptNilString `json:"error_message"`
+	// Unique identifier.
+	ID int `json:"id"`
+	// Whether this content was submitted by the current user.
+	IsSelfSubmission OptBool `json:"is_self_submission"`
+	// ISO timestamp when content was processed.
+	ProcessedAt OptNilString `json:"processed_at"`
+	// Original submitted URL.
+	SourceURL OptNilString `json:"source_url"`
+	// Processing status.
+	Status ContentStatus `json:"status"`
+	// Submission channel (share_sheet, etc.).
+	SubmittedVia OptNilString `json:"submitted_via"`
+	// Content title (if detected).
+	Title OptNilString `json:"title"`
+	// Canonical URL of the content.
+	URL string `json:"url"`
+}
+
+// GetContentType returns the value of ContentType.
+func (s *SubmissionStatusResponse) GetContentType() ContentType {
+	return s.ContentType
+}
+
+// GetCreatedAt returns the value of CreatedAt.
+func (s *SubmissionStatusResponse) GetCreatedAt() string {
+	return s.CreatedAt
+}
+
+// GetErrorMessage returns the value of ErrorMessage.
+func (s *SubmissionStatusResponse) GetErrorMessage() OptNilString {
+	return s.ErrorMessage
+}
+
+// GetID returns the value of ID.
+func (s *SubmissionStatusResponse) GetID() int {
+	return s.ID
+}
+
+// GetIsSelfSubmission returns the value of IsSelfSubmission.
+func (s *SubmissionStatusResponse) GetIsSelfSubmission() OptBool {
+	return s.IsSelfSubmission
+}
+
+// GetProcessedAt returns the value of ProcessedAt.
+func (s *SubmissionStatusResponse) GetProcessedAt() OptNilString {
+	return s.ProcessedAt
+}
+
+// GetSourceURL returns the value of SourceURL.
+func (s *SubmissionStatusResponse) GetSourceURL() OptNilString {
+	return s.SourceURL
+}
+
+// GetStatus returns the value of Status.
+func (s *SubmissionStatusResponse) GetStatus() ContentStatus {
+	return s.Status
+}
+
+// GetSubmittedVia returns the value of SubmittedVia.
+func (s *SubmissionStatusResponse) GetSubmittedVia() OptNilString {
+	return s.SubmittedVia
+}
+
+// GetTitle returns the value of Title.
+func (s *SubmissionStatusResponse) GetTitle() OptNilString {
+	return s.Title
+}
+
+// GetURL returns the value of URL.
+func (s *SubmissionStatusResponse) GetURL() string {
+	return s.URL
+}
+
+// SetContentType sets the value of ContentType.
+func (s *SubmissionStatusResponse) SetContentType(val ContentType) {
+	s.ContentType = val
+}
+
+// SetCreatedAt sets the value of CreatedAt.
+func (s *SubmissionStatusResponse) SetCreatedAt(val string) {
+	s.CreatedAt = val
+}
+
+// SetErrorMessage sets the value of ErrorMessage.
+func (s *SubmissionStatusResponse) SetErrorMessage(val OptNilString) {
+	s.ErrorMessage = val
+}
+
+// SetID sets the value of ID.
+func (s *SubmissionStatusResponse) SetID(val int) {
+	s.ID = val
+}
+
+// SetIsSelfSubmission sets the value of IsSelfSubmission.
+func (s *SubmissionStatusResponse) SetIsSelfSubmission(val OptBool) {
+	s.IsSelfSubmission = val
+}
+
+// SetProcessedAt sets the value of ProcessedAt.
+func (s *SubmissionStatusResponse) SetProcessedAt(val OptNilString) {
+	s.ProcessedAt = val
+}
+
+// SetSourceURL sets the value of SourceURL.
+func (s *SubmissionStatusResponse) SetSourceURL(val OptNilString) {
+	s.SourceURL = val
+}
+
+// SetStatus sets the value of Status.
+func (s *SubmissionStatusResponse) SetStatus(val ContentStatus) {
+	s.Status = val
+}
+
+// SetSubmittedVia sets the value of SubmittedVia.
+func (s *SubmissionStatusResponse) SetSubmittedVia(val OptNilString) {
+	s.SubmittedVia = val
+}
+
+// SetTitle sets the value of Title.
+func (s *SubmissionStatusResponse) SetTitle(val OptNilString) {
+	s.Title = val
+}
+
+// SetURL sets the value of URL.
+func (s *SubmissionStatusResponse) SetURL(val string) {
+	s.URL = val
+}
+
 type SubmitContentCreated ContentSubmissionResponse
 
 func (*SubmitContentCreated) submitContentRes() {}
@@ -4350,13 +4531,13 @@ type SubmitContentRequest struct {
 	ContentType OptContentType `json:"content_type"`
 	// Whether to create additional content items from relevant links discovered on the submitted page.
 	CrawlLinks OptBool `json:"crawl_links"`
-	// When true, download and summarize the submitted content, then mark it as read and add it to the
-	// user's favorites.
-	FavoriteAndMarkRead OptBool `json:"favorite_and_mark_read"`
 	// Optional instruction for analyzing the submitted URL.
 	Instruction OptNilString `json:"instruction"`
 	// Optional platform hint (e.g., spotify, substack).
 	Platform OptNilString `json:"platform"`
+	// When true, download and summarize the submitted content, then mark it as read and save it to the
+	// user's knowledge library.
+	SaveToKnowledgeAndMarkRead OptBool `json:"save_to_knowledge_and_mark_read"`
 	// When true, mark the submitted content as read and start a dig-deeper chat after processing
 	// completes.
 	ShareAndChat OptBool `json:"share_and_chat"`
@@ -4379,11 +4560,6 @@ func (s *SubmitContentRequest) GetCrawlLinks() OptBool {
 	return s.CrawlLinks
 }
 
-// GetFavoriteAndMarkRead returns the value of FavoriteAndMarkRead.
-func (s *SubmitContentRequest) GetFavoriteAndMarkRead() OptBool {
-	return s.FavoriteAndMarkRead
-}
-
 // GetInstruction returns the value of Instruction.
 func (s *SubmitContentRequest) GetInstruction() OptNilString {
 	return s.Instruction
@@ -4392,6 +4568,11 @@ func (s *SubmitContentRequest) GetInstruction() OptNilString {
 // GetPlatform returns the value of Platform.
 func (s *SubmitContentRequest) GetPlatform() OptNilString {
 	return s.Platform
+}
+
+// GetSaveToKnowledgeAndMarkRead returns the value of SaveToKnowledgeAndMarkRead.
+func (s *SubmitContentRequest) GetSaveToKnowledgeAndMarkRead() OptBool {
+	return s.SaveToKnowledgeAndMarkRead
 }
 
 // GetShareAndChat returns the value of ShareAndChat.
@@ -4424,11 +4605,6 @@ func (s *SubmitContentRequest) SetCrawlLinks(val OptBool) {
 	s.CrawlLinks = val
 }
 
-// SetFavoriteAndMarkRead sets the value of FavoriteAndMarkRead.
-func (s *SubmitContentRequest) SetFavoriteAndMarkRead(val OptBool) {
-	s.FavoriteAndMarkRead = val
-}
-
 // SetInstruction sets the value of Instruction.
 func (s *SubmitContentRequest) SetInstruction(val OptNilString) {
 	s.Instruction = val
@@ -4437,6 +4613,11 @@ func (s *SubmitContentRequest) SetInstruction(val OptNilString) {
 // SetPlatform sets the value of Platform.
 func (s *SubmitContentRequest) SetPlatform(val OptNilString) {
 	s.Platform = val
+}
+
+// SetSaveToKnowledgeAndMarkRead sets the value of SaveToKnowledgeAndMarkRead.
+func (s *SubmitContentRequest) SetSaveToKnowledgeAndMarkRead(val OptBool) {
+	s.SaveToKnowledgeAndMarkRead = val
 }
 
 // SetShareAndChat sets the value of ShareAndChat.
@@ -4506,7 +4687,7 @@ const (
 	SummaryKindLongInterleaved        SummaryKind = "long_interleaved"
 	SummaryKindLongBullets            SummaryKind = "long_bullets"
 	SummaryKindLongEditorialNarrative SummaryKind = "long_editorial_narrative"
-	SummaryKindShortNews        SummaryKind = "short_news"
+	SummaryKindShortNews              SummaryKind = "short_news"
 )
 
 // AllValues returns all SummaryKind values.

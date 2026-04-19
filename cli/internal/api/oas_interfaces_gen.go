@@ -41,6 +41,10 @@ type GetOnboardingRes interface {
 	getOnboardingRes()
 }
 
+type ListContentSubmissionStatusesRes interface {
+	listContentSubmissionStatusesRes()
+}
+
 type ListContentsRes interface {
 	listContentsRes()
 }

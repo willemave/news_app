@@ -2855,15 +2855,15 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.IsFavorited.Set {
-			e.FieldStart("is_favorited")
-			s.IsFavorited.Encode(e)
-		}
-	}
-	{
 		if s.IsRead.Set {
 			e.FieldStart("is_read")
 			s.IsRead.Encode(e)
+		}
+	}
+	{
+		if s.IsSavedToKnowledge.Set {
+			e.FieldStart("is_saved_to_knowledge")
+			s.IsSavedToKnowledge.Encode(e)
 		}
 	}
 	{
@@ -3013,8 +3013,8 @@ var jsonFieldsNameOfContentDetailResponse = [40]string{
 	13: "full_markdown",
 	14: "id",
 	15: "image_url",
-	16: "is_favorited",
-	17: "is_read",
+	16: "is_read",
+	17: "is_saved_to_knowledge",
 	18: "metadata",
 	19: "news_article_url",
 	20: "news_discussion_url",
@@ -3223,16 +3223,6 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"image_url\"")
 			}
-		case "is_favorited":
-			if err := func() error {
-				s.IsFavorited.Reset()
-				if err := s.IsFavorited.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"is_favorited\"")
-			}
 		case "is_read":
 			if err := func() error {
 				s.IsRead.Reset()
@@ -3242,6 +3232,16 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"is_read\"")
+			}
+		case "is_saved_to_knowledge":
+			if err := func() error {
+				s.IsSavedToKnowledge.Reset()
+				if err := s.IsSavedToKnowledge.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"is_saved_to_knowledge\"")
 			}
 		case "metadata":
 			requiredBitSet[2] |= 1 << 2
@@ -3972,6 +3972,8 @@ func (s *ContentStatus) Decode(d *jx.Decoder) error {
 		*s = ContentStatusPending
 	case ContentStatusProcessing:
 		*s = ContentStatusProcessing
+	case ContentStatusAwaitingImage:
+		*s = ContentStatusAwaitingImage
 	case ContentStatusCompleted:
 		*s = ContentStatusCompleted
 	case ContentStatusFailed:
@@ -4256,15 +4258,15 @@ func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.IsFavorited.Set {
-			e.FieldStart("is_favorited")
-			s.IsFavorited.Encode(e)
-		}
-	}
-	{
 		if s.IsRead.Set {
 			e.FieldStart("is_read")
 			s.IsRead.Encode(e)
+		}
+	}
+	{
+		if s.IsSavedToKnowledge.Set {
+			e.FieldStart("is_saved_to_knowledge")
+			s.IsSavedToKnowledge.Encode(e)
 		}
 	}
 	{
@@ -4375,8 +4377,8 @@ var jsonFieldsNameOfContentSummaryResponse = [26]string{
 	4:  "discussion_url",
 	5:  "id",
 	6:  "image_url",
-	7:  "is_favorited",
-	8:  "is_read",
+	7:  "is_read",
+	8:  "is_saved_to_knowledge",
 	9:  "news_article_url",
 	10: "news_discussion_url",
 	11: "news_key_points",
@@ -4480,16 +4482,6 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"image_url\"")
 			}
-		case "is_favorited":
-			if err := func() error {
-				s.IsFavorited.Reset()
-				if err := s.IsFavorited.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"is_favorited\"")
-			}
 		case "is_read":
 			if err := func() error {
 				s.IsRead.Reset()
@@ -4499,6 +4491,16 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"is_read\"")
+			}
+		case "is_saved_to_knowledge":
+			if err := func() error {
+				s.IsSavedToKnowledge.Reset()
+				if err := s.IsSavedToKnowledge.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"is_saved_to_knowledge\"")
 			}
 		case "news_article_url":
 			if err := func() error {
@@ -6665,13 +6667,6 @@ func (o *OptDetectedFeed) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptDetectedFeed to nil")
 	}
-	if d.Next() == jx.Null {
-		if err := d.Null(); err != nil {
-			return err
-		}
-		o.Reset()
-		return nil
-	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -6941,8 +6936,7 @@ func (o *OptNilDateTime) Decode(d *jx.Decoder, format func(*jx.Decoder) (time.Ti
 	}
 	o.Set = true
 	o.Null = false
-	_ = format
-	v, err := decodeFlexibleDateTime(d)
+	v, err := format(d)
 	if err != nil {
 		return err
 	}
@@ -7192,13 +7186,6 @@ func (o *OptOnboardingFastDiscoverResponse) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptOnboardingFastDiscoverResponse to nil")
 	}
-	if d.Next() == jx.Null {
-		if err := d.Null(); err != nil {
-			return err
-		}
-		o.Reset()
-		return nil
-	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -7300,13 +7287,6 @@ func (o *OptSummaryKind) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptSummaryKind to nil")
 	}
-	if d.Next() == jx.Null {
-		if err := d.Null(); err != nil {
-			return err
-		}
-		o.Reset()
-		return nil
-	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
 		return err
@@ -7339,13 +7319,6 @@ func (o OptSummaryVersion) Encode(e *jx.Encoder) {
 func (o *OptSummaryVersion) Decode(d *jx.Decoder) error {
 	if o == nil {
 		return errors.New("invalid: unable to decode OptSummaryVersion to nil")
-	}
-	if d.Next() == jx.Null {
-		if err := d.Null(); err != nil {
-			return err
-		}
-		o.Reset()
-		return nil
 	}
 	o.Set = true
 	if err := o.Value.Decode(d); err != nil {
@@ -7604,7 +7577,7 @@ func (s *ScraperConfigResponse) Decode(d *jx.Decoder) error {
 		case "created_at":
 			requiredBitSet[0] |= 1 << 1
 			if err := func() error {
-				v, err := decodeFlexibleDateTime(d)
+				v, err := json.DecodeDateTime(d)
 				s.CreatedAt = v
 				if err != nil {
 					return err
@@ -8038,6 +8011,391 @@ func (s *ScraperConfigStatsResponse) UnmarshalJSON(data []byte) error {
 	return s.Decode(d)
 }
 
+// Encode implements json.Marshaler.
+func (s *SubmissionStatusListResponse) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *SubmissionStatusListResponse) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("meta")
+		s.Meta.Encode(e)
+	}
+	{
+		e.FieldStart("submissions")
+		e.ArrStart()
+		for _, elem := range s.Submissions {
+			elem.Encode(e)
+		}
+		e.ArrEnd()
+	}
+}
+
+var jsonFieldsNameOfSubmissionStatusListResponse = [2]string{
+	0: "meta",
+	1: "submissions",
+}
+
+// Decode decodes SubmissionStatusListResponse from json.
+func (s *SubmissionStatusListResponse) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode SubmissionStatusListResponse to nil")
+	}
+	var requiredBitSet [1]uint8
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "meta":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.Meta.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"meta\"")
+			}
+		case "submissions":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				s.Submissions = make([]SubmissionStatusResponse, 0)
+				if err := d.Arr(func(d *jx.Decoder) error {
+					var elem SubmissionStatusResponse
+					if err := elem.Decode(d); err != nil {
+						return err
+					}
+					s.Submissions = append(s.Submissions, elem)
+					return nil
+				}); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"submissions\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode SubmissionStatusListResponse")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [1]uint8{
+		0b00000011,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfSubmissionStatusListResponse) {
+					name = jsonFieldsNameOfSubmissionStatusListResponse[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *SubmissionStatusListResponse) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *SubmissionStatusListResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s *SubmissionStatusResponse) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields encodes fields.
+func (s *SubmissionStatusResponse) encodeFields(e *jx.Encoder) {
+	{
+		e.FieldStart("content_type")
+		s.ContentType.Encode(e)
+	}
+	{
+		e.FieldStart("created_at")
+		e.Str(s.CreatedAt)
+	}
+	{
+		if s.ErrorMessage.Set {
+			e.FieldStart("error_message")
+			s.ErrorMessage.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("id")
+		e.Int(s.ID)
+	}
+	{
+		if s.IsSelfSubmission.Set {
+			e.FieldStart("is_self_submission")
+			s.IsSelfSubmission.Encode(e)
+		}
+	}
+	{
+		if s.ProcessedAt.Set {
+			e.FieldStart("processed_at")
+			s.ProcessedAt.Encode(e)
+		}
+	}
+	{
+		if s.SourceURL.Set {
+			e.FieldStart("source_url")
+			s.SourceURL.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("status")
+		s.Status.Encode(e)
+	}
+	{
+		if s.SubmittedVia.Set {
+			e.FieldStart("submitted_via")
+			s.SubmittedVia.Encode(e)
+		}
+	}
+	{
+		if s.Title.Set {
+			e.FieldStart("title")
+			s.Title.Encode(e)
+		}
+	}
+	{
+		e.FieldStart("url")
+		e.Str(s.URL)
+	}
+}
+
+var jsonFieldsNameOfSubmissionStatusResponse = [11]string{
+	0:  "content_type",
+	1:  "created_at",
+	2:  "error_message",
+	3:  "id",
+	4:  "is_self_submission",
+	5:  "processed_at",
+	6:  "source_url",
+	7:  "status",
+	8:  "submitted_via",
+	9:  "title",
+	10: "url",
+}
+
+// Decode decodes SubmissionStatusResponse from json.
+func (s *SubmissionStatusResponse) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode SubmissionStatusResponse to nil")
+	}
+	var requiredBitSet [2]uint8
+	s.setDefaults()
+
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		switch string(k) {
+		case "content_type":
+			requiredBitSet[0] |= 1 << 0
+			if err := func() error {
+				if err := s.ContentType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"content_type\"")
+			}
+		case "created_at":
+			requiredBitSet[0] |= 1 << 1
+			if err := func() error {
+				v, err := d.Str()
+				s.CreatedAt = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"created_at\"")
+			}
+		case "error_message":
+			if err := func() error {
+				s.ErrorMessage.Reset()
+				if err := s.ErrorMessage.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"error_message\"")
+			}
+		case "id":
+			requiredBitSet[0] |= 1 << 3
+			if err := func() error {
+				v, err := d.Int()
+				s.ID = int(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"id\"")
+			}
+		case "is_self_submission":
+			if err := func() error {
+				s.IsSelfSubmission.Reset()
+				if err := s.IsSelfSubmission.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"is_self_submission\"")
+			}
+		case "processed_at":
+			if err := func() error {
+				s.ProcessedAt.Reset()
+				if err := s.ProcessedAt.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"processed_at\"")
+			}
+		case "source_url":
+			if err := func() error {
+				s.SourceURL.Reset()
+				if err := s.SourceURL.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"source_url\"")
+			}
+		case "status":
+			requiredBitSet[0] |= 1 << 7
+			if err := func() error {
+				if err := s.Status.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"status\"")
+			}
+		case "submitted_via":
+			if err := func() error {
+				s.SubmittedVia.Reset()
+				if err := s.SubmittedVia.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"submitted_via\"")
+			}
+		case "title":
+			if err := func() error {
+				s.Title.Reset()
+				if err := s.Title.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"title\"")
+			}
+		case "url":
+			requiredBitSet[1] |= 1 << 2
+			if err := func() error {
+				v, err := d.Str()
+				s.URL = string(v)
+				if err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"url\"")
+			}
+		default:
+			return d.Skip()
+		}
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode SubmissionStatusResponse")
+	}
+	// Validate required fields.
+	var failures []validate.FieldError
+	for i, mask := range [2]uint8{
+		0b10001011,
+		0b00000100,
+	} {
+		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
+			// Mask only required fields and check equality to mask using XOR.
+			//
+			// If XOR result is not zero, result is not equal to expected, so some fields are missed.
+			// Bits of fields which would be set are actually bits of missed fields.
+			missed := bits.OnesCount8(result)
+			for bitN := 0; bitN < missed; bitN++ {
+				bitIdx := bits.TrailingZeros8(result)
+				fieldIdx := i*8 + bitIdx
+				var name string
+				if fieldIdx < len(jsonFieldsNameOfSubmissionStatusResponse) {
+					name = jsonFieldsNameOfSubmissionStatusResponse[fieldIdx]
+				} else {
+					name = strconv.Itoa(fieldIdx)
+				}
+				failures = append(failures, validate.FieldError{
+					Name:  name,
+					Error: validate.ErrFieldRequired,
+				})
+				// Reset bit.
+				result &^= 1 << bitIdx
+			}
+		}
+	}
+	if len(failures) > 0 {
+		return &validate.Error{Fields: failures}
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s *SubmissionStatusResponse) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *SubmissionStatusResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes SubmitContentCreated as json.
 func (s *SubmitContentCreated) Encode(e *jx.Encoder) {
 	unwrapped := (*ContentSubmissionResponse)(s)
@@ -8136,12 +8494,6 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
-		if s.FavoriteAndMarkRead.Set {
-			e.FieldStart("favorite_and_mark_read")
-			s.FavoriteAndMarkRead.Encode(e)
-		}
-	}
-	{
 		if s.Instruction.Set {
 			e.FieldStart("instruction")
 			s.Instruction.Encode(e)
@@ -8151,6 +8503,12 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 		if s.Platform.Set {
 			e.FieldStart("platform")
 			s.Platform.Encode(e)
+		}
+	}
+	{
+		if s.SaveToKnowledgeAndMarkRead.Set {
+			e.FieldStart("save_to_knowledge_and_mark_read")
+			s.SaveToKnowledgeAndMarkRead.Encode(e)
 		}
 	}
 	{
@@ -8180,9 +8538,9 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 var jsonFieldsNameOfSubmitContentRequest = [9]string{
 	0: "content_type",
 	1: "crawl_links",
-	2: "favorite_and_mark_read",
-	3: "instruction",
-	4: "platform",
+	2: "instruction",
+	3: "platform",
+	4: "save_to_knowledge_and_mark_read",
 	5: "share_and_chat",
 	6: "subscribe_to_feed",
 	7: "title",
@@ -8219,16 +8577,6 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"crawl_links\"")
 			}
-		case "favorite_and_mark_read":
-			if err := func() error {
-				s.FavoriteAndMarkRead.Reset()
-				if err := s.FavoriteAndMarkRead.Decode(d); err != nil {
-					return err
-				}
-				return nil
-			}(); err != nil {
-				return errors.Wrap(err, "decode field \"favorite_and_mark_read\"")
-			}
 		case "instruction":
 			if err := func() error {
 				s.Instruction.Reset()
@@ -8248,6 +8596,16 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"platform\"")
+			}
+		case "save_to_knowledge_and_mark_read":
+			if err := func() error {
+				s.SaveToKnowledgeAndMarkRead.Reset()
+				if err := s.SaveToKnowledgeAndMarkRead.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"save_to_knowledge_and_mark_read\"")
 			}
 		case "share_and_chat":
 			if err := func() error {

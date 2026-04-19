@@ -14,6 +14,7 @@ enum APIContentStatus: String, Codable, CaseIterable {
     case new = "new"
     case pending = "pending"
     case processing = "processing"
+    case awaiting_image = "awaiting_image"
     case completed = "completed"
     case failed = "failed"
     case skipped = "skipped"
@@ -26,6 +27,7 @@ enum APIContentClassification: String, Codable, CaseIterable {
 
 enum APITaskType: String, Codable, CaseIterable {
     case scrape = "scrape"
+    case backfill_feeds = "backfill_feeds"
     case analyze_url = "analyze_url"
     case process_content = "process_content"
     case enrich_news_item_article = "enrich_news_item_article"

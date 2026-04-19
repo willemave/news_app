@@ -910,7 +910,7 @@
       "Body_transcribeOpenaiTranscriptionsAudio": {
         "properties": {
           "file": {
-            "format": "binary",
+            "contentMediaType": "application/octet-stream",
             "title": "File",
             "type": "string"
           }
@@ -1008,6 +1008,12 @@
             },
             "title": "Council Candidates",
             "type": "array"
+          },
+          "display_key": {
+            "default": "",
+            "description": "Stable transcript row identity shared by session-detail and status endpoints",
+            "title": "Display Key",
+            "type": "string"
           },
           "display_type": {
             "$ref": "#/components/schemas/ChatMessageDisplayType",
@@ -1211,7 +1217,7 @@
           },
           "has_messages": {
             "default": true,
-            "description": "True if session has any messages (false for new favorites)",
+            "description": "True if session has any messages (false for new saved items)",
             "title": "Has Messages",
             "type": "boolean"
           },
@@ -1229,10 +1235,10 @@
             "title": "Is Archived",
             "type": "boolean"
           },
-          "is_favorite": {
+          "is_saved_to_knowledge": {
             "default": false,
-            "description": "True if the linked content is favorited by the user",
-            "title": "Is Favorite",
+            "description": "True if the linked content is saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "last_message_at": {
@@ -1819,16 +1825,16 @@
             "description": "URL of full-size AI-generated image for this content",
             "title": "Image Url"
           },
-          "is_favorited": {
-            "default": false,
-            "description": "Whether the content has been favorited",
-            "title": "Is Favorited",
-            "type": "boolean"
-          },
           "is_read": {
             "default": false,
             "description": "Whether the content has been marked as read",
             "title": "Is Read",
+            "type": "boolean"
+          },
+          "is_saved_to_knowledge": {
+            "default": false,
+            "description": "Whether the content has been saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "metadata": {
@@ -1873,7 +1879,7 @@
                 "type": "null"
               }
             ],
-            "description": "Key points provided for news digests",
+            "description": "Key points provided for news items",
             "title": "News Key Points"
           },
           "news_summary": {
@@ -1885,7 +1891,7 @@
                 "type": "null"
               }
             ],
-            "description": "Short overview synthesized for news digests",
+            "description": "Short overview synthesized for news items",
             "title": "News Summary"
           },
           "processed_at": {
@@ -2270,6 +2276,7 @@
           "new",
           "pending",
           "processing",
+          "awaiting_image",
           "completed",
           "failed",
           "skipped"
@@ -2446,16 +2453,16 @@
             "description": "URL of full-size AI-generated image for this content",
             "title": "Image Url"
           },
-          "is_favorited": {
-            "default": false,
-            "description": "Whether the content has been favorited",
-            "title": "Is Favorited",
-            "type": "boolean"
-          },
           "is_read": {
             "default": false,
             "description": "Whether the content has been marked as read",
             "title": "Is Read",
+            "type": "boolean"
+          },
+          "is_saved_to_knowledge": {
+            "default": false,
+            "description": "Whether the content has been saved to the user's knowledge library",
+            "title": "Is Saved To Knowledge",
             "type": "boolean"
           },
           "news_article_url": {
@@ -2494,7 +2501,7 @@
                 "type": "null"
               }
             ],
-            "description": "Key points provided for news digests",
+            "description": "Key points provided for news items",
             "title": "News Key Points"
           },
           "news_summary": {
@@ -2506,7 +2513,7 @@
                 "type": "null"
               }
             ],
-            "description": "Short overview synthesized for news digests",
+            "description": "Short overview synthesized for news items",
             "title": "News Summary"
           },
           "platform": {
@@ -2839,6 +2846,21 @@
           "sort_order"
         ],
         "title": "CouncilPersonaConfig",
+        "type": "object"
+      },
+      "CouncilRetryRequest": {
+        "description": "Request to retry one failed council branch.",
+        "properties": {
+          "child_session_id": {
+            "minimum": 1.0,
+            "title": "Child Session Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "child_session_id"
+        ],
+        "title": "CouncilRetryRequest",
         "type": "object"
       },
       "CouncilSelectRequest": {
@@ -3895,28 +3917,8 @@
         "type": "string"
       },
       "LongFormStatsResponse": {
-        "description": "Response containing long-form content stats for a user.",
+        "description": "Response containing unread long-form count for a user.",
         "properties": {
-          "favorited_count": {
-            "description": "Favorited long-form items",
-            "title": "Favorited Count",
-            "type": "integer"
-          },
-          "processing_count": {
-            "description": "Long-form items pending or processing for the user",
-            "title": "Processing Count",
-            "type": "integer"
-          },
-          "read_count": {
-            "description": "Read long-form items",
-            "title": "Read Count",
-            "type": "integer"
-          },
-          "total_count": {
-            "description": "Total long-form items in the inbox",
-            "title": "Total Count",
-            "type": "integer"
-          },
           "unread_count": {
             "description": "Unread long-form items",
             "title": "Unread Count",
@@ -3924,11 +3926,7 @@
           }
         },
         "required": [
-          "total_count",
-          "unread_count",
-          "read_count",
-          "favorited_count",
-          "processing_count"
+          "unread_count"
         ],
         "title": "LongFormStatsResponse",
         "type": "object"
@@ -4391,6 +4389,10 @@
       "OnboardingCompleteResponse": {
         "description": "Response for onboarding completion.",
         "properties": {
+          "configured_source_count": {
+            "title": "Configured Source Count",
+            "type": "integer"
+          },
           "has_completed_new_user_tutorial": {
             "title": "Has Completed New User Tutorial",
             "type": "boolean"
@@ -4426,6 +4428,7 @@
         "required": [
           "status",
           "inbox_count_estimate",
+          "configured_source_count",
           "longform_status",
           "has_completed_onboarding",
           "has_completed_new_user_tutorial"
@@ -5537,9 +5540,9 @@
         "example": {
           "content_type": "podcast",
           "crawl_links": true,
-          "favorite_and_mark_read": false,
           "instruction": "Add all links mentioned in the episode page",
           "platform": "spotify",
+          "save_to_knowledge_and_mark_read": false,
           "share_and_chat": false,
           "subscribe_to_feed": false,
           "title": "Great interview about AI",
@@ -5561,12 +5564,6 @@
             "default": false,
             "description": "Whether to create additional content items from relevant links discovered on the submitted page.",
             "title": "Crawl Links",
-            "type": "boolean"
-          },
-          "favorite_and_mark_read": {
-            "default": false,
-            "description": "When true, download and summarize the submitted content, then mark it as read and add it to the user's favorites.",
-            "title": "Favorite And Mark Read",
             "type": "boolean"
           },
           "instruction": {
@@ -5594,6 +5591,12 @@
             ],
             "description": "Optional platform hint (e.g., spotify, substack)",
             "title": "Platform"
+          },
+          "save_to_knowledge_and_mark_read": {
+            "default": false,
+            "description": "When true, download and summarize the submitted content, then mark it as read and save it to the user's knowledge library.",
+            "title": "Save To Knowledge And Mark Read",
+            "type": "boolean"
           },
           "share_and_chat": {
             "default": false,
@@ -6811,8 +6814,8 @@
     },
     "/admin/llm-usage": {
       "get": {
-        "description": "Show recent persisted LLM usage rows with lightweight filtering.",
-        "operationId": "llmUsageDashboard",
+        "description": "Backwards-compatible redirect to the broader vendor usage dashboard.",
+        "operationId": "legacyLlmUsageRedirect",
         "responses": {
           "200": {
             "content": {
@@ -6825,7 +6828,7 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Llm Usage Dashboard"
+        "summary": "Legacy Llm Usage Redirect"
       }
     },
     "/admin/logs": {
@@ -6985,6 +6988,25 @@
         "tags": [
           "admin"
         ]
+      }
+    },
+    "/admin/vendor-usage": {
+      "get": {
+        "description": "Show recent persisted vendor usage rows with aggregate cost views.",
+        "operationId": "vendorUsageDashboard",
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Vendor Usage Dashboard"
       }
     },
     "/api/agent/cli/link/start": {
@@ -8152,6 +8174,71 @@
         ]
       }
     },
+    "/api/content/chat/sessions/{session_id}/council/retry": {
+      "post": {
+        "description": "Regenerate one council branch and return the merged parent transcript.",
+        "operationId": "retryContentChatSessionsCouncilModeBranch",
+        "parameters": [
+          {
+            "description": "Chat session ID",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "Chat session ID",
+              "exclusiveMinimum": 0,
+              "title": "Session Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CouncilRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatSessionDetailDto"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry council branch",
+        "tags": [
+          "content",
+          "chat"
+        ]
+      }
+    },
     "/api/content/chat/sessions/{session_id}/council/select": {
       "post": {
         "description": "Switch the active council branch and return the merged parent transcript.",
@@ -8402,10 +8489,10 @@
         ]
       }
     },
-    "/api/content/favorites/list": {
+    "/api/content/knowledge/list": {
       "get": {
-        "description": "Retrieve all favorited content items with cursor-based pagination.",
-        "operationId": "getContentListFavorites",
+        "description": "Retrieve content saved to the user's knowledge library with pagination.",
+        "operationId": "getContentListKnowledgeLibrary",
         "parameters": [
           {
             "description": "Pagination cursor for next page",
@@ -8473,7 +8560,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get favorited content",
+        "summary": "Get saved knowledge library",
         "tags": [
           "content"
         ]
@@ -8909,7 +8996,7 @@
     },
     "/api/content/search": {
       "get": {
-        "description": "Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.",
+        "description": "PostgreSQL-backed search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.",
         "operationId": "searchContents",
         "parameters": [
           {
@@ -9162,7 +9249,7 @@
     },
     "/api/content/stats/long-form": {
       "get": {
-        "description": "Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.",
+        "description": "Return unread long-form count for the authenticated user.",
         "operationId": "getContentLongFormStats",
         "responses": {
           "200": {
@@ -9184,7 +9271,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Get long-form content stats",
+        "summary": "Get long-form unread count",
         "tags": [
           "content"
         ]
@@ -9703,6 +9790,67 @@
         ]
       }
     },
+    "/api/content/{content_id}/discussion/refresh": {
+      "post": {
+        "description": "Fetch the latest in-app discussion data for the content item, persist it, and return the refreshed payload.",
+        "operationId": "refreshContentDiscussion",
+        "parameters": [
+          {
+            "description": "Content ID",
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "description": "Content ID",
+              "exclusiveMinimum": 0,
+              "title": "Content Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDiscussionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "detail": "Content not found"
+                }
+              }
+            },
+            "description": "Content not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh discussion payload for a content item",
+        "tags": [
+          "content"
+        ]
+      }
+    },
     "/api/content/{content_id}/download-more": {
       "post": {
         "description": "Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.",
@@ -9773,10 +9921,10 @@
         ]
       }
     },
-    "/api/content/{content_id}/favorite": {
-      "post": {
-        "description": "Toggle the favorite status of a specific content item.",
-        "operationId": "toggleContentFavorite",
+    "/api/content/{content_id}/knowledge": {
+      "delete": {
+        "description": "Remove a specific content item from the user's knowledge library.",
+        "operationId": "removeContentFromKnowledge",
         "parameters": [
           {
             "description": "Content ID",
@@ -9797,12 +9945,12 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Togglecontentfavorite",
+                  "title": "Response Removecontentfromknowledge",
                   "type": "object"
                 }
               }
             },
-            "description": "Favorite status toggled successfully"
+            "description": "Content removed from knowledge successfully"
           },
           "401": {
             "description": "Authentication required"
@@ -9826,7 +9974,64 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Toggle favorite status",
+        "summary": "Remove content from knowledge",
+        "tags": [
+          "content"
+        ]
+      },
+      "post": {
+        "description": "Save a specific content item to the user's knowledge library.",
+        "operationId": "saveContentToKnowledge",
+        "parameters": [
+          {
+            "description": "Content ID",
+            "in": "path",
+            "name": "content_id",
+            "required": true,
+            "schema": {
+              "description": "Content ID",
+              "exclusiveMinimum": 0,
+              "title": "Content Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Savecontenttoknowledge",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Content saved to knowledge successfully"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Content not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save content to knowledge",
         "tags": [
           "content"
         ]
@@ -10015,65 +10220,6 @@
           }
         ],
         "summary": "Generate tweet suggestions for content",
-        "tags": [
-          "content"
-        ]
-      }
-    },
-    "/api/content/{content_id}/unfavorite": {
-      "delete": {
-        "description": "Remove a specific content item from favorites.",
-        "operationId": "unfavoriteContent",
-        "parameters": [
-          {
-            "description": "Content ID",
-            "in": "path",
-            "name": "content_id",
-            "required": true,
-            "schema": {
-              "description": "Content ID",
-              "exclusiveMinimum": 0,
-              "title": "Content Id",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Unfavoritecontent",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Content removed from favorites successfully"
-          },
-          "401": {
-            "description": "Authentication required"
-          },
-          "404": {
-            "description": "Content not found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "summary": "Remove from favorites",
         "tags": [
           "content"
         ]
@@ -11056,6 +11202,58 @@
         ]
       }
     },
+    "/api/news/items/{news_item_id}/discussion/refresh": {
+      "post": {
+        "description": "Refresh discussion payload for one visible representative news item.",
+        "operationId": "refreshNewsItemDiscussion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "news_item_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "News Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContentDiscussionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh one news item discussion",
+        "tags": [
+          "news"
+        ]
+      }
+    },
     "/api/onboarding/audio-discover": {
       "post": {
         "description": "Start onboarding discovery from an audio transcript.",
@@ -11775,7 +11973,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
+                  "additionalProperties": {
+                    "type": "string"
+                  },
                   "title": "Response Adminlogout",
                   "type": "object"
                 }

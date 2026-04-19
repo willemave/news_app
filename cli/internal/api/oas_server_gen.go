@@ -68,6 +68,13 @@ type Handler interface {
 	//
 	// GET /api/agent/onboarding/{run_id}
 	GetOnboarding(ctx context.Context, params GetOnboardingParams) (GetOnboardingRes, error)
+	// ListContentSubmissionStatuses implements listContentSubmissionStatuses operation.
+	//
+	// Returns self-submitted content items that are not yet completed, including processing, failed, and
+	// skipped statuses.
+	//
+	// GET /api/content/submissions/list
+	ListContentSubmissionStatuses(ctx context.Context, params ListContentSubmissionStatusesParams) (ListContentSubmissionStatusesRes, error)
 	// ListContents implements listContents operation.
 	//
 	// Retrieve a list of content items with optional filtering by content type and date. Supports

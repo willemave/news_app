@@ -66,11 +66,11 @@ func (s *ContentDetailResponse) setDefaults() {
 	}
 	{
 		val := bool(false)
-		s.IsFavorited.SetTo(val)
+		s.IsRead.SetTo(val)
 	}
 	{
 		val := bool(false)
-		s.IsRead.SetTo(val)
+		s.IsSavedToKnowledge.SetTo(val)
 	}
 }
 
@@ -86,11 +86,11 @@ func (s *ContentSubmissionResponse) setDefaults() {
 func (s *ContentSummaryResponse) setDefaults() {
 	{
 		val := bool(false)
-		s.IsFavorited.SetTo(val)
+		s.IsRead.SetTo(val)
 	}
 	{
 		val := bool(false)
-		s.IsRead.SetTo(val)
+		s.IsSavedToKnowledge.SetTo(val)
 	}
 }
 
@@ -155,6 +155,14 @@ func (s *ScraperConfigStatsResponse) setDefaults() {
 }
 
 // setDefaults set default value of fields.
+func (s *SubmissionStatusResponse) setDefaults() {
+	{
+		val := bool(true)
+		s.IsSelfSubmission.SetTo(val)
+	}
+}
+
+// setDefaults set default value of fields.
 func (s *SubmitContentRequest) setDefaults() {
 	{
 		val := bool(false)
@@ -162,7 +170,7 @@ func (s *SubmitContentRequest) setDefaults() {
 	}
 	{
 		val := bool(false)
-		s.FavoriteAndMarkRead.SetTo(val)
+		s.SaveToKnowledgeAndMarkRead.SetTo(val)
 	}
 	{
 		val := bool(false)

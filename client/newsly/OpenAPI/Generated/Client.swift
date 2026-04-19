@@ -815,16 +815,16 @@ internal struct Client: APIProtocol {
             }
         )
     }
-    /// Llm Usage Dashboard
+    /// Legacy Llm Usage Redirect
     ///
-    /// Show recent persisted LLM usage rows with lightweight filtering.
+    /// Backwards-compatible redirect to the broader vendor usage dashboard.
     ///
     /// - Remark: HTTP `GET /admin/llm-usage`.
-    /// - Remark: Generated from `#/paths//admin/llm-usage/get(llmUsageDashboard)`.
-    internal func llmUsageDashboard(_ input: Operations.LlmUsageDashboard.Input) async throws -> Operations.LlmUsageDashboard.Output {
+    /// - Remark: Generated from `#/paths//admin/llm-usage/get(legacyLlmUsageRedirect)`.
+    internal func legacyLlmUsageRedirect(_ input: Operations.LegacyLlmUsageRedirect.Input) async throws -> Operations.LegacyLlmUsageRedirect.Output {
         try await client.send(
             input: input,
-            forOperation: Operations.LlmUsageDashboard.id,
+            forOperation: Operations.LegacyLlmUsageRedirect.id,
             serializer: { input in
                 let path = try converter.renderedPath(
                     template: "/admin/llm-usage",
@@ -845,7 +845,7 @@ internal struct Client: APIProtocol {
                 switch response.status.code {
                 case 200:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.LlmUsageDashboard.Output.Ok.Body
+                    let body: Operations.LegacyLlmUsageRedirect.Output.Ok.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [
@@ -1254,6 +1254,68 @@ internal struct Client: APIProtocol {
                         preconditionFailure("bestContentType chose an invalid content type.")
                     }
                     return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// Vendor Usage Dashboard
+    ///
+    /// Show recent persisted vendor usage rows with aggregate cost views.
+    ///
+    /// - Remark: HTTP `GET /admin/vendor-usage`.
+    /// - Remark: Generated from `#/paths//admin/vendor-usage/get(vendorUsageDashboard)`.
+    internal func vendorUsageDashboard(_ input: Operations.VendorUsageDashboard.Input) async throws -> Operations.VendorUsageDashboard.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.VendorUsageDashboard.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/admin/vendor-usage",
+                    parameters: []
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .get
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.VendorUsageDashboard.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "text/html"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "text/html":
+                        body = try converter.getResponseBodyAsBinary(
+                            OpenAPIRuntime.HTTPBody.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .html(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
                 default:
                     return .undocumented(
                         statusCode: response.status.code,
@@ -3098,6 +3160,103 @@ internal struct Client: APIProtocol {
             }
         )
     }
+    /// Retry council branch
+    ///
+    /// Regenerate one council branch and return the merged parent transcript.
+    ///
+    /// - Remark: HTTP `POST /api/content/chat/sessions/{session_id}/council/retry`.
+    /// - Remark: Generated from `#/paths//api/content/chat/sessions/{session_id}/council/retry/post(retryContentChatSessionsCouncilModeBranch)`.
+    internal func retryContentChatSessionsCouncilModeBranch(_ input: Operations.RetryContentChatSessionsCouncilModeBranch.Input) async throws -> Operations.RetryContentChatSessionsCouncilModeBranch.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.RetryContentChatSessionsCouncilModeBranch.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/content/chat/sessions/{}/council/retry",
+                    parameters: [
+                        input.path.sessionId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                let body: OpenAPIRuntime.HTTPBody?
+                switch input.body {
+                case let .json(value):
+                    body = try converter.setRequiredRequestBodyAsJSON(
+                        value,
+                        headerFields: &request.headerFields,
+                        contentType: "application/json; charset=utf-8"
+                    )
+                }
+                return (request, body)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.ChatSessionDetailDto.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                case 404:
+                    return .notFound(.init())
+                case 422:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RetryContentChatSessionsCouncilModeBranch.Output.UnprocessableContent.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.HTTPValidationError.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
     /// Select council branch
     ///
     /// Switch the active council branch and return the merged parent transcript.
@@ -3477,19 +3636,19 @@ internal struct Client: APIProtocol {
             }
         )
     }
-    /// Get favorited content
+    /// Get saved knowledge library
     ///
-    /// Retrieve all favorited content items with cursor-based pagination.
+    /// Retrieve content saved to the user's knowledge library with pagination.
     ///
-    /// - Remark: HTTP `GET /api/content/favorites/list`.
-    /// - Remark: Generated from `#/paths//api/content/favorites/list/get(getContentListFavorites)`.
-    internal func getContentListFavorites(_ input: Operations.GetContentListFavorites.Input) async throws -> Operations.GetContentListFavorites.Output {
+    /// - Remark: HTTP `GET /api/content/knowledge/list`.
+    /// - Remark: Generated from `#/paths//api/content/knowledge/list/get(getContentListKnowledgeLibrary)`.
+    internal func getContentListKnowledgeLibrary(_ input: Operations.GetContentListKnowledgeLibrary.Input) async throws -> Operations.GetContentListKnowledgeLibrary.Output {
         try await client.send(
             input: input,
-            forOperation: Operations.GetContentListFavorites.id,
+            forOperation: Operations.GetContentListKnowledgeLibrary.id,
             serializer: { input in
                 let path = try converter.renderedPath(
-                    template: "/api/content/favorites/list",
+                    template: "/api/content/knowledge/list",
                     parameters: []
                 )
                 var request: HTTPTypes.HTTPRequest = .init(
@@ -3514,7 +3673,7 @@ internal struct Client: APIProtocol {
                 switch response.status.code {
                 case 200:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.GetContentListFavorites.Output.Ok.Body
+                    let body: Operations.GetContentListKnowledgeLibrary.Output.Ok.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [
@@ -3540,7 +3699,7 @@ internal struct Client: APIProtocol {
                     return .notFound(.init())
                 case 422:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.GetContentListFavorites.Output.UnprocessableContent.Body
+                    let body: Operations.GetContentListKnowledgeLibrary.Output.UnprocessableContent.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [
@@ -4210,7 +4369,7 @@ internal struct Client: APIProtocol {
     }
     /// Search content across articles and podcasts
     ///
-    /// Case-insensitive string search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
+    /// PostgreSQL-backed search across titles, sources, and summaries. Results exclude items classified as 'skip' and only include summarized content. Supports cursor-based pagination for efficient loading.
     ///
     /// - Remark: HTTP `GET /api/content/search`.
     /// - Remark: Generated from `#/paths//api/content/search/get(searchContents)`.
@@ -4522,9 +4681,9 @@ internal struct Client: APIProtocol {
             }
         )
     }
-    /// Get long-form content stats
+    /// Get long-form unread count
     ///
-    /// Return long-form stats for the authenticated user, including totals, read/unread, favorites, and processing counts.
+    /// Return unread long-form count for the authenticated user.
     ///
     /// - Remark: HTTP `GET /api/content/stats/long-form`.
     /// - Remark: Generated from `#/paths//api/content/stats/long-form/get(getContentLongFormStats)`.
@@ -5413,6 +5572,114 @@ internal struct Client: APIProtocol {
             }
         )
     }
+    /// Refresh discussion payload for a content item
+    ///
+    /// Fetch the latest in-app discussion data for the content item, persist it, and return the refreshed payload.
+    ///
+    /// - Remark: HTTP `POST /api/content/{content_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/discussion/refresh/post(refreshContentDiscussion)`.
+    internal func refreshContentDiscussion(_ input: Operations.RefreshContentDiscussion.Input) async throws -> Operations.RefreshContentDiscussion.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.RefreshContentDiscussion.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/content/{}/discussion/refresh",
+                    parameters: [
+                        input.path.contentId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RefreshContentDiscussion.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.ContentDiscussionResponse.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                case 404:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RefreshContentDiscussion.Output.NotFound.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            OpenAPIRuntime.OpenAPIValueContainer.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .notFound(.init(body: body))
+                case 422:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RefreshContentDiscussion.Output.UnprocessableContent.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.HTTPValidationError.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
     /// Download more items from the same feed series
     ///
     /// Trigger a one-off backfill for the feed that produced this content, attempting to fetch additional older items without changing the feed's ongoing limit.
@@ -5514,19 +5781,19 @@ internal struct Client: APIProtocol {
             }
         )
     }
-    /// Toggle favorite status
+    /// Save content to knowledge
     ///
-    /// Toggle the favorite status of a specific content item.
+    /// Save a specific content item to the user's knowledge library.
     ///
-    /// - Remark: HTTP `POST /api/content/{content_id}/favorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/favorite/post(toggleContentFavorite)`.
-    internal func toggleContentFavorite(_ input: Operations.ToggleContentFavorite.Input) async throws -> Operations.ToggleContentFavorite.Output {
+    /// - Remark: HTTP `POST /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/post(saveContentToKnowledge)`.
+    internal func saveContentToKnowledge(_ input: Operations.SaveContentToKnowledge.Input) async throws -> Operations.SaveContentToKnowledge.Output {
         try await client.send(
             input: input,
-            forOperation: Operations.ToggleContentFavorite.id,
+            forOperation: Operations.SaveContentToKnowledge.id,
             serializer: { input in
                 let path = try converter.renderedPath(
-                    template: "/api/content/{}/favorite",
+                    template: "/api/content/{}/knowledge",
                     parameters: [
                         input.path.contentId
                     ]
@@ -5546,7 +5813,7 @@ internal struct Client: APIProtocol {
                 switch response.status.code {
                 case 200:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.ToggleContentFavorite.Output.Ok.Body
+                    let body: Operations.SaveContentToKnowledge.Output.Ok.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [
@@ -5556,7 +5823,7 @@ internal struct Client: APIProtocol {
                     switch chosenContentType {
                     case "application/json":
                         body = try await converter.getResponseBodyAsJSON(
-                            Operations.ToggleContentFavorite.Output.Ok.Body.JsonPayload.self,
+                            Operations.SaveContentToKnowledge.Output.Ok.Body.JsonPayload.self,
                             from: responseBody,
                             transforming: { value in
                                 .json(value)
@@ -5572,7 +5839,97 @@ internal struct Client: APIProtocol {
                     return .notFound(.init())
                 case 422:
                     let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.ToggleContentFavorite.Output.UnprocessableContent.Body
+                    let body: Operations.SaveContentToKnowledge.Output.UnprocessableContent.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.HTTPValidationError.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
+    /// Remove content from knowledge
+    ///
+    /// Remove a specific content item from the user's knowledge library.
+    ///
+    /// - Remark: HTTP `DELETE /api/content/{content_id}/knowledge`.
+    /// - Remark: Generated from `#/paths//api/content/{content_id}/knowledge/delete(removeContentFromKnowledge)`.
+    internal func removeContentFromKnowledge(_ input: Operations.RemoveContentFromKnowledge.Input) async throws -> Operations.RemoveContentFromKnowledge.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.RemoveContentFromKnowledge.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/content/{}/knowledge",
+                    parameters: [
+                        input.path.contentId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .delete
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RemoveContentFromKnowledge.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Operations.RemoveContentFromKnowledge.Output.Ok.Body.JsonPayload.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                case 401:
+                    return .unauthorized(.init())
+                case 404:
+                    return .notFound(.init())
+                case 422:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RemoveContentFromKnowledge.Output.UnprocessableContent.Body
                     let chosenContentType = try converter.bestContentType(
                         received: contentType,
                         options: [
@@ -5873,96 +6230,6 @@ internal struct Client: APIProtocol {
                     return .unprocessableContent(.init(body: body))
                 case 502:
                     return .badGateway(.init())
-                default:
-                    return .undocumented(
-                        statusCode: response.status.code,
-                        .init(
-                            headerFields: response.headerFields,
-                            body: responseBody
-                        )
-                    )
-                }
-            }
-        )
-    }
-    /// Remove from favorites
-    ///
-    /// Remove a specific content item from favorites.
-    ///
-    /// - Remark: HTTP `DELETE /api/content/{content_id}/unfavorite`.
-    /// - Remark: Generated from `#/paths//api/content/{content_id}/unfavorite/delete(unfavoriteContent)`.
-    internal func unfavoriteContent(_ input: Operations.UnfavoriteContent.Input) async throws -> Operations.UnfavoriteContent.Output {
-        try await client.send(
-            input: input,
-            forOperation: Operations.UnfavoriteContent.id,
-            serializer: { input in
-                let path = try converter.renderedPath(
-                    template: "/api/content/{}/unfavorite",
-                    parameters: [
-                        input.path.contentId
-                    ]
-                )
-                var request: HTTPTypes.HTTPRequest = .init(
-                    soar_path: path,
-                    method: .delete
-                )
-                suppressMutabilityWarning(&request)
-                converter.setAcceptHeader(
-                    in: &request.headerFields,
-                    contentTypes: input.headers.accept
-                )
-                return (request, nil)
-            },
-            deserializer: { response, responseBody in
-                switch response.status.code {
-                case 200:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.UnfavoriteContent.Output.Ok.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Operations.UnfavoriteContent.Output.Ok.Body.JsonPayload.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .ok(.init(body: body))
-                case 401:
-                    return .unauthorized(.init())
-                case 404:
-                    return .notFound(.init())
-                case 422:
-                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
-                    let body: Operations.UnfavoriteContent.Output.UnprocessableContent.Body
-                    let chosenContentType = try converter.bestContentType(
-                        received: contentType,
-                        options: [
-                            "application/json"
-                        ]
-                    )
-                    switch chosenContentType {
-                    case "application/json":
-                        body = try await converter.getResponseBodyAsJSON(
-                            Components.Schemas.HTTPValidationError.self,
-                            from: responseBody,
-                            transforming: { value in
-                                .json(value)
-                            }
-                        )
-                    default:
-                        preconditionFailure("bestContentType chose an invalid content type.")
-                    }
-                    return .unprocessableContent(.init(body: body))
                 default:
                     return .undocumented(
                         statusCode: response.status.code,
@@ -7797,6 +8064,94 @@ internal struct Client: APIProtocol {
             }
         )
     }
+    /// Refresh one news item discussion
+    ///
+    /// Refresh discussion payload for one visible representative news item.
+    ///
+    /// - Remark: HTTP `POST /api/news/items/{news_item_id}/discussion/refresh`.
+    /// - Remark: Generated from `#/paths//api/news/items/{news_item_id}/discussion/refresh/post(refreshNewsItemDiscussion)`.
+    internal func refreshNewsItemDiscussion(_ input: Operations.RefreshNewsItemDiscussion.Input) async throws -> Operations.RefreshNewsItemDiscussion.Output {
+        try await client.send(
+            input: input,
+            forOperation: Operations.RefreshNewsItemDiscussion.id,
+            serializer: { input in
+                let path = try converter.renderedPath(
+                    template: "/api/news/items/{}/discussion/refresh",
+                    parameters: [
+                        input.path.newsItemId
+                    ]
+                )
+                var request: HTTPTypes.HTTPRequest = .init(
+                    soar_path: path,
+                    method: .post
+                )
+                suppressMutabilityWarning(&request)
+                converter.setAcceptHeader(
+                    in: &request.headerFields,
+                    contentTypes: input.headers.accept
+                )
+                return (request, nil)
+            },
+            deserializer: { response, responseBody in
+                switch response.status.code {
+                case 200:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RefreshNewsItemDiscussion.Output.Ok.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.ContentDiscussionResponse.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .ok(.init(body: body))
+                case 404:
+                    return .notFound(.init())
+                case 422:
+                    let contentType = converter.extractContentTypeIfPresent(in: response.headerFields)
+                    let body: Operations.RefreshNewsItemDiscussion.Output.UnprocessableContent.Body
+                    let chosenContentType = try converter.bestContentType(
+                        received: contentType,
+                        options: [
+                            "application/json"
+                        ]
+                    )
+                    switch chosenContentType {
+                    case "application/json":
+                        body = try await converter.getResponseBodyAsJSON(
+                            Components.Schemas.HTTPValidationError.self,
+                            from: responseBody,
+                            transforming: { value in
+                                .json(value)
+                            }
+                        )
+                    default:
+                        preconditionFailure("bestContentType chose an invalid content type.")
+                    }
+                    return .unprocessableContent(.init(body: body))
+                default:
+                    return .undocumented(
+                        statusCode: response.status.code,
+                        .init(
+                            headerFields: response.headerFields,
+                            body: responseBody
+                        )
+                    )
+                }
+            }
+        )
+    }
     /// Start onboarding audio discovery
     ///
     /// Start onboarding discovery from an audio transcript.
@@ -8461,7 +8816,7 @@ internal struct Client: APIProtocol {
                                 let body = try converter.setRequiredRequestBodyAsBinary(
                                     value.body,
                                     headerFields: &headerFields,
-                                    contentType: "text/plain"
+                                    contentType: "application/octet-stream"
                                 )
                                 return .init(
                                     name: "file",

@@ -31,5 +31,5 @@ User-facing JSON API surface for content, chat, discovery, onboarding, voice, in
 | `app/routers/api/openai.py` | `AudioTranscriptionResponse`, `create_realtime_token`, `transcribe_audio` | OpenAI-related endpoints. |
 | `app/routers/api/read_status.py` | `mark_content_read`, `mark_content_unread`, `bulk_mark_read`, `get_recently_read` | Read status management endpoints. |
 | `app/routers/api/scraper_configs.py` | `ScraperConfigResponse`, `SubscribeToFeedRequest`, `list_scraper_configs`, `create_scraper_config`, `update_scraper_config`, `delete_scraper_config_endpoint`, `subscribe_to_feed` | CRUD endpoints for per-user scraper configurations. |
-| `app/routers/api/stats.py` | `get_unread_counts`, `get_processing_count`, `get_long_form_stats` | User-scoped content statistics endpoints. |
+| `app/routers/api/stats.py` | `get_unread_counts`, `get_processing_count`, `get_long_form_stats` | User-scoped unread and processing statistics endpoints. |
 | `app/routers/api/submission.py` | `submit_content`, `list_submission_statuses` | Endpoint for one-off user submissions. |
