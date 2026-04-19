@@ -41,7 +41,7 @@ struct ShortFormView: View {
                 } else if isEmpty {
                     shortFormEmptyState
                 } else {
-                    Text("Fast Read")
+                    Text("Fast read")
                         .font(.terracottaDisplayLarge)
                         .foregroundStyle(Color.onSurface)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -203,7 +203,7 @@ struct ShortFormView: View {
                 prompt: "Summarize the top 15 news items in my short news feed right now.",
                 screenContext: AssistantScreenContext(
                     screenType: "short_news_feed",
-                    screenTitle: "Fast Read",
+                    screenTitle: "Fast read",
                     visibleContentIds: visibleItemIds,
                     query: "top 15 news items in my short news feed",
                     note: "Summarize the most important items from the fast news feed. Prefer the in-app short news feed over web search."
@@ -216,7 +216,7 @@ struct ShortFormView: View {
                 prompt: "What's the latest news in my short news feed right now?",
                 screenContext: AssistantScreenContext(
                     screenType: "short_news_feed",
-                    screenTitle: "Fast Read",
+                    screenTitle: "Fast read",
                     visibleContentIds: visibleItemIds,
                     query: "latest news in my short news feed",
                     note: "Focus on the newest important developments from the fast news feed."
@@ -229,7 +229,7 @@ struct ShortFormView: View {
                 prompt: "What are the spiciest discussions in my short news feed right now?",
                 screenContext: AssistantScreenContext(
                     screenType: "short_news_feed",
-                    screenTitle: "Fast Read",
+                    screenTitle: "Fast read",
                     visibleContentIds: visibleItemIds,
                     query: "spiciest discussions in my short news feed",
                     note: "Pull out the sharpest disagreements, surprising takes, and most interesting discussion threads from the fast news feed."
