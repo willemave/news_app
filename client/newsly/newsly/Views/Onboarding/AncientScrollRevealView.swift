@@ -122,7 +122,7 @@ struct AncientScrollRevealView: View {
 
     private var topTextOverlay: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Willem News")
+            Text("Newsbuddy")
                 .font(.system(size: 34, weight: .semibold, design: .rounded))
                 .tracking(0.5)
                 .foregroundStyle(Color.white.opacity(0.88))

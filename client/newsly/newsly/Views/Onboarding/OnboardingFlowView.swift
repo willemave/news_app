@@ -23,9 +23,9 @@ struct OnboardingFlowView: View {
 
             VStack(spacing: 0) {
                 progressHeader
-                    .padding(.horizontal, 24)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                    .padding(.horizontal, 40)
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
 
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -74,25 +74,23 @@ struct OnboardingFlowView: View {
     }
 
     private var progressHeader: some View {
-        HStack(spacing: 12) {
-            Text(currentStepInfo.label.uppercased())
-                .font(.editorialMeta)
-                .tracking(1.6)
-                .foregroundColor(.watercolorSlate.opacity(0.68))
-
-            Spacer(minLength: 0)
-
-            Text("Step \(currentStepInfo.number) of 3")
-                .font(.caption.weight(.semibold))
-                .monospacedDigit()
-                .foregroundColor(.watercolorSlate)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(Color.watercolorBase.opacity(0.76)))
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { index in
+                Capsule()
+                    .fill(
+                        index < currentStepInfo.number
+                            ? Color.watercolorSlate.opacity(0.55)
+                            : Color.watercolorSlate.opacity(0.14)
+                    )
+                    .frame(height: 4)
+            }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(cardSurface(cornerRadius: 22))
+        .animation(
+            reduceMotion ? .linear(duration: 0.01) : .spring(response: 0.4, dampingFraction: 0.9),
+            value: currentStepInfo.number
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(currentStepInfo.number) of 3, \(currentStepInfo.label)")
     }
 
     // MARK: - Choice
@@ -118,7 +116,7 @@ struct OnboardingFlowView: View {
                         .font(.watercolorDisplay)
                         .foregroundColor(.watercolorSlate)
                         .multilineTextAlignment(.center)
-                    Text("Tell me what you read and I'll round up the good stuff.\nYou can always tune it later.")
+                    Text("I'm going to help you get onboarded.\nLet's get going.")
                         .font(.watercolorSubtitle)
                         .foregroundColor(.watercolorSlate.opacity(0.74))
                         .multilineTextAlignment(.center)
@@ -145,7 +143,7 @@ struct OnboardingFlowView: View {
                     .foregroundColor(.watercolorBase)
                     .background(primaryButtonBackground)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(OnboardingPrimaryPressStyle())
                 .accessibilityIdentifier("onboarding.choice.personalized")
 
                 Button {
@@ -155,11 +153,11 @@ struct OnboardingFlowView: View {
                         .font(.callout.weight(.medium))
                         .foregroundColor(.watercolorSlate.opacity(0.72))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(OnboardingTextButtonStyle())
                 .accessibilityIdentifier("onboarding.choice.defaults")
             }
-            .padding(18)
-            .background(cardSurface(cornerRadius: 28))
+            .padding(12)
+            .background(cardSurface(cornerRadius: 36))
 
             if let error = viewModel.errorMessage {
                 Text(error)
@@ -205,7 +203,8 @@ struct OnboardingFlowView: View {
                 }
                 .font(.callout.weight(.medium))
                 .foregroundColor(.watercolorSlate.opacity(0.72))
-                .padding(.bottom, 16)
+                .buttonStyle(OnboardingTextButtonStyle())
+                .padding(.bottom, 8)
                 .accessibilityIdentifier("onboarding.audio.skip")
             }
 
@@ -256,13 +255,6 @@ struct OnboardingFlowView: View {
             Spacer()
 
             VStack(spacing: 16) {
-                if hasTopicPreview {
-                    topicPreviewCard(
-                        eyebrow: "PERSONALIZATION",
-                        title: viewModel.topicSummary ?? "Tuning your feed around what you said"
-                    )
-                }
-
                 if viewModel.discoveryLanes.isEmpty {
                     ProgressView()
                         .scaleEffect(1.2)
@@ -294,9 +286,18 @@ struct OnboardingFlowView: View {
                                     value: viewModel.discoveryLanes
                                 )
                         }
+
+                        if isFinalizingLanes {
+                            finalizingRow
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
                     }
                     .padding(20)
                     .background(cardSurface(cornerRadius: 24))
+                    .animation(
+                        reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.3),
+                        value: isFinalizingLanes
+                    )
                 }
             }
 
@@ -319,6 +320,7 @@ struct OnboardingFlowView: View {
                     }
                     .font(.callout.weight(.semibold))
                     .foregroundColor(.watercolorSlate)
+                    .buttonStyle(OnboardingTextButtonStyle())
                     .accessibilityIdentifier("onboarding.loading.keep_waiting")
                 }
 
@@ -330,6 +332,7 @@ struct OnboardingFlowView: View {
                     }
                     .font(.callout.weight(.medium))
                     .foregroundColor(.watercolorSlate.opacity(0.78))
+                    .buttonStyle(OnboardingTextButtonStyle())
                     .accessibilityIdentifier("onboarding.loading.retry")
                 }
 
@@ -338,9 +341,10 @@ struct OnboardingFlowView: View {
                 }
                 .font(.callout.weight(.medium))
                 .foregroundColor(.watercolorSlate.opacity(0.72))
+                .buttonStyle(OnboardingTextButtonStyle())
                 .accessibilityIdentifier("onboarding.loading.use_defaults")
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 8)
         }
         .padding(.horizontal, 24)
         .accessibilityIdentifier("onboarding.loading.screen")
@@ -358,13 +362,6 @@ struct OnboardingFlowView: View {
                         subtitle: suggestionsSubtitle,
                         isLeading: true
                     )
-
-                    if hasTopicPreview && !viewModel.isShowingDefaultConfirmation {
-                        topicPreviewCard(
-                            eyebrow: "TUNED TO",
-                            title: viewModel.topicSummary ?? "A feed matched to your interests"
-                        )
-                    }
 
                     if viewModel.substackSuggestions.isEmpty
                         && viewModel.podcastSuggestions.isEmpty
@@ -433,6 +430,7 @@ struct OnboardingFlowView: View {
                     }
                     .font(.callout.weight(.medium))
                     .foregroundColor(.watercolorSlate.opacity(0.78))
+                    .buttonStyle(OnboardingTextButtonStyle())
                     .accessibilityIdentifier("onboarding.suggestions.retry")
                 } else if viewModel.isShowingDefaultConfirmation {
                     Button("Personalize instead") {
@@ -442,6 +440,7 @@ struct OnboardingFlowView: View {
                     }
                     .font(.callout.weight(.medium))
                     .foregroundColor(.watercolorSlate.opacity(0.78))
+                    .buttonStyle(OnboardingTextButtonStyle())
                     .accessibilityIdentifier("onboarding.suggestions.personalize")
                 }
 
@@ -528,7 +527,7 @@ struct OnboardingFlowView: View {
                 .foregroundColor(.watercolorBase)
                 .background(primaryButtonBackground)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(OnboardingPrimaryPressStyle())
     }
 
     private func headerBlock(
@@ -623,6 +622,36 @@ struct OnboardingFlowView: View {
         viewModel.discoveryLanes.filter { $0.status == "completed" }.count
     }
 
+    private var isFinalizingLanes: Bool {
+        !viewModel.discoveryLanes.isEmpty
+            && completedLaneCount == viewModel.discoveryLanes.count
+    }
+
+    private var finalizingRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.watercolorSlate.opacity(0.10))
+                    .frame(width: 32, height: 32)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(.watercolorSlate)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Finalizing")
+                    .font(.callout)
+                    .foregroundColor(.watercolorSlate)
+                Text("Shaping your first picks")
+                    .font(.caption)
+                    .foregroundColor(.watercolorSlate.opacity(0.62))
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+
     private var currentStepInfo: (number: Int, label: String) {
         switch viewModel.step {
         case .intro, .choice:
@@ -649,6 +678,9 @@ struct OnboardingFlowView: View {
     }
 
     private var loadingFootnote: String {
+        if isFinalizingLanes {
+            return "Almost there"
+        }
         if !viewModel.discoveryLanes.isEmpty {
             return "\(completedLaneCount) of \(viewModel.discoveryLanes.count) lanes ready"
         }
@@ -667,5 +699,24 @@ struct OnboardingFlowView: View {
             return "We'll set up a solid default feed, and you can personalize it later."
         }
         return "No matches found yet. You can try again or continue with defaults."
+    }
+}
+
+private struct OnboardingPrimaryPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.82), value: configuration.isPressed)
+    }
+}
+
+private struct OnboardingTextButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.72 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.82), value: configuration.isPressed)
     }
 }

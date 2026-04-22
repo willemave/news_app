@@ -11,10 +11,10 @@ import XCTest
 
 final class AncientScrollRevealProgressTests: XCTestCase {
     func testGlyphPhraseCyclerSkipsSpacesAndCycles() {
-        var cycler = GlyphPhraseCycler(phrase: "Willem News")
-        let output = (0..<10).map { _ in cycler.nextCharacter(skipSpaces: true) }
-        XCTAssertEqual(String(output), "WillemNews")
-        XCTAssertEqual(cycler.nextCharacter(skipSpaces: true), "W")
+        var cycler = GlyphPhraseCycler(phrase: "Newsbuddy")
+        let output = (0..<9).map { _ in cycler.nextCharacter(skipSpaces: true) }
+        XCTAssertEqual(String(output), "Newsbuddy")
+        XCTAssertEqual(cycler.nextCharacter(skipSpaces: true), "N")
     }
 
     func testGlyphPhraseCyclerCanReturnSpacesWhenRequested() {
