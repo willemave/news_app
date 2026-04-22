@@ -13,7 +13,7 @@ struct ChatSessionToolbarContent: ToolbarContent {
 
     var body: some ToolbarContent {
         if let session {
-            ToolbarItem(placement: .topBarLeading) {
+            ToolbarItem(placement: .principal) {
                 titleContent(for: session)
             }
 

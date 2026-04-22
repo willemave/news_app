@@ -159,13 +159,13 @@ final class ChatSessionViewModel {
         do {
             let detail = try await chatService.getSession(id: sessionId)
             applyDetail(detail)
-            let assistantPreview = allMessages.last(where: { $0.isAssistant })?.content.prefix(160) ?? ""
+            let assistantPreview = timeline.last(where: { $0.message.isAssistant })?.message.content.prefix(160) ?? ""
             logger.debug(
-                "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.allMessages.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
+                "[ViewModel] loadSession succeeded | sessionId=\(self.sessionId) messages=\(self.timeline.count) assistantPreview=\(String(assistantPreview), privacy: .public)"
             )
 
             // Check if there's a processing message we need to poll for
-            if let processingMessage = allMessages.first(where: { $0.isProcessing }) {
+            if let processingMessage = timeline.first(where: { $0.message.isProcessing })?.message {
                 let pollingMessageId = processingMessage.sourceMessageId ?? processingMessage.id
                 await pollForMessageCompletion(messageId: pollingMessageId)
             }
@@ -204,30 +204,23 @@ final class ChatSessionViewModel {
         return !detail.session.isCouncilMode
     }
 
-    var latestProcessSummary: String? {
-        allMessages.last(where: \.isProcessSummary)?.processSummaryText
-    }
-
-    var allMessages: [ChatMessage] {
-        timeline.map(\.message)
-    }
-
-    var councilCandidates: [CouncilCandidate] {
-        latestCouncilMessage?.councilCandidates.sorted { $0.order < $1.order } ?? []
-    }
+    /// Cached derived state. Updated in `publishTimeline` so body-path reads are O(1)
+    /// instead of re-scanning and re-sorting the timeline on every observation tick.
+    private(set) var latestProcessSummary: String?
+    private(set) var councilCandidates: [CouncilCandidate] = []
+    private var timelineCouncilActiveChildSessionId: Int?
 
     var activeCouncilChildSessionId: Int? {
-        session?.activeChildSessionId ?? latestCouncilMessage?.activeCouncilChildSessionId
+        session?.activeChildSessionId ?? timelineCouncilActiveChildSessionId
     }
 
     var activeCouncilCandidate: CouncilCandidate? {
-        let candidates = councilCandidates
-        guard !candidates.isEmpty else { return nil }
+        guard !councilCandidates.isEmpty else { return nil }
         if let activeCouncilChildSessionId,
-           let candidate = candidates.first(where: { $0.childSessionId == activeCouncilChildSessionId }) {
+           let candidate = councilCandidates.first(where: { $0.childSessionId == activeCouncilChildSessionId }) {
             return candidate
         }
-        return candidates.first
+        return councilCandidates.first
     }
 
     /// Poll for a processing message to complete
@@ -431,7 +424,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     }
 
     private var backgroundTrackingMessageId: Int? {
-        if let processingMessage = allMessages.first(where: { $0.isProcessing }) {
+        if let processingMessage = timeline.first(where: { $0.message.isProcessing })?.message {
             return processingMessage.sourceMessageId ?? processingMessage.id
         }
 
@@ -467,6 +460,10 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
 
     var canStartCouncil: Bool {
         session?.canStartCouncil ?? false
+    }
+
+    var canStartDeepResearch: Bool {
+        session?.canStartDeepResearch ?? false
     }
 
     private func applyDetail(_ detail: ChatSessionDetail) {
@@ -512,6 +509,26 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
             let rhsKey = (rhs.message.timestamp, rhs.message.displayType.sortOrder, rhs.id.sortKey)
             return lhsKey < rhsKey
         }
+        refreshDerivedTimelineState()
+    }
+
+    private func refreshDerivedTimelineState() {
+        var latestProcessSummaryValue: String?
+        var latestCouncilMessage: ChatMessage?
+        for item in timeline.reversed() {
+            if latestProcessSummaryValue == nil, item.message.isProcessSummary {
+                latestProcessSummaryValue = item.message.processSummaryText
+            }
+            if latestCouncilMessage == nil, item.message.hasCouncilCandidates {
+                latestCouncilMessage = item.message
+            }
+            if latestProcessSummaryValue != nil, latestCouncilMessage != nil {
+                break
+            }
+        }
+        latestProcessSummary = latestProcessSummaryValue
+        councilCandidates = latestCouncilMessage?.councilCandidates.sorted { $0.order < $1.order } ?? []
+        timelineCouncilActiveChildSessionId = latestCouncilMessage?.activeCouncilChildSessionId
     }
 
     private func upsertPendingSend(_ pending: PendingSend) {
@@ -594,7 +611,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     private func refreshTranscriptAfterPolling() async throws {
         let detail = try await chatService.getSession(id: sessionId)
         applyDetail(detail)
-        guard !allMessages.isEmpty else {
+        guard !timeline.isEmpty else {
             logger.error("[ViewModel] refreshTranscriptAfterPolling failed | no transcript messages returned")
             throw ChatServiceError.missingAssistantMessage
         }
@@ -747,10 +764,6 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
         thinkingTimer?.invalidate()
         thinkingTimer = nil
         thinkingElapsedSeconds = 0
-    }
-
-    private var latestCouncilMessage: ChatMessage? {
-        allMessages.last(where: \.hasCouncilCandidates)
     }
 
     // MARK: - Voice Dictation

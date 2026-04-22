@@ -25,103 +25,114 @@ struct ChatMessageList: View {
     let onDigDeeper: (String) -> Void
     let onShare: (String) -> Void
 
-    @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var isNearBottom = true
     @State private var hasNewerContentBelow = false
+    @State private var hasAnchoredInitialScroll = false
     @StateObject private var feedOptionActionModel = AssistantFeedOptionActionModel()
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                if let errorMessage, hasMessages {
-                    ChatErrorBanner(
-                        error: errorMessage,
-                        onAddExperts: onOpenCouncilSettings,
-                        onDismiss: onDismissError
-                    )
-                }
-
-                if isLoading && !hasMessages {
-                    ChatLoadingView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
-                } else if let errorMessage, !hasMessages {
-                    ChatLoadErrorState(
-                        error: errorMessage,
-                        onRetry: onRetryLoad
-                    )
-                    .padding()
-                } else if !hasMessages {
-                    emptyTimelineState
-                        .padding(.top, 40)
-                } else {
-                    ForEach(timeline) { item in
-                        MessageRow(
-                            item: item,
-                            retryingCouncilChildSessionId: retryingCouncilChildSessionId,
-                            feedOptionActionModel: feedOptionActionModel,
-                            onRetrySend: onRetrySend,
-                            onRetryCouncilCandidate: onRetryCouncilCandidate,
-                            onDigDeeper: onDigDeeper,
-                            onShare: onShare
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if let errorMessage, hasMessages {
+                        ChatErrorBanner(
+                            error: errorMessage,
+                            onAddExperts: onOpenCouncilSettings,
+                            onDismiss: onDismissError
                         )
-                            .id(item.id)
                     }
 
-                    if isSending {
-                        ThinkingBubbleView(
-                            elapsedSeconds: thinkingElapsedSeconds,
-                            statusText: latestProcessSummary
+                    if isLoading && !hasMessages {
+                        ChatLoadingView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    } else if let errorMessage, !hasMessages {
+                        ChatLoadErrorState(
+                            error: errorMessage,
+                            onRetry: onRetryLoad
                         )
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .padding()
+                    } else if !hasMessages {
+                        emptyTimelineState
+                            .padding(.top, 40)
+                    } else {
+                        ForEach(timeline) { item in
+                            MessageRow(
+                                item: item,
+                                retryingCouncilChildSessionId: retryingCouncilChildSessionId,
+                                feedOptionActionModel: feedOptionActionModel,
+                                onRetrySend: onRetrySend,
+                                onRetryCouncilCandidate: onRetryCouncilCandidate,
+                                onDigDeeper: onDigDeeper,
+                                onShare: onShare
+                            )
+                                .id(item.id)
+                        }
+
+                        if isSending {
+                            ThinkingBubbleView(
+                                elapsedSeconds: thinkingElapsedSeconds,
+                                statusText: latestProcessSummary
+                            )
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            .id(Self.thinkingBubbleID)
+                        }
+                    }
+                }
+                .padding()
+            }
+            .contentMargins(.bottom, 12, for: .scrollContent)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                let distanceFromBottom =
+                    geometry.contentSize.height
+                    - geometry.visibleRect.maxY
+                    + geometry.contentInsets.bottom
+                return distanceFromBottom < 48
+            } action: { _, newValue in
+                if isNearBottom != newValue {
+                    isNearBottom = newValue
+                }
+                if newValue, hasNewerContentBelow {
+                    hasNewerContentBelow = false
+                }
+            }
+            .onChange(of: timeline.last?.id) { _, newId in
+                guard let newId else { return }
+                if !hasAnchoredInitialScroll {
+                    hasAnchoredInitialScroll = true
+                    proxy.scrollTo(newId, anchor: .bottom)
+                    return
+                }
+                if isNearBottom {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(newId, anchor: .bottom)
+                    }
+                } else {
+                    hasNewerContentBelow = true
+                }
+            }
+            .onChange(of: isSending) { _, sending in
+                if sending, isNearBottom {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(Self.thinkingBubbleID, anchor: .bottom)
                     }
                 }
             }
-            .scrollTargetLayout()
-            .padding()
-        }
-        .scrollPosition($scrollPosition)
-        .defaultScrollAnchor(.bottom)
-        .contentMargins(.bottom, 12, for: .scrollContent)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            let distanceFromBottom =
-                geometry.contentSize.height
-                - geometry.visibleRect.maxY
-                + geometry.contentInsets.bottom
-            return distanceFromBottom < 48
-        } action: { _, newValue in
-            isNearBottom = newValue
-            if newValue {
+            .onChange(of: scrollToBottomRequest) { _, _ in
+                guard let anchorId = timeline.last?.id else { return }
+                withAnimation(.easeOut(duration: 0.2)) {
+                    proxy.scrollTo(anchorId, anchor: .bottom)
+                }
                 hasNewerContentBelow = false
             }
-        }
-        .onChange(of: timeline.last?.id) { _, _ in
-            if isNearBottom {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    scrollPosition.scrollTo(edge: .bottom)
-                }
-            } else {
-                hasNewerContentBelow = true
+            .overlay(alignment: .bottom) {
+                jumpToLatestOverlay(proxy: proxy)
             }
-        }
-        .onChange(of: isSending) { _, sending in
-            if sending, isNearBottom {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    scrollPosition.scrollTo(edge: .bottom)
-                }
-            }
-        }
-        .onChange(of: scrollToBottomRequest) { _, _ in
-            withAnimation(.easeOut(duration: 0.2)) {
-                scrollPosition.scrollTo(edge: .bottom)
-            }
-            hasNewerContentBelow = false
-        }
-        .overlay(alignment: .bottom) {
-            jumpToLatestOverlay
         }
     }
+
+    private static let thinkingBubbleID = "chat.thinkingBubble"
 
     @ViewBuilder
     private var emptyTimelineState: some View {
@@ -158,11 +169,13 @@ struct ChatMessageList: View {
     }
 
     @ViewBuilder
-    private var jumpToLatestOverlay: some View {
+    private func jumpToLatestOverlay(proxy: ScrollViewProxy) -> some View {
         if hasNewerContentBelow {
             Button {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    scrollPosition.scrollTo(edge: .bottom)
+                if let anchorId = timeline.last?.id {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(anchorId, anchor: .bottom)
+                    }
                 }
                 hasNewerContentBelow = false
             } label: {

@@ -2,13 +2,11 @@ import SwiftUI
 
 struct ChatSessionView: View {
     @EnvironmentObject private var authViewModel: AuthenticationViewModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var viewModel: ChatSessionViewModel
     let onShowHistory: (() -> Void)?
     @FocusState private var isInputFocused: Bool
     @State private var shareContent: ShareContent?
     @State private var scrollToBottomRequest = 0
-    @State private var isContextPanelPresented = false
     @State private var isCouncilSettingsPresented = false
     private let route: ChatSessionRoute
     private let dependencies: ChatDependencies
@@ -34,70 +32,38 @@ struct ChatSessionView: View {
         return "Give me your perspective on this conversation. Keep it short: 2-4 concise bullets on what matters, what is weak or missing, and what follows."
     }
 
-    private var usesSplitContextLayout: Bool { horizontalSizeClass == .regular }
-
     var body: some View {
-        GeometryReader { geometry in
-            chatShell(width: geometry.size.width)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomDock
-        }
-        .sheet(isPresented: $isCouncilSettingsPresented) {
-            NavigationStack {
-                SettingsView(scrollToCouncilOnAppear: true)
-                    .environmentObject(authViewModel)
+        messageListView
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomDock
             }
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .navigationBarTitleDisplayMode(.inline)
-        .task(id: route.stableKey) {
-            dependencies.activeSessionManager.stopTracking(sessionId: viewModel.sessionId)
-            await viewModel.loadSession()
-            await viewModel.checkAndRefreshVoiceDictation()
-        }
-        .onDisappear {
-            viewModel.handleDisappear()
-        }
-        .toolbar {
-            ChatSessionToolbarContent(
-                session: viewModel.session,
-                onOpenArticle: openArticle,
-                onShowHistory: onShowHistory,
-                onSwitchProvider: switchProvider
-            )
-        }
-        .sheet(item: $shareContent) { content in
-            ShareSheet(content: content)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { isContextPanelPresented && !usesSplitContextLayout },
-                set: { isContextPanelPresented = $0 }
-            )
-        ) {
-            secondaryPanel(isCompact: true)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-        }
-    }
-
-    @ViewBuilder
-    private func chatShell(width: CGFloat) -> some View {
-        if usesSplitContextLayout && isContextPanelPresented {
-            HStack(spacing: 0) {
-                messageListView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                Divider()
-
-                secondaryPanel(isCompact: false)
-                    .frame(width: min(360, max(280, width * 0.34)))
-                    .background(Color.surfacePrimary)
+            .sheet(isPresented: $isCouncilSettingsPresented) {
+                NavigationStack {
+                    SettingsView(scrollToCouncilOnAppear: true)
+                        .environmentObject(authViewModel)
+                }
             }
-        } else {
-            messageListView
-        }
+            .scrollDismissesKeyboard(.interactively)
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: route.stableKey) {
+                dependencies.activeSessionManager.stopTracking(sessionId: viewModel.sessionId)
+                await viewModel.loadSession()
+                await viewModel.checkAndRefreshVoiceDictation()
+            }
+            .onDisappear {
+                viewModel.handleDisappear()
+            }
+            .toolbar {
+                ChatSessionToolbarContent(
+                    session: viewModel.session,
+                    onOpenArticle: openArticle,
+                    onShowHistory: onShowHistory,
+                    onSwitchProvider: switchProvider
+                )
+            }
+            .sheet(item: $shareContent) { content in
+                ShareSheet(content: content)
+            }
     }
 
     private func switchToProvider(_ provider: ChatModelProvider) async {
@@ -123,7 +89,7 @@ struct ChatSessionView: View {
     private var messageListView: some View {
         ChatMessageList(
             timeline: viewModel.timeline,
-            hasMessages: !viewModel.allMessages.isEmpty,
+            hasMessages: !viewModel.timeline.isEmpty,
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
             isStartingCouncil: viewModel.isStartingCouncil,
@@ -179,18 +145,16 @@ struct ChatSessionView: View {
         ChatComposerDock(
             inputText: $viewModel.inputText,
             isInputFocused: $isInputFocused,
-            contextTitle: usesSplitContextLayout && isContextPanelPresented ? "Hide Context" : "Context",
-            isContextPresented: isContextPanelPresented,
             canStartCouncil: viewModel.canStartCouncil,
+            canStartDeepResearch: viewModel.canStartDeepResearch,
             isStartingCouncil: viewModel.isStartingCouncil,
             isSending: viewModel.isSending,
             isRecording: viewModel.isRecording,
             isTranscribing: viewModel.isTranscribing,
             isVoiceActionInFlight: viewModel.isVoiceActionInFlight,
             voiceDictationAvailable: viewModel.voiceDictationAvailable,
-            providerName: viewModel.session?.providerDisplayName,
-            onToggleContext: toggleContextPanel,
             onStartCouncil: startCouncil,
+            onStartDeepResearch: startDeepResearch,
             onToggleVoiceRecording: toggleVoiceRecording,
             onSend: sendMessage
         )
@@ -205,26 +169,6 @@ struct ChatSessionView: View {
             onSelect: selectCouncilCandidate,
             onCancelSelection: cancelCouncilSelection
         )
-    }
-
-    private func toggleContextPanel() {
-        if usesSplitContextLayout {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isContextPanelPresented.toggle()
-            }
-        } else {
-            isContextPanelPresented = true
-        }
-    }
-
-    @ViewBuilder
-    private func secondaryPanel(isCompact: Bool) -> some View {
-        ChatSecondaryPanel(
-            session: viewModel.session,
-            activeCouncilCandidate: viewModel.activeCouncilCandidate,
-            onOpenArticle: openArticle
-        )
-        .padding(isCompact ? 0 : 16)
     }
 }
 
@@ -256,6 +200,10 @@ private extension ChatSessionView {
     func startCouncil() {
         scrollToBottomRequest += 1
         viewModel.performStartCouncil(message: defaultCouncilPrompt)
+    }
+
+    func startDeepResearch() {
+        Task { await switchToProvider(.deep_research) }
     }
 
     func toggleVoiceRecording() { viewModel.performToggleVoiceRecording() }

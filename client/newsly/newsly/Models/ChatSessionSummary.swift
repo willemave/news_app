@@ -285,6 +285,10 @@ struct ChatSessionSummary: Codable, Identifiable, Hashable {
         !isCouncilMode && sessionType != "deep_research"
     }
 
+    var canStartDeepResearch: Bool {
+        !isDeepResearch && !isCouncilMode
+    }
+
     /// Icon name for the session type (used in chat list)
     var sessionTypeIconName: String {
         switch sessionType {

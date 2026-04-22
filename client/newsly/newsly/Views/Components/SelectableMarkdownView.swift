@@ -55,10 +55,11 @@ struct SelectableMarkdownView: UIViewRepresentable {
         let resolvedTextColor = textColor.resolvedColor(with: uiView.traitCollection)
         let resolvedLinkColor = UIColor.link.resolvedColor(with: uiView.traitCollection)
         let linkAppearanceSignature = context.coordinator.colorSignature(for: resolvedLinkColor)
-        let renderSignature = context.coordinator.renderSignature(
+        let renderKey = RenderKey(
             markdown: markdown,
-            baseFont: baseFont,
-            textColor: resolvedTextColor,
+            baseFontName: baseFont.fontDescriptor.postscriptName,
+            baseFontSize: baseFont.pointSize,
+            textColorSignature: context.coordinator.colorSignature(for: resolvedTextColor),
             linkColorSignature: linkAppearanceSignature
         )
 
@@ -68,7 +69,7 @@ struct SelectableMarkdownView: UIViewRepresentable {
             uiView.linkTextAttributes = [.underlineStyle: NSUnderlineStyle.single.rawValue]
         }
 
-        guard context.coordinator.lastRenderSignature != renderSignature else { return }
+        guard context.coordinator.lastRenderKey != renderKey else { return }
 
         let rendered = MarkdownNSRenderer(
             baseFont: baseFont,
@@ -76,19 +77,52 @@ struct SelectableMarkdownView: UIViewRepresentable {
             traitCollection: uiView.traitCollection
         ).render(markdown)
         uiView.attributedText = rendered
-        context.coordinator.lastRenderSignature = renderSignature
+        context.coordinator.lastRenderKey = renderKey
         uiView.invalidateIntrinsicContentSize()
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: DigDeeperTextView, context: Context) -> CGSize? {
-        let width = proposal.width ?? UIScreen.main.bounds.width
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+
+        let resolvedTextColor = textColor.resolvedColor(with: uiView.traitCollection)
+        let resolvedLinkColor = UIColor.link.resolvedColor(with: uiView.traitCollection)
+        let renderKey = RenderKey(
+            markdown: markdown,
+            baseFontName: baseFont.fontDescriptor.postscriptName,
+            baseFontSize: baseFont.pointSize,
+            textColorSignature: context.coordinator.colorSignature(for: resolvedTextColor),
+            linkColorSignature: context.coordinator.colorSignature(for: resolvedLinkColor)
+        )
+
+        if let cache = context.coordinator.cachedSize,
+           cache.renderKey == renderKey,
+           abs(cache.width - width) < 0.5 {
+            return CGSize(width: width, height: cache.height)
+        }
+
         let fittingSize = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        context.coordinator.cachedSize = SizeCacheEntry(renderKey: renderKey, width: width, height: fittingSize.height)
         return CGSize(width: width, height: fittingSize.height)
     }
 
+    struct RenderKey: Equatable {
+        let markdown: String
+        let baseFontName: String
+        let baseFontSize: CGFloat
+        let textColorSignature: String
+        let linkColorSignature: String
+    }
+
+    struct SizeCacheEntry {
+        let renderKey: RenderKey
+        let width: CGFloat
+        let height: CGFloat
+    }
+
     class Coordinator {
-        var lastRenderSignature: String?
+        var lastRenderKey: RenderKey?
         var lastLinkAppearanceSignature: String?
+        var cachedSize: SizeCacheEntry?
 
         func colorSignature(for color: UIColor) -> String {
             var red: CGFloat = 0
@@ -105,21 +139,6 @@ struct SelectableMarkdownView: UIViewRepresentable {
                 )
             }
             return color.description
-        }
-
-        func renderSignature(
-            markdown: String,
-            baseFont: UIFont,
-            textColor: UIColor,
-            linkColorSignature: String
-        ) -> String {
-            return [
-                markdown,
-                baseFont.fontDescriptor.postscriptName,
-                String(describing: baseFont.pointSize),
-                colorSignature(for: textColor),
-                linkColorSignature
-            ].joined(separator: "|")
         }
     }
 }

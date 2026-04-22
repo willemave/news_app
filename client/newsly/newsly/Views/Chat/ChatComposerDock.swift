@@ -8,18 +8,16 @@ import SwiftUI
 struct ChatComposerDock: View {
     @Binding var inputText: String
     let isInputFocused: FocusState<Bool>.Binding
-    let contextTitle: String
-    let isContextPresented: Bool
     let canStartCouncil: Bool
+    let canStartDeepResearch: Bool
     let isStartingCouncil: Bool
     let isSending: Bool
     let isRecording: Bool
     let isTranscribing: Bool
     let isVoiceActionInFlight: Bool
     let voiceDictationAvailable: Bool
-    let providerName: String?
-    let onToggleContext: () -> Void
     let onStartCouncil: () -> Void
+    let onStartDeepResearch: () -> Void
     let onToggleVoiceRecording: () -> Void
     let onSend: () -> Void
 
@@ -32,7 +30,6 @@ struct ChatComposerDock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            actionRow
             inputRow
             recordingStatus
         }
@@ -50,38 +47,48 @@ struct ChatComposerDock: View {
         .padding(.horizontal, 12)
     }
 
-    private var actionRow: some View {
-        HStack(spacing: 8) {
-            DockActionButton(
-                title: contextTitle,
-                systemImage: "sidebar.right",
-                isActive: isContextPresented,
-                action: onToggleContext
-            )
-
+    private var modeMenu: some View {
+        Menu {
             if canStartCouncil {
-                DockActionButton(
-                    title: isStartingCouncil ? "Starting Council" : "Council",
-                    systemImage: "person.3.sequence.fill",
-                    isActive: isStartingCouncil,
-                    isDisabled: isStartingCouncil || isSending,
-                    action: onStartCouncil
+                Button(action: onStartCouncil) {
+                    Label(
+                        isStartingCouncil ? "Starting Council…" : "Council",
+                        systemImage: "person.3.sequence.fill"
+                    )
+                }
+                .disabled(isStartingCouncil || isSending)
+            }
+
+            if canStartDeepResearch {
+                Button(action: onStartDeepResearch) {
+                    Label("Deep Research", systemImage: "magnifyingglass.circle.fill")
+                }
+                .disabled(isSending)
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.onSurfaceSecondary)
+                .frame(width: 38, height: 38)
+                .background(
+                    Circle()
+                        .fill(Color.surfaceSecondary.opacity(0.72))
                 )
-                .accessibilityIdentifier("knowledge.start_council")
-            }
-
-            Spacer(minLength: 0)
-
-            if let providerName {
-                Text(providerName)
-                    .font(.terracottaBodySmall)
-                    .foregroundStyle(Color.onSurfaceSecondary)
-            }
+                .overlay(
+                    Circle()
+                        .stroke(Color.outlineVariant.opacity(0.18), lineWidth: 1)
+                )
         }
+        .accessibilityLabel("More actions")
+        .accessibilityIdentifier("knowledge.mode_menu")
     }
 
     private var inputRow: some View {
         HStack(alignment: .center, spacing: 10) {
+            if canStartCouncil || canStartDeepResearch {
+                modeMenu
+            }
+
             TextField("Message", text: $inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.terracottaBodyMedium)
@@ -184,37 +191,6 @@ private struct RecordingIndicator: View {
     }
 }
 
-private struct DockActionButton: View {
-    let title: String
-    let systemImage: String
-    var isActive = false
-    var isDisabled = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.terracottaBodySmall)
-                .foregroundStyle(isActive ? Color.chatAccent : Color.onSurfaceSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(
-                    Capsule()
-                        .fill(isActive ? Color.chatAccent.opacity(0.14) : Color.surfaceSecondary.opacity(0.72))
-                )
-                .overlay(
-                    Capsule()
-                        .stroke(
-                            isActive ? Color.chatAccent.opacity(0.28) : Color.outlineVariant.opacity(0.18),
-                            lineWidth: 1
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-    }
-}
-
 #if DEBUG
 private struct ChatComposerDockPreviewHost: View {
     @State private var inputText = "Ask a follow-up"
@@ -224,18 +200,16 @@ private struct ChatComposerDockPreviewHost: View {
         ChatComposerDock(
             inputText: $inputText,
             isInputFocused: $isInputFocused,
-            contextTitle: "Context",
-            isContextPresented: false,
             canStartCouncil: true,
+            canStartDeepResearch: true,
             isStartingCouncil: false,
             isSending: false,
             isRecording: false,
             isTranscribing: false,
             isVoiceActionInFlight: false,
             voiceDictationAvailable: true,
-            providerName: "GPT-5.4",
-            onToggleContext: {},
             onStartCouncil: {},
+            onStartDeepResearch: {},
             onToggleVoiceRecording: {},
             onSend: {}
         )
