@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
-from pydantic import AliasChoices, Field, PostgresDsn, field_validator
+from pydantic import AliasChoices, Field, PostgresDsn, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+
+DATA_ROOT = Path("/data")
 
 
 def _resolve_env_file() -> Path:
@@ -19,15 +21,48 @@ def _resolve_env_file() -> Path:
 load_dotenv(dotenv_path=_resolve_env_file(), override=True)
 
 
+def _local_storage_fallback(field_name: str) -> Path:
+    cwd = Path.cwd()
+    data_dir = cwd / "data"
+    fallbacks = {
+        "media_base_dir": data_dir / "media",
+        "logs_base_dir": cwd / "logs",
+        "images_base_dir": data_dir / "images",
+        "content_body_local_root": data_dir / "content_bodies",
+        "podcast_scratch_dir": data_dir / "scratch",
+        "personal_markdown_root": data_dir / "personal_markdown",
+    }
+    return fallbacks[field_name]
+
+
+def _is_container_data_path(path: Path) -> bool:
+    return path.is_absolute() and (path == DATA_ROOT or DATA_ROOT in path.parents)
+
+
+def _closest_existing_parent(path: Path) -> Path:
+    current = path
+    while not current.exists() and current != current.parent:
+        current = current.parent
+    return current
+
+
+def _is_writable_or_creatable(path: Path) -> bool:
+    if path.exists():
+        return os.access(path, os.W_OK)
+    return os.access(_closest_existing_parent(path.parent), os.W_OK)
+
+
+def _normalize_storage_path(path: Path, field_name: str) -> Path:
+    candidate = path.expanduser()
+    if not _is_container_data_path(candidate):
+        return candidate
+    if _is_writable_or_creatable(candidate):
+        return candidate
+    return _local_storage_fallback(field_name)
+
+
 def _default_images_base_dir() -> Path:
-    data_root = Path("/data")
-    images_root = data_root / "images"
-    if data_root.exists():
-        if images_root.exists() and os.access(images_root, os.W_OK):
-            return images_root
-        if os.access(data_root, os.W_OK):
-            return images_root
-    return Path.cwd() / "data" / "images"
+    return _normalize_storage_path(DATA_ROOT / "images", "images_base_dir")
 
 
 class Settings(BaseSettings):
@@ -273,6 +308,19 @@ class Settings(BaseSettings):
         if not re.match(r"^gemini-[\w\.-]+$", value):
             raise ValueError("PDF_GEMINI_MODEL must start with 'gemini-'")
         return value
+
+    @field_validator(
+        "media_base_dir",
+        "logs_base_dir",
+        "images_base_dir",
+        "content_body_local_root",
+        "podcast_scratch_dir",
+        "personal_markdown_root",
+        mode="after",
+    )
+    @classmethod
+    def normalize_container_storage_paths(cls, v: Path, info: ValidationInfo) -> Path:
+        return _normalize_storage_path(v, info.field_name or "")
 
     @property
     def podcast_media_dir(self) -> Path:
