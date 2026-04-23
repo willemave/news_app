@@ -1,0 +1,207 @@
+"""Visibility-filter and feed-cap tests for ``app.services.news_feed``."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+import pytest
+
+from app.constants import (
+    AGGREGATOR_FEED_URL_PREFIX,
+    AGGREGATOR_SCRAPER_TYPE,
+    NEWS_FEED_VISIBLE_LIMIT,
+)
+from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
+from app.models.schema import NewsItem, UserScraperConfig
+from app.services.news_feed import (
+    count_unread_news_items,
+    list_visible_news_items,
+)
+
+
+def _utc_naive(dt: datetime) -> datetime:
+    return dt.astimezone(UTC).replace(tzinfo=None)
+
+
+def _global_news_item(
+    db_session,
+    *,
+    ingest_key: str,
+    platform: str,
+    title: str,
+    article_url: str,
+    ingested_at: datetime,
+    aggregator_topic: str | None = None,
+    source_type: str | None = None,
+) -> NewsItem:
+    metadata: dict[str, Any] = {
+        "platform": platform,
+        "aggregator": {
+            "key": platform,
+            "name": platform.title(),
+        },
+    }
+    if aggregator_topic is not None:
+        metadata["aggregator"]["topic"] = aggregator_topic
+
+    item = NewsItem(
+        ingest_key=ingest_key,
+        visibility_scope=NewsItemVisibilityScope.GLOBAL.value,
+        platform=platform,
+        source_type=source_type or platform,
+        source_label=platform.title(),
+        source_external_id=ingest_key,
+        canonical_story_url=article_url,
+        article_url=article_url,
+        article_title=title,
+        article_domain="example.com",
+        summary_title=title,
+        summary_key_points=[f"{title} bullet"],
+        summary_text=f"{title} summary",
+        raw_metadata=metadata,
+        status=NewsItemStatus.READY.value,
+        ingested_at=_utc_naive(ingested_at),
+        processed_at=_utc_naive(ingested_at),
+    )
+    db_session.add(item)
+    db_session.flush()
+    return item
+
+
+def _add_aggregator_subscription(
+    db_session,
+    *,
+    user_id: int,
+    key: str,
+    topics: list[str] | None = None,
+) -> UserScraperConfig:
+    config: dict[str, Any] = {"key": key}
+    if topics is not None:
+        config["topics"] = topics
+    row = UserScraperConfig(
+        user_id=user_id,
+        scraper_type=AGGREGATOR_SCRAPER_TYPE,
+        display_name=key,
+        feed_url=f"{AGGREGATOR_FEED_URL_PREFIX}{key}",
+        config=config,
+        is_active=True,
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
+
+
+@pytest.fixture
+def base_time() -> datetime:
+    return datetime(2026, 4, 22, 12, 0, tzinfo=UTC)
+
+
+def test_visibility_filters_global_items_to_user_aggregator_picks(
+    db_session, test_user, base_time
+) -> None:
+    user_id = test_user.id
+    assert user_id is not None
+
+    _global_news_item(
+        db_session,
+        ingest_key="hn-1",
+        platform="hackernews",
+        title="HN story",
+        article_url="https://example.com/hn",
+        ingested_at=base_time,
+    )
+    _global_news_item(
+        db_session,
+        ingest_key="techmeme-1",
+        platform="techmeme",
+        title="Techmeme story",
+        article_url="https://example.com/techmeme",
+        ingested_at=base_time + timedelta(minutes=1),
+    )
+    db_session.commit()
+
+    # No subscriptions yet → backwards-compat, both visible.
+    assert count_unread_news_items(db_session, user_id=user_id) == 2
+
+    _add_aggregator_subscription(db_session, user_id=user_id, key="hackernews")
+
+    response = list_visible_news_items(
+        db_session, user_id=user_id, read_filter="all", cursor=None, limit=25
+    )
+    titles = [item.title for item in response.contents]
+    assert titles == ["HN story"]
+
+
+def test_visibility_filters_brutalist_topics(db_session, test_user, base_time) -> None:
+    user_id = test_user.id
+    assert user_id is not None
+
+    _global_news_item(
+        db_session,
+        ingest_key="brut-science",
+        platform="brutalist",
+        title="Brutalist science",
+        article_url="https://example.com/sci",
+        ingested_at=base_time,
+        aggregator_topic="science",
+    )
+    _global_news_item(
+        db_session,
+        ingest_key="brut-sports",
+        platform="brutalist",
+        title="Brutalist sports",
+        article_url="https://example.com/sport",
+        ingested_at=base_time + timedelta(minutes=1),
+        aggregator_topic="sports",
+    )
+    _add_aggregator_subscription(db_session, user_id=user_id, key="brutalist", topics=["science"])
+
+    response = list_visible_news_items(
+        db_session, user_id=user_id, read_filter="all", cursor=None, limit=25
+    )
+    titles = [item.title for item in response.contents]
+    assert titles == ["Brutalist science"]
+
+
+def test_visibility_caps_visible_feed_at_news_feed_visible_limit(
+    db_session, test_user, base_time
+) -> None:
+    user_id = test_user.id
+    assert user_id is not None
+
+    over_cap = NEWS_FEED_VISIBLE_LIMIT + 5
+    for i in range(over_cap):
+        _global_news_item(
+            db_session,
+            ingest_key=f"hn-{i:03d}",
+            platform="hackernews",
+            title=f"Story {i}",
+            article_url=f"https://example.com/story-{i}",
+            ingested_at=base_time + timedelta(minutes=i),
+        )
+    _add_aggregator_subscription(db_session, user_id=user_id, key="hackernews")
+
+    # Unread count must not exceed the cap, even though 105 items exist.
+    assert count_unread_news_items(db_session, user_id=user_id) == NEWS_FEED_VISIBLE_LIMIT
+
+    # Paginating beyond the cap stops at NEWS_FEED_VISIBLE_LIMIT total items.
+    fetched_titles: list[str | None] = []
+    cursor: str | None = None
+    while True:
+        response = list_visible_news_items(
+            db_session,
+            user_id=user_id,
+            read_filter="all",
+            cursor=cursor,
+            limit=25,
+        )
+        fetched_titles.extend(item.title for item in response.contents)
+        cursor = response.meta.next_cursor
+        if not cursor:
+            break
+
+    assert len(fetched_titles) == NEWS_FEED_VISIBLE_LIMIT
+    # Most-recent-first: cap keeps the newest items.
+    assert fetched_titles[0] == f"Story {over_cap - 1}"
+    assert fetched_titles[-1] == f"Story {over_cap - NEWS_FEED_VISIBLE_LIMIT}"
