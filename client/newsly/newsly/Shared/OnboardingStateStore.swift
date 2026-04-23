@@ -13,12 +13,40 @@ struct OnboardingProgressSnapshot: Codable {
     var suggestions: OnboardingFastDiscoverResponse?
     var selectedSourceKeys: [String]
     var selectedSubreddits: [String]
+    var selectedAggregators: [String] = []
+    var selectedBrutalistTopics: [String] = []
     var discoveryRunId: Int?
     var discoveryRunStatus: String?
     var discoveryErrorMessage: String?
     var hasReachedPollingLimit: Bool
     var topicSummary: String?
     var inferredTopics: [String]
+}
+
+// Backwards-compatible decoder: snapshots written before fast-news landed have
+// no `selectedAggregators`/`selectedBrutalistTopics` keys. Defining the decoder
+// in an extension preserves Swift's synthesized memberwise init.
+extension OnboardingProgressSnapshot {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        step = try container.decode(OnboardingStep.self, forKey: .step)
+        isPersonalized = try container.decode(Bool.self, forKey: .isPersonalized)
+        suggestions = try container.decodeIfPresent(
+            OnboardingFastDiscoverResponse.self, forKey: .suggestions)
+        selectedSourceKeys = try container.decode([String].self, forKey: .selectedSourceKeys)
+        selectedSubreddits = try container.decode([String].self, forKey: .selectedSubreddits)
+        selectedAggregators =
+            (try? container.decode([String].self, forKey: .selectedAggregators)) ?? []
+        selectedBrutalistTopics =
+            (try? container.decode([String].self, forKey: .selectedBrutalistTopics)) ?? []
+        discoveryRunId = try container.decodeIfPresent(Int.self, forKey: .discoveryRunId)
+        discoveryRunStatus = try container.decodeIfPresent(String.self, forKey: .discoveryRunStatus)
+        discoveryErrorMessage = try container.decodeIfPresent(
+            String.self, forKey: .discoveryErrorMessage)
+        hasReachedPollingLimit = try container.decode(Bool.self, forKey: .hasReachedPollingLimit)
+        topicSummary = try container.decodeIfPresent(String.self, forKey: .topicSummary)
+        inferredTopics = try container.decode([String].self, forKey: .inferredTopics)
+    }
 }
 
 final class OnboardingStateStore {

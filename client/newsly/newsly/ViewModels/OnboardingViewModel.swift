@@ -23,7 +23,66 @@ enum OnboardingStep: Int, Codable {
     case audio
     case loading
     case suggestions
+    case fastNews
 }
+
+struct OnboardingAggregatorOption: Hashable, Identifiable {
+    let key: String
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    var id: String { key }
+}
+
+let onboardingAggregatorOptions: [OnboardingAggregatorOption] = [
+    OnboardingAggregatorOption(
+        key: "hackernews",
+        title: "Hacker News",
+        subtitle: "Tech, startups, engineering discussion",
+        icon: "terminal"
+    ),
+    OnboardingAggregatorOption(
+        key: "techmeme",
+        title: "Techmeme",
+        subtitle: "Top tech industry headlines, clustered",
+        icon: "newspaper"
+    ),
+    OnboardingAggregatorOption(
+        key: "mediagazer",
+        title: "Mediagazer",
+        subtitle: "Media industry news and coverage",
+        icon: "tv"
+    ),
+    OnboardingAggregatorOption(
+        key: "memeorandum",
+        title: "Memeorandum",
+        subtitle: "US politics, policy, punditry",
+        icon: "building.columns"
+    ),
+    OnboardingAggregatorOption(
+        key: "sciurls",
+        title: "SciURLs",
+        subtitle: "Science news across disciplines",
+        icon: "atom"
+    ),
+    OnboardingAggregatorOption(
+        key: "finurls",
+        title: "FinURLs",
+        subtitle: "Finance, markets, and economics",
+        icon: "chart.line.uptrend.xyaxis"
+    ),
+    OnboardingAggregatorOption(
+        key: "brutalist",
+        title: "Brutalist Report",
+        subtitle: "Headlines by topic — pick your beats",
+        icon: "rectangle.grid.2x2"
+    ),
+]
+
+let onboardingBrutalistTopics: [String] = [
+    "science", "business", "politics", "sports",
+]
 
 enum OnboardingAudioState: Equatable {
     case idle
@@ -38,6 +97,8 @@ final class OnboardingViewModel: ObservableObject {
     @Published var suggestions: OnboardingFastDiscoverResponse?
     @Published var selectedSourceKeys: Set<String> = []
     @Published var selectedSubreddits: Set<String> = []
+    @Published var selectedAggregators: Set<String> = []
+    @Published var selectedBrutalistTopics: Set<String> = Set(onboardingBrutalistTopics)
     @Published var isLoading = false
     @Published var loadingMessage = ""
     @Published var errorMessage: String?
@@ -243,6 +304,36 @@ final class OnboardingViewModel: ObservableObject {
         persistProgress()
     }
 
+    func toggleAggregator(_ option: OnboardingAggregatorOption) {
+        if selectedAggregators.contains(option.key) {
+            selectedAggregators.remove(option.key)
+        } else {
+            selectedAggregators.insert(option.key)
+        }
+        persistProgress()
+    }
+
+    func toggleBrutalistTopic(_ topic: String) {
+        if selectedBrutalistTopics.contains(topic) {
+            selectedBrutalistTopics.remove(topic)
+        } else {
+            selectedBrutalistTopics.insert(topic)
+        }
+        persistProgress()
+    }
+
+    func advanceToFastNews() {
+        errorMessage = nil
+        step = .fastNews
+        persistProgress()
+    }
+
+    func returnToSuggestions() {
+        errorMessage = nil
+        step = .suggestions
+        persistProgress()
+    }
+
     func completeOnboarding() async {
         errorMessage = nil
         isLoading = true
@@ -253,6 +344,7 @@ final class OnboardingViewModel: ObservableObject {
             let request = OnboardingCompleteRequest(
                 selectedSources: buildSelectedSources(),
                 selectedSubreddits: Array(selectedSubreddits),
+                selectedAggregators: buildSelectedAggregators(),
                 profileSummary: isPersonalized ? topicSummary : nil,
                 inferredTopics: isPersonalized ? inferredTopics : nil,
                 twitterUsername: normalizedTwitterUsername(),
@@ -263,6 +355,20 @@ final class OnboardingViewModel: ObservableObject {
             onboardingStateStore.clearProgress(userId: user.id)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func buildSelectedAggregators() -> [OnboardingSelectedAggregator] {
+        onboardingAggregatorOptions.compactMap { option in
+            guard selectedAggregators.contains(option.key) else { return nil }
+            let topics: [String] = option.key == "brutalist"
+                ? Array(selectedBrutalistTopics).sorted()
+                : []
+            return OnboardingSelectedAggregator(
+                key: option.key,
+                title: option.title,
+                topics: topics
+            )
         }
     }
 
@@ -431,6 +537,8 @@ final class OnboardingViewModel: ObservableObject {
         suggestions = nil
         selectedSourceKeys = []
         selectedSubreddits = []
+        selectedAggregators = []
+        selectedBrutalistTopics = Set(onboardingBrutalistTopics)
         isSubmittingAudioDiscovery = false
         onboardingStateStore.clearProgress(userId: user.id)
     }
@@ -538,6 +646,10 @@ final class OnboardingViewModel: ObservableObject {
         suggestions = snapshot.suggestions
         selectedSourceKeys = Set(snapshot.selectedSourceKeys)
         selectedSubreddits = Set(snapshot.selectedSubreddits)
+        selectedAggregators = Set(snapshot.selectedAggregators)
+        if !snapshot.selectedBrutalistTopics.isEmpty {
+            selectedBrutalistTopics = Set(snapshot.selectedBrutalistTopics)
+        }
         discoveryRunId = snapshot.discoveryRunId
         discoveryRunStatus = snapshot.discoveryRunStatus
         discoveryErrorMessage = snapshot.discoveryErrorMessage
@@ -552,7 +664,7 @@ final class OnboardingViewModel: ObservableObject {
             return
         }
 
-        guard step == .loading || step == .suggestions else {
+        guard step == .loading || step == .suggestions || step == .fastNews else {
             onboardingStateStore.clearProgress(userId: user.id)
             return
         }
@@ -565,6 +677,8 @@ final class OnboardingViewModel: ObservableObject {
                 suggestions: suggestions,
                 selectedSourceKeys: Array(selectedSourceKeys).sorted(),
                 selectedSubreddits: Array(selectedSubreddits).sorted(),
+                selectedAggregators: Array(selectedAggregators).sorted(),
+                selectedBrutalistTopics: Array(selectedBrutalistTopics).sorted(),
                 discoveryRunId: discoveryRunId,
                 discoveryRunStatus: discoveryRunStatus,
                 discoveryErrorMessage: discoveryErrorMessage,

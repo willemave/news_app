@@ -70,12 +70,15 @@ struct OnboardingFlowView: View {
         case .suggestions:
             suggestionsView
                 .transition(screenTransition)
+        case .fastNews:
+            fastNewsView
+                .transition(screenTransition)
         }
     }
 
     private var progressHeader: some View {
         HStack(spacing: 6) {
-            ForEach(0..<3, id: \.self) { index in
+            ForEach(0..<progressStepTotal, id: \.self) { index in
                 Capsule()
                     .fill(
                         index < currentStepInfo.number
@@ -90,8 +93,12 @@ struct OnboardingFlowView: View {
             value: currentStepInfo.number
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(currentStepInfo.number) of 3, \(currentStepInfo.label)")
+        .accessibilityLabel(
+            "Step \(currentStepInfo.number) of \(progressStepTotal), \(currentStepInfo.label)"
+        )
     }
+
+    private var progressStepTotal: Int { 4 }
 
     // MARK: - Choice
 
@@ -365,7 +372,6 @@ struct OnboardingFlowView: View {
 
                     if viewModel.substackSuggestions.isEmpty
                         && viewModel.podcastSuggestions.isEmpty
-                        && viewModel.subredditSuggestions.isEmpty
                     {
                         Text(emptyStateMessage)
                             .font(.callout)
@@ -392,16 +398,6 @@ struct OnboardingFlowView: View {
                             onToggle: { viewModel.toggleSource($0) }
                         )
                     }
-
-                    if !viewModel.subredditSuggestions.isEmpty {
-                        suggestionSection(
-                            title: "REDDIT",
-                            icon: "bubble.left.and.text.bubble.right",
-                            items: viewModel.subredditSuggestions,
-                            isSelected: { viewModel.selectedSubreddits.contains($0.subreddit ?? "") },
-                            onToggle: { viewModel.toggleSubreddit($0) }
-                        )
-                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -410,17 +406,19 @@ struct OnboardingFlowView: View {
 
             VStack(spacing: 10) {
                 if !viewModel.isShowingDefaultConfirmation {
-                    Text("\(selectedSuggestionCount) selected")
+                    Text("\(selectedLongformCount) selected")
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
                         .foregroundColor(.watercolorSlate.opacity(0.65))
                 }
 
-                primaryButton(primaryCompletionTitle) {
-                    Task { await viewModel.completeOnboarding() }
+                primaryButton(suggestionsPrimaryTitle) {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.advanceToFastNews()
+                    }
                 }
                 .disabled(viewModel.isLoading)
-                .accessibilityIdentifier("onboarding.complete")
+                .accessibilityIdentifier("onboarding.suggestions.continue")
 
                 if viewModel.shouldOfferRetryFromSuggestions {
                     Button("Try again") {
@@ -453,25 +451,233 @@ struct OnboardingFlowView: View {
             .padding(.horizontal, 24)
             .padding(.top, 14)
             .padding(.bottom, 16)
-            .background(
-                ZStack(alignment: .top) {
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-
-                    LinearGradient(
-                        colors: [.clear, Color.watercolorBase.opacity(0.28)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-
-                    Rectangle()
-                        .fill(Color.watercolorSlate.opacity(0.08))
-                        .frame(height: 0.5)
-                }
-                .ignoresSafeArea(edges: .bottom)
-            )
+            .background(footerBackground)
         }
         .accessibilityIdentifier("onboarding.suggestions.screen")
+    }
+
+    // MARK: - Fast News
+
+    private var fastNewsView: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    headerBlock(
+                        eyebrow: "FAST NEWS",
+                        title: "Add quick-hit sources",
+                        subtitle:
+                            "Pick aggregators and subreddits for high-frequency headlines. Skip any you don't want.",
+                        isLeading: true
+                    )
+
+                    aggregatorSection
+
+                    if !viewModel.subredditSuggestions.isEmpty {
+                        suggestionSection(
+                            title: "REDDIT",
+                            icon: "bubble.left.and.text.bubble.right",
+                            items: viewModel.subredditSuggestions,
+                            isSelected: { viewModel.selectedSubreddits.contains($0.subreddit ?? "") },
+                            onToggle: { viewModel.toggleSubreddit($0) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 128)
+            }
+
+            VStack(spacing: 10) {
+                Text("\(selectedFastNewsCount) selected")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundColor(.watercolorSlate.opacity(0.65))
+
+                primaryButton(fastNewsPrimaryTitle) {
+                    Task { await viewModel.completeOnboarding() }
+                }
+                .disabled(viewModel.isLoading)
+                .accessibilityIdentifier("onboarding.complete")
+
+                Button("Back") {
+                    withAnimation(.easeInOut(duration: 0.3)) {
+                        viewModel.returnToSuggestions()
+                    }
+                }
+                .font(.callout.weight(.medium))
+                .foregroundColor(.watercolorSlate.opacity(0.72))
+                .buttonStyle(OnboardingTextButtonStyle())
+                .accessibilityIdentifier("onboarding.fastnews.back")
+
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
+            .background(footerBackground)
+        }
+        .accessibilityIdentifier("onboarding.fastnews.screen")
+    }
+
+    private var aggregatorSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.horizontal")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(.watercolorSlate.opacity(0.55))
+                Text("AGGREGATORS")
+                    .font(.editorialMeta)
+                    .foregroundColor(.watercolorSlate.opacity(0.55))
+                    .tracking(1.5)
+
+                Spacer()
+
+                Text("\(viewModel.selectedAggregators.count)/\(onboardingAggregatorOptions.count)")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundColor(.watercolorSlate.opacity(0.68))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.watercolorSlate.opacity(0.08)))
+            }
+            .padding(.top, 16)
+            .padding(.bottom, 4)
+
+            VStack(spacing: 8) {
+                ForEach(onboardingAggregatorOptions) { option in
+                    aggregatorRow(option: option)
+                }
+            }
+        }
+    }
+
+    private func aggregatorRow(option: OnboardingAggregatorOption) -> some View {
+        let isSelected = viewModel.selectedAggregators.contains(option.key)
+        let isBrutalist = option.key == "brutalist"
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                viewModel.toggleAggregator(option)
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.watercolorSlate.opacity(isSelected ? 0.16 : 0.08))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: option.icon)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.watercolorSlate)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(option.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundColor(.watercolorSlate)
+                        Text(option.subtitle)
+                            .font(.caption)
+                            .foregroundColor(.watercolorSlate.opacity(0.62))
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(
+                            isSelected
+                                ? Color.watercolorSlate
+                                : Color.watercolorSlate.opacity(0.32)
+                        )
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(Color.watercolorBase.opacity(isSelected ? 0.92 : 0.7))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18)
+                                .stroke(
+                                    isSelected
+                                        ? Color.watercolorSlate.opacity(0.32)
+                                        : Color.watercolorSlate.opacity(0.10),
+                                    lineWidth: isSelected ? 1 : 0.5
+                                )
+                        )
+                )
+            }
+            .buttonStyle(OnboardingTextButtonStyle())
+            .accessibilityIdentifier("onboarding.fastnews.aggregator.\(option.key)")
+
+            if isBrutalist && isSelected {
+                brutalistTopicChips
+                    .padding(.leading, 48)
+                    .padding(.trailing, 12)
+                    .padding(.bottom, 4)
+                    .transition(.opacity)
+            }
+        }
+        .animation(
+            reduceMotion ? .linear(duration: 0.01) : .easeInOut(duration: 0.2),
+            value: isSelected
+        )
+    }
+
+    private var brutalistTopicChips: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("TOPICS")
+                .font(.editorialMeta)
+                .tracking(1.4)
+                .foregroundColor(.watercolorSlate.opacity(0.55))
+
+            FlowLayout(spacing: 6) {
+                ForEach(onboardingBrutalistTopics, id: \.self) { topic in
+                    let isOn = viewModel.selectedBrutalistTopics.contains(topic)
+                    Button {
+                        viewModel.toggleBrutalistTopic(topic)
+                    } label: {
+                        Text(topic.capitalized)
+                            .font(.caption.weight(.semibold))
+                            .foregroundColor(
+                                isOn ? Color.watercolorBase : Color.watercolorSlate.opacity(0.78)
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        isOn
+                                            ? Color.watercolorSlate
+                                            : Color.watercolorSlate.opacity(0.08)
+                                    )
+                            )
+                    }
+                    .buttonStyle(OnboardingTextButtonStyle())
+                    .accessibilityIdentifier(
+                        "onboarding.fastnews.brutalist.topic.\(topic)"
+                    )
+                }
+            }
+        }
+    }
+
+    private var footerBackground: some View {
+        ZStack(alignment: .top) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+
+            LinearGradient(
+                colors: [.clear, Color.watercolorBase.opacity(0.28)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Rectangle()
+                .fill(Color.watercolorSlate.opacity(0.08))
+                .frame(height: 0.5)
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private func suggestionSection(
@@ -660,21 +866,31 @@ struct OnboardingFlowView: View {
             return (2, viewModel.step == .audio ? "Voice setup" : "Matching sources")
         case .suggestions:
             return (3, "Review picks")
+        case .fastNews:
+            return (4, "Fast news")
         }
     }
 
-    private var selectedSuggestionCount: Int {
-        viewModel.selectedSourceKeys.count + viewModel.selectedSubreddits.count
+    private var selectedLongformCount: Int {
+        viewModel.selectedSourceKeys.count
     }
 
-    private var primaryCompletionTitle: String {
-        if viewModel.isShowingDefaultConfirmation {
-            return "Start with defaults"
+    private var selectedFastNewsCount: Int {
+        viewModel.selectedAggregators.count + viewModel.selectedSubreddits.count
+    }
+
+    private var suggestionsPrimaryTitle: String {
+        if !viewModel.isShowingDefaultConfirmation && selectedLongformCount > 0 {
+            return "Continue with \(selectedLongformCount)"
         }
-        if selectedSuggestionCount > 0 {
-            return "Start with \(selectedSuggestionCount) sources"
+        return "Continue"
+    }
+
+    private var fastNewsPrimaryTitle: String {
+        if selectedFastNewsCount == 0 {
+            return "Start reading"
         }
-        return "Start reading"
+        return "Start with \(selectedFastNewsCount + selectedLongformCount) sources"
     }
 
     private var loadingFootnote: String {

@@ -215,9 +215,22 @@ struct OnboardingSelectedSource: Codable {
     }
 }
 
+struct OnboardingSelectedAggregator: Codable, Hashable {
+    let key: String
+    let title: String?
+    let topics: [String]
+
+    init(key: String, title: String? = nil, topics: [String] = []) {
+        self.key = key
+        self.title = title
+        self.topics = topics
+    }
+}
+
 struct OnboardingCompleteRequest: Codable {
     let selectedSources: [OnboardingSelectedSource]
     let selectedSubreddits: [String]
+    let selectedAggregators: [OnboardingSelectedAggregator]
     let profileSummary: String?
     let inferredTopics: [String]?
     let twitterUsername: String?
@@ -226,6 +239,7 @@ struct OnboardingCompleteRequest: Codable {
     enum CodingKeys: String, CodingKey {
         case selectedSources = "selected_sources"
         case selectedSubreddits = "selected_subreddits"
+        case selectedAggregators = "selected_aggregators"
         case profileSummary = "profile_summary"
         case inferredTopics = "inferred_topics"
         case twitterUsername = "twitter_username"
