@@ -46,6 +46,8 @@ class TaskType(StrEnum):
     PROCESS_PODCAST_MEDIA = "process_podcast_media"
     DOWNLOAD_AUDIO = "download_audio"
     TRANSCRIBE = "transcribe"
+    DOWNLOAD_TWEET_VIDEO_AUDIO = "download_tweet_video_audio"
+    TRANSCRIBE_TWEET_VIDEO = "transcribe_tweet_video"
     SUMMARIZE = "summarize"
     FETCH_DISCUSSION = "fetch_discussion"
     GENERATE_IMAGE = "generate_image"

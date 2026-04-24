@@ -10,6 +10,7 @@ from app.models.metadata import ContentType
 from app.utils.title_utils import clean_title
 
 WHITESPACE_PATTERN = re.compile(r"\s+")
+VIDEO_TRANSCRIPT_MARKER = "[Embedded video transcript]"
 
 
 def build_news_context(metadata: dict[str, Any]) -> str:
@@ -79,15 +80,24 @@ def build_summarization_payload(
         content_type.value if isinstance(content_type, ContentType) else str(content_type)
     )
 
+    def _append_video_transcript(text: str) -> str:
+        video_transcript = metadata.get("video_transcript")
+        if not isinstance(video_transcript, str) or not video_transcript.strip():
+            return text
+        transcript_block = f"{VIDEO_TRANSCRIPT_MARKER}\n{video_transcript.strip()}"
+        return f"{text}\n\n{transcript_block}" if text.strip() else transcript_block
+
     if resolved_type == ContentType.ARTICLE.value:
-        return str(
+        article_content = str(
             source_text or metadata.get("content") or metadata.get("content_to_summarize") or ""
         )
+        return _append_video_transcript(article_content)
 
     if resolved_type == ContentType.NEWS.value:
         article_content = str(
             source_text or metadata.get("content") or metadata.get("content_to_summarize") or ""
         )
+        article_content = _append_video_transcript(article_content)
         aggregator_context = build_news_context(metadata)
         if aggregator_context and article_content:
             return f"Context:\n{aggregator_context}\n\nArticle Content:\n{article_content}"

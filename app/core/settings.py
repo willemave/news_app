@@ -225,10 +225,16 @@ class Settings(BaseSettings):
     # Whisper transcription settings
     whisper_model_size: str = "base"  # tiny, base, small, medium, large
     whisper_device: str = "auto"  # auto, cpu, cuda, mps
+    tweet_video_enabled: bool = True
+    tweet_video_max_duration_seconds: int = Field(default=600, ge=1)
 
     # HTTP client
     http_timeout_seconds: int = 30
     http_max_retries: int = 3
+
+    # Firecrawl fallback extraction
+    firecrawl_api_key: str | None = None
+    firecrawl_timeout_seconds: int = Field(default=45, ge=1, le=300)
 
     # Reddit / PRAW configuration (script flow)
     reddit_client_id: str | None = None
@@ -331,6 +337,12 @@ class Settings(BaseSettings):
         """
 
         return (self.media_base_dir / "podcasts").resolve()
+
+    @property
+    def tweet_video_media_dir(self) -> Path:
+        """Return the directory for temporary tweet video audio downloads."""
+
+        return (self.media_base_dir / "tweet_videos").resolve()
 
     @property
     def substack_media_dir(self) -> Path:

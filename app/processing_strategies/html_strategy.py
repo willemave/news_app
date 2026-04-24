@@ -12,7 +12,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-import trafilatura
 from crawl4ai import (
     AsyncWebCrawler,
     BrowserConfig,
@@ -27,7 +26,7 @@ from app.core.logging import get_logger
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
-from app.services.exa_client import ExaClientError, exa_get_contents
+from app.services.firecrawl_client import FirecrawlClientError, scrape_url_with_firecrawl
 from app.utils.dates import parse_date_with_tz
 from app.utils.title_utils import clean_title
 
@@ -97,15 +96,6 @@ ACCESS_GATE_HTML_MARKERS: tuple[str, ...] = (
     "cf-turnstile",
     "performance & security by cloudflare",
 )
-NEWSPAPER_FALLBACK_DOMAIN_SUFFIXES: frozenset[str] = frozenset(
-    {
-        "africabusinesscommunities.com",
-        "ft.com",
-        "politico.com",
-        "researchgate.net",
-        "sourceforge.net",
-    }
-)
 PAYWALL_TEXT_MARKERS: tuple[str, ...] = (
     "subscribe to read",
     "subscribe to continue reading",
@@ -145,20 +135,6 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             return (urlparse(url).netloc or "").lower()
         except Exception:
             return ""
-
-    @classmethod
-    def _should_try_newspaper_fallback(cls, url: str) -> bool:
-        """Return True when the URL host is on the newspaper fallback allowlist."""
-
-        host = cls._host_for_url(url)
-        if not host:
-            return False
-
-        normalized_host = host[4:] if host.startswith("www.") else host
-        return any(
-            normalized_host == domain or normalized_host.endswith(f".{domain}")
-            for domain in NEWSPAPER_FALLBACK_DOMAIN_SUFFIXES
-        )
 
     def _detect_source(self, url: str) -> str:
         """Detect the source type from URL."""
@@ -410,8 +386,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         return any(token in message for token in transient_tokens)
 
     @staticmethod
-    def _should_use_httpx_fallback(error: Exception) -> bool:
-        """Return True when a lightweight fetch/parse fallback is worth trying."""
+    def _should_use_extraction_fallback(error: Exception) -> bool:
+        """Return True when Firecrawl fallback is worth trying."""
 
         message = str(error).lower()
         fallback_tokens = [
@@ -419,8 +395,11 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "net::err_http2_protocol_error",
             "net::err_cert_verifier_changed",
             "wait condition failed",
+            "timeout",
             "timeout after",
+            "crawl4ai extraction returned none",
             "net::err_name_not_resolved",
+            "no content extracted",
         ]
         return any(token in message for token in fallback_tokens)
 
@@ -642,146 +621,30 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
         return trimmed_text
 
-    @staticmethod
-    def _normalize_rss_content_text(raw_rss_content: str) -> str:
-        """Convert RSS HTML-ish content into compact plain text."""
-
-        without_scripts = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", raw_rss_content)
-        without_tags = re.sub(r"(?is)<[^>]+>", " ", without_scripts)
-        return re.sub(r"\s+", " ", unescape(without_tags)).strip()
-
-    @classmethod
-    def _get_rss_fallback_text(cls, metadata: dict[str, Any]) -> str:
-        """Return fallback text from RSS payload when present."""
-
-        rss_content = metadata.get("rss_content")
-        if not isinstance(rss_content, str) or not rss_content.strip():
-            return ""
-
-        normalized = cls._normalize_rss_content_text(rss_content)
-        return normalized if normalized else rss_content.strip()
-
-    def _get_exa_fallback_text(self, url: str) -> str:
-        """Return fallback article text from Exa when available."""
-
-        results = exa_get_contents(
-            [url],
-            max_characters=None,
-            livecrawl="always",
-            raise_on_error=True,
-        )
-        if not results:
-            return ""
-
-        primary = results[0]
-        for candidate in (primary.text, primary.summary):
-            if not isinstance(candidate, str) or not candidate.strip():
-                continue
-            normalized = re.sub(r"\s+", " ", candidate).strip()
-            if normalized:
-                return normalized
-        return ""
-
-    def _recover_gate_page_content(
+    def _firecrawl_fallback_fetch(
         self,
-        extracted_data: dict[str, Any],
+        url: str,
+        source: str,
         context: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        """Use metadata-aware recovery for access-gated pages before failing the extraction."""
-
-        gate_reason = extracted_data.get("extraction_error")
-        if not isinstance(gate_reason, str) or not gate_reason.startswith("access gate detected"):
-            return extracted_data
+    ) -> dict[str, Any] | None:
+        """Use Firecrawl after crawl4ai cannot produce usable article text."""
 
         context_data = context if isinstance(context, dict) else {}
-        existing_metadata = context_data.get("existing_metadata")
-        if not isinstance(existing_metadata, dict):
-            existing_metadata = {}
-
-        final_url = extracted_data.get("final_url_after_redirects") or context_data.get(
-            "original_url"
-        )
-        resolved_url = str(final_url) if final_url else ""
-        if not resolved_url:
-            return extracted_data
-
-        content_id = context_data.get("content_id")
-
         try:
-            exa_fallback_text = self._get_exa_fallback_text(resolved_url)
-        except ExaClientError as exc:
-            logger.error(
-                "HtmlStrategy: Access gate Exa fallback failed for %s: %s",
-                resolved_url,
-                exc,
-                extra={
-                    "component": "html_strategy",
-                    "operation": "gate_page_recovery",
-                    "item_id": str(content_id) if content_id is not None else resolved_url,
-                    "context_data": {
-                        "url": resolved_url,
-                        "gate_reason": gate_reason,
-                        "error": str(exc),
-                    },
+            result = scrape_url_with_firecrawl(
+                url,
+                telemetry={
+                    "content_id": context_data.get("content_id"),
+                    "task_id": context_data.get("task_id"),
                 },
             )
-            exa_fallback_text = ""
-
-        if exa_fallback_text:
-            logger.warning(
-                "HtmlStrategy: Access gate detected for %s; using Exa fallback",
-                resolved_url,
-            )
-            return {
-                **extracted_data,
-                "text_content": exa_fallback_text,
-                "used_exa_fallback": True,
-                "exa_fallback_length": len(exa_fallback_text),
-                "gate_page_reason": gate_reason,
-                "extraction_error": None,
-            }
-
-        rss_fallback_text = self._get_rss_fallback_text(existing_metadata)
-        if rss_fallback_text:
-            logger.warning(
-                "HtmlStrategy: Access gate detected for %s; using rss_content fallback",
-                resolved_url,
-            )
-            return {
-                **extracted_data,
-                "text_content": rss_fallback_text,
-                "used_rss_fallback": True,
-                "rss_fallback_length": len(rss_fallback_text),
-                "gate_page_reason": gate_reason,
-                "extraction_error": None,
-            }
-
-        return extracted_data
-
-    def _exa_fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
-        """Use Exa contents as the first fallback after crawl4ai extraction fails."""
-
-        try:
-            results = exa_get_contents(
-                [url],
-                max_characters=None,
-                livecrawl="always",
-                raise_on_error=True,
-            )
-        except ExaClientError as exc:
-            logger.error(
-                "HtmlStrategy: Exa fallback request failed for %s: %s",
-                url,
-                exc,
-            )
-            return None
-        if not results:
+        except FirecrawlClientError as exc:
+            logger.error("HtmlStrategy: Firecrawl fallback failed for %s: %s", url, exc)
             return None
 
-        result = results[0]
-        final_url = result.url or url
-        title = result.title or "Untitled"
-        text_content = self._trim_discussion_tail(final_url, result.text)
+        final_url = result.source_url or result.url or url
+        title = clean_title(result.title) or "Untitled"
+        text_content = self._trim_discussion_tail(final_url, result.markdown)
         extraction_issue = self._detect_extraction_issue(
             url=final_url,
             title=title,
@@ -790,24 +653,23 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
         )
         if extraction_issue:
             logger.warning(
-                "HtmlStrategy: Exa fallback content still appears malformed for %s (%s)",
+                "HtmlStrategy: Firecrawl fallback content still appears malformed for %s (%s)",
                 final_url,
                 extraction_issue,
             )
             return None
 
         host = self._host_for_url(final_url) or source
-
         logger.info(
-            "HtmlStrategy: Exa fallback extraction succeeded for %s (text_length=%s)",
+            "HtmlStrategy: Firecrawl fallback extraction succeeded for %s (text_length=%s)",
             final_url,
             len(text_content),
         )
         return {
             "title": title,
             "author": None,
-            "publication_date": parse_date_with_tz(result.published_date)
-            if result.published_date
+            "publication_date": parse_date_with_tz(result.published_time)
+            if result.published_time
             else None,
             "text_content": text_content,
             "content_type": "html",
@@ -815,137 +677,8 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
             "final_url_after_redirects": final_url,
             "table_markdown": None,
             "extraction_error": None,
-        }
-
-    def _http_fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
-        """Use httpx + trafilatura when crawl and Exa extraction fail."""
-
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-        }
-        try:
-            response = self.http_client.get(url, headers=headers, timeout=20.0)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("HtmlStrategy fallback fetch failed for %s: %s", url, exc)
-            return None
-
-        html_content = response.text
-        title = self._extract_title_from_html(html_content) or "Untitled"
-        text_content = trafilatura.extract(html_content, include_links=True) or ""
-        if not text_content:
-            text_content = self._extract_text_from_html(html_content)
-
-        extraction_issue = self._detect_extraction_issue(
-            url=str(response.url),
-            title=title,
-            text_content=text_content,
-            html_content=html_content,
-        )
-        if extraction_issue:
-            logger.warning(
-                "HtmlStrategy: Fallback content still appears malformed for %s (%s)",
-                response.url,
-                extraction_issue,
-            )
-        logger.info(
-            "HtmlStrategy: Fallback extraction succeeded for %s (text_length=%s)",
-            response.url,
-            len(text_content),
-        )
-        host = self._host_for_url(str(response.url)) or source
-        return {
-            "title": title,
-            "author": None,
-            "publication_date": None,
-            "text_content": text_content,
-            "content_type": "html",
-            "source": host,
-            "final_url_after_redirects": str(response.url),
-            "table_markdown": None,
-            "extraction_error": extraction_issue,
-        }
-
-    def _fallback_fetch(self, url: str, source: str) -> dict[str, Any] | None:
-        """Try domain-specific recovery first, then generic fallbacks."""
-
-        newspaper_data = self._newspaper_fallback_fetch(url)
-        if newspaper_data:
-            return newspaper_data
-
-        exa_data = self._exa_fallback_fetch(url, source)
-        if exa_data:
-            return exa_data
-
-        return self._http_fallback_fetch(url, source)
-
-    def _newspaper_fallback_fetch(self, url: str) -> dict[str, Any] | None:
-        """Use newspaper4k on a small blocked-domain allowlist before generic fallbacks."""
-
-        if not self._should_try_newspaper_fallback(url):
-            return None
-
-        host = self._host_for_url(url)
-
-        try:
-            import newspaper
-        except ImportError:
-            logger.debug("HtmlStrategy: newspaper4k not installed; skipping newspaper fallback")
-            return None
-
-        try:
-            article = newspaper.article(url)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "HtmlStrategy: newspaper fallback failed for %s: %s",
-                url,
-                exc,
-            )
-            return None
-
-        title = clean_title(getattr(article, "title", None))
-        text_content = re.sub(r"\s+", " ", getattr(article, "text", "") or "").strip()
-        if not text_content:
-            return None
-
-        extraction_issue = self._detect_extraction_issue(
-            url=url,
-            title=title,
-            text_content=text_content,
-            html_content=getattr(article, "article_html", None),
-        )
-        if extraction_issue:
-            logger.warning(
-                "HtmlStrategy: newspaper fallback content still appears malformed for %s (%s)",
-                url,
-                extraction_issue,
-            )
-            return None
-
-        publication_date = getattr(article, "publish_date", None)
-        authors = getattr(article, "authors", None)
-        author = (
-            ", ".join(author for author in authors if author) if isinstance(authors, list) else None
-        )
-
-        logger.info(
-            "HtmlStrategy: newspaper fallback extraction succeeded for %s (text_length=%s)",
-            url,
-            len(text_content),
-        )
-        return {
-            "title": title or "Untitled",
-            "author": author or None,
-            "publication_date": publication_date,
-            "text_content": text_content,
-            "content_type": "html",
-            "source": host,
-            "final_url_after_redirects": url,
-            "table_markdown": None,
-            "extraction_error": None,
-            "used_newspaper_fallback": True,
+            "used_firecrawl_fallback": True,
+            "firecrawl_fallback_length": len(text_content),
         }
 
     def extract_data(
@@ -1099,11 +832,10 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
 
             try:
                 result = _run_coro_sync(run_crawl_with_retries())
-            except Exception as crawl_exc:  # noqa: BLE001
-                if self._should_use_httpx_fallback(crawl_exc):
-                    fallback_data = self._fallback_fetch(url, source)
-                    if fallback_data:
-                        return fallback_data
+            except Exception:  # noqa: BLE001
+                fallback_data = self._firecrawl_fallback_fetch(url, source, context)
+                if fallback_data:
+                    return fallback_data
                 raise
 
             # Check if result is None
@@ -1137,23 +869,22 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                 error_msg = f"Crawl4ai extraction failed: {error_detail}"
                 logger.warning(f"{error_msg} for URL: {url}")
 
-                if self._should_use_httpx_fallback(RuntimeError(error_detail)):
-                    fallback_data = self._fallback_fetch(url, source)
-                    if fallback_data:
-                        return self._recover_gate_page_content(fallback_data, context)
+                fallback_data = self._firecrawl_fallback_fetch(url, source, context)
+                if fallback_data:
+                    return fallback_data
 
                 raise Exception(error_msg)
 
             # Extract metadata from content if not provided
             extracted_text = result.markdown.raw_markdown if result.markdown else ""
             if not extracted_text:
-                fallback_data = self._fallback_fetch(url, source)
+                fallback_data = self._firecrawl_fallback_fetch(url, source, context)
                 if fallback_data:
                     logger.warning(
                         "HtmlStrategy: Using fallback extraction for %s after empty crawl body",
                         url,
                     )
-                    return self._recover_gate_page_content(fallback_data, context)
+                    return fallback_data
                 raise Exception("No content extracted from the page")
             logger.debug(
                 "HtmlStrategy: Extracted markdown length=%s cleaned_html_length=%s",
@@ -1261,14 +992,14 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                     final_url,
                     extraction_issue,
                 )
-                fallback_data = self._fallback_fetch(final_url, source)
-                if fallback_data and not fallback_data.get("extraction_error"):
+                fallback_data = self._firecrawl_fallback_fetch(final_url, source, context)
+                if fallback_data:
                     logger.info(
                         "HtmlStrategy: Using fallback extraction for %s "
                         "after malformed crawl4ai output",
                         final_url,
                     )
-                    return self._recover_gate_page_content(fallback_data, context)
+                    return fallback_data
 
             # Extract feed links from HTML for potential feed detection
             feed_links = None
@@ -1282,35 +1013,32 @@ class HtmlProcessorStrategy(UrlProcessorStrategy):
                         len(feed_links),
                     )
 
-            return self._recover_gate_page_content(
-                {
-                    "title": title,
-                    "author": author,
-                    "publication_date": publication_date,
-                    "text_content": extracted_text,
-                    "content_type": "html",
-                    # Source should be full domain name, leave platform to the scraper convention
-                    "source": host,
-                    "final_url_after_redirects": final_url,
-                    "table_markdown": table_markdown or None,
-                    "feed_links": feed_links,  # For feed detection in worker
-                    "extraction_error": extraction_issue,
-                },
-                context,
-            )
+            return {
+                "title": title,
+                "author": author,
+                "publication_date": publication_date,
+                "text_content": extracted_text,
+                "content_type": "html",
+                # Source should be full domain name, leave platform to the scraper convention
+                "source": host,
+                "final_url_after_redirects": final_url,
+                "table_markdown": table_markdown or None,
+                "feed_links": feed_links,  # For feed detection in worker
+                "extraction_error": extraction_issue,
+            }
 
         except Exception as e:
             import traceback
 
             from app.services.http import NonRetryableError
 
-            if self._should_use_httpx_fallback(e):
-                fallback_data = self._fallback_fetch(url, source)
+            if self._should_use_extraction_fallback(e):
+                fallback_data = self._firecrawl_fallback_fetch(url, source, context)
                 if fallback_data:
                     logger.warning(
                         "HtmlStrategy: Using fallback extraction for %s after error: %s", url, e
                     )
-                    return self._recover_gate_page_content(fallback_data, context)
+                    return fallback_data
 
             error_msg = f"Content extraction failed for {url}: {str(e)}"
             traceback_str = traceback.format_exc()

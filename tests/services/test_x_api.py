@@ -161,6 +161,27 @@ def test_map_tweet_prefers_note_tweet_text_for_processing() -> None:
     assert build_tweet_processing_text(tweet) == "This is the complete long-form note tweet text."
 
 
+def test_map_tweet_detects_video_media_but_skips_animated_gifs() -> None:
+    """Media expansions should surface native video availability for downstream processing."""
+    tweet = _map_tweet(
+        {
+            "id": "123",
+            "text": "Watch this",
+            "author_id": "u1",
+            "attachments": {"media_keys": ["gif-1", "video-1"]},
+        },
+        {"u1": {"id": "u1", "username": "willem", "name": "Willem"}},
+        {
+            "gif-1": {"media_key": "gif-1", "type": "animated_gif", "duration_ms": 1000},
+            "video-1": {"media_key": "video-1", "type": "video", "duration_ms": 45000},
+        },
+    )
+
+    assert tweet is not None
+    assert tweet.has_video is True
+    assert tweet.video_duration_ms == 45000
+
+
 def test_map_list_and_extract_next_token() -> None:
     """List mapping helpers should keep usable ids and cursors."""
     x_list = _map_list({"id": "42", "name": "AI Infra"})

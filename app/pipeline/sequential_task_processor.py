@@ -22,6 +22,7 @@ from app.pipeline.handlers.backfill_feeds import BackfillFeedsHandler
 from app.pipeline.handlers.dig_deeper import DigDeeperHandler
 from app.pipeline.handlers.discover_feeds import DiscoverFeedsHandler
 from app.pipeline.handlers.download_audio import DownloadAudioHandler
+from app.pipeline.handlers.download_tweet_video import DownloadTweetVideoAudioHandler
 from app.pipeline.handlers.enrich_news_item_article import EnrichNewsItemArticleHandler
 from app.pipeline.handlers.fetch_discussion import FetchDiscussionHandler
 from app.pipeline.handlers.generate_image import GenerateImageHandler
@@ -34,6 +35,7 @@ from app.pipeline.handlers.scrape import ScrapeHandler
 from app.pipeline.handlers.summarize import SummarizeHandler
 from app.pipeline.handlers.sync_integration import SyncIntegrationHandler
 from app.pipeline.handlers.transcribe import TranscribeHandler
+from app.pipeline.handlers.transcribe_tweet_video import TranscribeTweetVideoHandler
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_handler import TaskHandler
 from app.pipeline.task_models import TaskEnvelope, TaskResult
@@ -163,6 +165,8 @@ class SequentialTaskProcessor:
             ProcessPodcastMediaHandler(),
             DownloadAudioHandler(),
             TranscribeHandler(),
+            DownloadTweetVideoAudioHandler(),
+            TranscribeTweetVideoHandler(),
             SummarizeHandler(),
             FetchDiscussionHandler(),
             GenerateImageHandler(),

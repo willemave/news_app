@@ -802,6 +802,8 @@ class TweetResolutionFlow:
                 "tweet_processing_text": processing_text,
                 "tweet_external_urls": external_urls,
                 "tweet_linked_tweet_ids": resolution.linked_tweet_ids,
+                "has_video": tweet.has_video,
+                "video_duration_ms": tweet.video_duration_ms,
                 "tweet_resolution_source": resolution.resolution_source,
                 "tweet_resolution_tweet_id": resolution.resolution_tweet_id,
                 "tweet_thread_lookup_status": resolution.thread_lookup_status,

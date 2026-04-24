@@ -1,5 +1,3 @@
-from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -8,7 +6,7 @@ import pytest
 
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.html_strategy import HtmlProcessorStrategy
-from app.services.exa_client import ExaContentResult
+from app.services.firecrawl_client import FirecrawlScrapeResult, FirecrawlUnavailableError
 
 SAMPLE_HTML_CONTENT = """
 <html>
@@ -47,6 +45,19 @@ def mock_http_client():
 def html_strategy(mock_http_client):
     """Fixture to provide an instance of HtmlProcessorStrategy with a mocked http_client."""
     return HtmlProcessorStrategy(http_client=mock_http_client)
+
+
+@pytest.fixture(autouse=True)
+def disable_firecrawl_network(monkeypatch):
+    """Keep strategy unit tests from spending Firecrawl credits by default."""
+
+    def _raise_unavailable(*args: Any, **kwargs: Any) -> None:
+        raise FirecrawlUnavailableError("Firecrawl disabled in unit tests")
+
+    monkeypatch.setattr(
+        "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+        _raise_unavailable,
+    )
 
 
 def test_detect_source(html_strategy: HtmlProcessorStrategy):
@@ -307,35 +318,10 @@ def test_extract_data_failure_includes_error_message_details(
         assert "redirected.example.com" in failure_message
 
 
-def test_newspaper_fallback_fetch_for_allowlisted_domain(html_strategy: HtmlProcessorStrategy):
-    """Domain-specific newspaper fallback should return parsed article data."""
-    article = SimpleNamespace(
-        title="OpenAI investor says AI requires an income tax overhaul",
-        text="A real article body extracted by newspaper.",
-        authors=["Financial Times"],
-        publish_date=datetime(2026, 3, 29),
-        article_html=(
-            "<html><head><meta property='og:title' "
-            "content='OpenAI investor says AI requires an income tax overhaul'></head></html>"
-        ),
-    )
-
-    with patch.dict("sys.modules", {"newspaper": SimpleNamespace(article=lambda _url: article)}):
-        extracted_data = html_strategy._newspaper_fallback_fetch(  # pylint: disable=protected-access
-            "https://www.ft.com/content/example",
-        )
-
-    assert extracted_data is not None
-    assert extracted_data["title"] == "OpenAI investor says AI requires an income tax overhaul"
-    assert extracted_data["text_content"] == "A real article body extracted by newspaper."
-    assert extracted_data["author"] == "Financial Times"
-    assert extracted_data["used_newspaper_fallback"] is True
-
-
-def test_extract_data_uses_newspaper_fallback_when_crawl_returns_empty_body(
+def test_extract_data_uses_firecrawl_fallback_when_crawl_returns_empty_body(
     html_strategy: HtmlProcessorStrategy,
 ):
-    """Gift article pages with an empty crawl body should still trigger blocked-domain fallback."""
+    """Empty crawl bodies should fall back to Firecrawl before failing extraction."""
     url = "https://giftarticle.ft.com/giftarticle/actions/redeem/example"
 
     mock_result = MagicMock()
@@ -360,30 +346,32 @@ def test_extract_data_uses_newspaper_fallback_when_crawl_returns_empty_body(
     mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
     mock_crawler.__aexit__ = AsyncMock(return_value=None)
 
-    article = SimpleNamespace(
-        title="Recovered gift article title",
-        text="Recovered article body from newspaper fallback.",
-        authors=["Financial Times"],
-        publish_date=datetime(2026, 4, 16),
-        article_html="<html><head><title>Recovered gift article title</title></head></html>",
-    )
-
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
-        patch.dict("sys.modules", {"newspaper": SimpleNamespace(article=lambda _url: article)}),
+        patch(
+            "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+            return_value=FirecrawlScrapeResult(
+                url=url,
+                source_url=url,
+                title="Recovered gift article title",
+                markdown="Recovered article body from Firecrawl fallback.",
+                published_time="2026-04-16T12:00:00Z",
+            ),
+        ),
     ):
         extracted_data = html_strategy.extract_data("", url)
 
     assert extracted_data["title"] == "Recovered gift article title"
-    assert extracted_data["text_content"] == "Recovered article body from newspaper fallback."
-    assert extracted_data["used_newspaper_fallback"] is True
+    assert extracted_data["text_content"] == "Recovered article body from Firecrawl fallback."
+    assert extracted_data["used_firecrawl_fallback"] is True
+    assert extracted_data["firecrawl_fallback_length"] == 47
     assert extracted_data["extraction_error"] is None
 
 
-def test_extract_data_recovers_gate_page_with_exa_context(
+def test_extract_data_recovers_gate_page_with_firecrawl(
     html_strategy: HtmlProcessorStrategy,
 ):
-    """Gate-page crawl results should recover via Exa inside the HTML strategy."""
+    """Gate-page crawl results should recover via Firecrawl inside the HTML strategy."""
     url = "https://www.latent.space/p/ainews-anthropics-agent-autonomy"
     gate_text = (
         "This site requires JavaScript to run correctly. "
@@ -411,16 +399,14 @@ def test_extract_data_recovers_gate_page_with_exa_context(
 
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
-        patch.object(html_strategy, "_fallback_fetch", return_value=None),
         patch(
-            "app.processing_strategies.html_strategy.exa_get_contents",
-            return_value=[
-                ExaContentResult(
-                    title="Latent Space",
-                    url=url,
-                    text="Exa recovered the full article body about agent autonomy.",
-                )
-            ],
+            "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+            return_value=FirecrawlScrapeResult(
+                url=url,
+                source_url=url,
+                title="Latent Space",
+                markdown="Firecrawl recovered the full article body about agent autonomy.",
+            ),
         ),
     ):
         extracted_data = html_strategy.extract_data(
@@ -429,17 +415,16 @@ def test_extract_data_recovers_gate_page_with_exa_context(
             context={"content_id": 42, "existing_metadata": {}},
         )
 
-    assert extracted_data["used_exa_fallback"] is True
-    assert extracted_data["gate_page_reason"] == "access gate detected: challenge/JS wall content"
+    assert extracted_data["used_firecrawl_fallback"] is True
     assert extracted_data["extraction_error"] is None
-    assert "exa recovered the full article body" in extracted_data["text_content"].lower()
+    assert "firecrawl recovered the full article body" in extracted_data["text_content"].lower()
 
 
-def test_extract_data_recovers_gate_page_with_rss_context_when_exa_empty(
+def test_extract_data_rejects_malformed_firecrawl_fallback(
     html_strategy: HtmlProcessorStrategy,
 ):
-    """Gate-page crawl results should fall back to rss_content when Exa does not recover text."""
-    url = "https://www.latent.space/p/ainews-anthropics-agent-autonomy"
+    """Firecrawl paywall/challenge output should not be treated as recovered content."""
+    url = "https://www.ft.com/content/example"
     gate_text = (
         "This site requires JavaScript to run correctly. "
         "Please turn on JavaScript or unblock scripts."
@@ -466,81 +451,24 @@ def test_extract_data_recovers_gate_page_with_rss_context_when_exa_empty(
 
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
-        patch.object(html_strategy, "_fallback_fetch", return_value=None),
-        patch("app.processing_strategies.html_strategy.exa_get_contents", return_value=[]),
+        patch(
+            "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+            return_value=FirecrawlScrapeResult(
+                url=url,
+                source_url=url,
+                title="Subscribe to read",
+                markdown="Subscribe to read this article. Sign in to continue reading.",
+            ),
+        ),
     ):
         extracted_data = html_strategy.extract_data(
             "",
             url,
-            context={
-                "content_id": 42,
-                "existing_metadata": {
-                    "rss_content": "<p>Recovered RSS content about agent autonomy.</p>",
-                },
-            },
+            context={"content_id": 42, "existing_metadata": {}},
         )
 
-    assert extracted_data["used_rss_fallback"] is True
-    assert extracted_data["gate_page_reason"] == "access gate detected: challenge/JS wall content"
-    assert extracted_data["extraction_error"] is None
-    assert "recovered rss content about agent autonomy." in extracted_data["text_content"].lower()
-
-
-@pytest.mark.parametrize(
-    ("url", "expected_source"),
-    [
-        ("https://giftarticle.ft.com/giftarticle/actions/redeem/example", "giftarticle.ft.com"),
-        (
-            "https://www.politico.com/news/2026/04/11/example-story",
-            "www.politico.com",
-        ),
-        (
-            "https://africabusinesscommunities.com/artificial-intelligence/example",
-            "africabusinesscommunities.com",
-        ),
-        (
-            "https://www.researchgate.net/publication/123456789_example",
-            "www.researchgate.net",
-        ),
-        (
-            "https://sourceforge.net/p/project/discussion/thread/example",
-            "sourceforge.net",
-        ),
-    ],
-)
-def test_newspaper_fallback_fetch_for_allowlisted_subdomains_and_prod_hosts(
-    html_strategy: HtmlProcessorStrategy,
-    url: str,
-    expected_source: str,
-):
-    """Fallback allowlist should match subdomains and observed blocked production hosts."""
-    article = SimpleNamespace(
-        title="Recovered article",
-        text="Recovered content from newspaper fallback.",
-        authors=["Newsly"],
-        publish_date=datetime(2026, 4, 12),
-        article_html="<html><head><title>Recovered article</title></head></html>",
-    )
-
-    with patch.dict("sys.modules", {"newspaper": SimpleNamespace(article=lambda _url: article)}):
-        extracted_data = html_strategy._newspaper_fallback_fetch(  # pylint: disable=protected-access
-            url,
-        )
-
-    assert extracted_data is not None
-    assert extracted_data["text_content"] == "Recovered content from newspaper fallback."
-    assert extracted_data["source"] == expected_source
-    assert extracted_data["used_newspaper_fallback"] is True
-
-
-def test_newspaper_fallback_skips_non_allowlisted_domain(html_strategy: HtmlProcessorStrategy):
-    """Newspaper fallback should only run on the blocked-domain allowlist."""
-    with patch.dict("sys.modules", {"newspaper": SimpleNamespace(article=lambda _url: None)}):
-        extracted_data = html_strategy._newspaper_fallback_fetch(  # pylint: disable=protected-access
-            "https://example.com/article",
-        )
-
-    assert extracted_data is None
+    assert extracted_data["extraction_error"] == "access gate detected: challenge/JS wall content"
+    assert extracted_data.get("used_firecrawl_fallback") is None
 
 
 def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrategy):
@@ -583,10 +511,10 @@ def test_extract_data_with_browser_close_error(html_strategy: HtmlProcessorStrat
         assert extracted_data.get("extraction_error") is None
 
 
-def test_extract_data_uses_fallback_for_discussion_only_extraction(
+def test_extract_data_uses_firecrawl_for_discussion_only_extraction(
     html_strategy: HtmlProcessorStrategy,
 ):
-    """Malformed Substack comment-thread payloads should fall back to Exa first."""
+    """Malformed Substack comment-thread payloads should fall back to Firecrawl."""
     url = "https://www.notboring.co/p/world-models"
 
     mock_result = MagicMock()
@@ -612,17 +540,16 @@ def test_extract_data_uses_fallback_for_discussion_only_extraction(
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
         patch(
-            "app.processing_strategies.html_strategy.exa_get_contents",
-            return_value=[
-                ExaContentResult(
-                    title="World Models: Computing the Uncomputable",
-                    url=url,
-                    text=(
-                        "Full article body\n\n#### Discussion about this post\n"
-                        "CommentsRestacks\nThread replies"
-                    ),
-                )
-            ],
+            "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+            return_value=FirecrawlScrapeResult(
+                title="World Models: Computing the Uncomputable",
+                url=url,
+                source_url=url,
+                markdown=(
+                    "Full article body\n\n#### Discussion about this post\n"
+                    "CommentsRestacks\nThread replies"
+                ),
+            ),
         ),
     ):
         extracted_data = html_strategy.extract_data("", url)
@@ -634,10 +561,10 @@ def test_extract_data_uses_fallback_for_discussion_only_extraction(
     cast(Any, html_strategy.http_client.get).assert_not_called()
 
 
-def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
+def test_extract_data_fails_when_firecrawl_fallback_is_unusable(
     html_strategy: HtmlProcessorStrategy,
 ):
-    """HTTP fallback should run only after Exa fallback returns nothing useful."""
+    """Raw HTTP parsing should not run after Firecrawl cannot recover useful text."""
     url = "https://www.notboring.co/p/world-models"
 
     mock_result = MagicMock()
@@ -660,30 +587,28 @@ def test_extract_data_uses_http_fallback_when_exa_fallback_fails(
     mock_crawler.__aenter__ = AsyncMock(return_value=mock_crawler)
     mock_crawler.__aexit__ = AsyncMock(return_value=None)
 
-    mock_response = MagicMock()
-    mock_response.text = (
-        "<html><head><title>World Models: Computing the Uncomputable</title></head>"
-        "<body><article>Full article body</article></body></html>"
-    )
-    mock_response.url = url
     mock_get = cast(Any, html_strategy.http_client.get)
-    mock_get.return_value = mock_response
 
     with (
         patch("app.processing_strategies.html_strategy.AsyncWebCrawler", return_value=mock_crawler),
-        patch("app.processing_strategies.html_strategy.exa_get_contents", return_value=[]),
         patch(
-            "app.processing_strategies.html_strategy.trafilatura.extract",
-            return_value="Full article body",
+            "app.processing_strategies.html_strategy.scrape_url_with_firecrawl",
+            return_value=FirecrawlScrapeResult(
+                title="World Models: Computing the Uncomputable",
+                url=url,
+                source_url=url,
+                markdown=(
+                    "#### Discussion about this post\n"
+                    "CommentsRestacks\nThread replies\n"
+                    "This site requires JavaScript to run correctly."
+                ),
+            ),
         ),
     ):
         extracted_data = html_strategy.extract_data("", url)
 
-    assert extracted_data["title"] == "World Models: Computing the Uncomputable"
-    assert extracted_data["text_content"] == "Full article body"
-    assert extracted_data["final_url_after_redirects"] == url
-    assert extracted_data["extraction_error"] is None
-    mock_get.assert_called_once()
+    assert extracted_data["extraction_error"] == "access gate detected: challenge/JS wall content"
+    mock_get.assert_not_called()
 
 
 def test_prepare_for_llm(html_strategy: HtmlProcessorStrategy):

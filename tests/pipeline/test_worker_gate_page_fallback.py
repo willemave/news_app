@@ -79,7 +79,10 @@ def _build_gate_extracted_data() -> dict[str, Any]:
     }
 
 
-def test_process_article_uses_rss_fallback_for_gate_page(monkeypatch, db_session) -> None:
+def test_process_article_persists_firecrawl_fallback_for_gate_page(
+    monkeypatch,
+    db_session,
+) -> None:
     _patch_worker_db(monkeypatch, db_session)
     strategy = _FakeHtmlStrategy(
         {
@@ -87,8 +90,8 @@ def test_process_article_uses_rss_fallback_for_gate_page(monkeypatch, db_session
             "text_content": "Recovered RSS content about agent autonomy and model behavior.",
             "gate_page_reason": "access gate detected: challenge/JS wall content",
             "extraction_error": None,
-            "used_rss_fallback": True,
-            "rss_fallback_length": 62,
+            "used_firecrawl_fallback": True,
+            "firecrawl_fallback_length": 62,
         }
     )
     _patch_worker_dependencies(monkeypatch, strategy)
@@ -115,7 +118,8 @@ def test_process_article_uses_rss_fallback_for_gate_page(monkeypatch, db_session
 
     assert success is True
     assert content.status == ContentStatus.PROCESSING
-    assert content.metadata["used_rss_fallback"] is True
+    assert content.metadata["used_firecrawl_fallback"] is True
+    assert content.metadata["firecrawl_fallback_length"] == 62
     assert content.metadata["gate_page_reason"] == "access gate detected: challenge/JS wall content"
     assert "agent autonomy and model behavior" in content.metadata["content_to_summarize"].lower()
     assert strategy.last_context is not None
@@ -123,18 +127,18 @@ def test_process_article_uses_rss_fallback_for_gate_page(monkeypatch, db_session
     assert strategy.last_context["existing_metadata"]["rss_content"].startswith("<p>There's a lot")
 
 
-def test_process_article_prefers_exa_fallback_for_gate_page(monkeypatch, db_session) -> None:
+def test_process_article_uses_firecrawl_text_for_gate_page(monkeypatch, db_session) -> None:
     _patch_worker_db(monkeypatch, db_session)
     strategy = _FakeHtmlStrategy(
         {
             **_build_gate_extracted_data(),
             "text_content": (
-                "Exa recovered the full article body about agent autonomy and model behavior."
+                "Firecrawl recovered the full article body about agent autonomy and model behavior."
             ),
             "gate_page_reason": "access gate detected: challenge/JS wall content",
             "extraction_error": None,
-            "used_exa_fallback": True,
-            "exa_fallback_length": 76,
+            "used_firecrawl_fallback": True,
+            "firecrawl_fallback_length": 82,
         }
     )
     _patch_worker_dependencies(monkeypatch, strategy)
@@ -157,9 +161,11 @@ def test_process_article_prefers_exa_fallback_for_gate_page(monkeypatch, db_sess
     success = worker._process_article(content)
 
     assert success is True
-    assert content.metadata["used_exa_fallback"] is True
-    assert content.metadata.get("used_rss_fallback") is None
-    assert "exa recovered the full article body" in content.metadata["content_to_summarize"].lower()
+    assert content.metadata["used_firecrawl_fallback"] is True
+    assert (
+        "firecrawl recovered the full article body"
+        in content.metadata["content_to_summarize"].lower()
+    )
 
 
 def test_process_article_keeps_existing_title_when_extracted_title_is_blocked(
@@ -169,10 +175,10 @@ def test_process_article_keeps_existing_title_when_extracted_title_is_blocked(
     _patch_worker_db(monkeypatch, db_session)
     extracted_data = _build_gate_extracted_data()
     extracted_data["title"] = "wsj.com"
-    extracted_data["text_content"] = "Enterprise AI infrastructure details from RSS."
+    extracted_data["text_content"] = "Enterprise AI infrastructure details from Firecrawl."
     extracted_data["gate_page_reason"] = "access gate detected: challenge/JS wall content"
     extracted_data["extraction_error"] = None
-    extracted_data["used_rss_fallback"] = True
+    extracted_data["used_firecrawl_fallback"] = True
     strategy = _FakeHtmlStrategy(extracted_data)
     _patch_worker_dependencies(monkeypatch, strategy)
 
@@ -205,7 +211,10 @@ def test_process_article_keeps_existing_title_when_extracted_title_is_blocked(
     )
 
 
-def test_process_article_fails_gate_page_without_rss_fallback(monkeypatch, db_session) -> None:
+def test_process_article_fails_gate_page_without_recovered_content(
+    monkeypatch,
+    db_session,
+) -> None:
     _patch_worker_db(monkeypatch, db_session)
     strategy = _FakeHtmlStrategy(_build_gate_extracted_data())
     _patch_worker_dependencies(monkeypatch, strategy)

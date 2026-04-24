@@ -15,16 +15,15 @@ from app.core.observability import build_log_extra, sanitize_url_for_logs
 from app.core.settings import get_settings
 from app.models.content_mapper import content_to_domain, domain_to_content
 from app.models.schema import Content, ContentStatus
-from app.scraping.youtube_unified import YouTubeClientConfig, load_youtube_client_config
+from app.scraping.youtube_unified import YouTubeClientConfig
 from app.services.apple_podcasts import resolve_apple_podcast_episode
+from app.services.audio_pipeline import (
+    download_audio_via_ytdlp,
+    transcribe_audio_file_with_metadata,
+)
 from app.services.content_bodies import sync_content_body_storage
 from app.services.queue import TaskType, get_queue_service
 from app.services.whisper_local import get_whisper_local_service
-
-try:  # pragma: no cover - optional dependency in tests
-    import yt_dlp
-except ImportError:  # pragma: no cover
-    yt_dlp = None
 
 # Resolve project root (two levels up from this file: app/ → project root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -50,20 +49,6 @@ def get_file_extension_from_url(url: str) -> str:
     if "." in path:
         return os.path.splitext(path)[1]
     return ".mp3"  # Default to mp3
-
-
-class _YtDlpLogger:
-    def __init__(self, base_logger):
-        self._logger = base_logger
-
-    def debug(self, msg: str) -> None:
-        self._logger.debug(msg)
-
-    def warning(self, msg: str) -> None:
-        self._logger.warning(msg)
-
-    def error(self, msg: str) -> None:
-        self._logger.warning(msg)
 
 
 class PodcastDownloadWorker:
@@ -287,81 +272,24 @@ class PodcastDownloadWorker:
     def _build_youtube_extractor_args(
         self, client_config: YouTubeClientConfig
     ) -> dict[str, dict[str, list[str]]]:
-        extractor_args: dict[str, dict[str, list[str]]] = {
-            "youtube": {
-                "player_client": [client_config.player_client],
-                "player_skip": ["configs"],
-            }
-        }
+        from app.services.audio_pipeline import build_youtube_extractor_args
 
-        provider = client_config.po_token_provider
-        if provider:
-            provider_key = f"youtubepot-{provider}"
-            provider_args: dict[str, list[str]] = {}
-            if client_config.po_token_base_url:
-                provider_args["base_url"] = [str(client_config.po_token_base_url)]
-            extractor_args[provider_key] = provider_args
-
-        return extractor_args
+        del client_config
+        return build_youtube_extractor_args()
 
     def _download_youtube_audio(self, url: str, title: str | None, content_id: int) -> Path:
-        if yt_dlp is None:  # pragma: no cover - runtime safeguard when dependency missing
-            raise RuntimeError("yt-dlp is required to download YouTube audio")
-
-        client_config = load_youtube_client_config()
         youtube_dir = self.base_dir / "youtube"
-        youtube_dir.mkdir(parents=True, exist_ok=True)
 
         video_id = self._extract_youtube_id(url)
         sanitized_title = sanitize_filename(title or f"youtube_{content_id}")
         stem = f"{sanitized_title}-{video_id}" if video_id else sanitized_title
 
-        existing = next(youtube_dir.glob(f"{stem}.*"), None)
-        if existing and existing.stat().st_size > 0:
-            return existing
-
-        outtmpl = str(youtube_dir / f"{stem}.%(ext)s")
-        ydl_opts: dict[str, object] = {
-            "quiet": True,
-            "no_warnings": True,
-            "format": "bestaudio/best",
-            "noplaylist": True,
-            "no_check_certificate": True,
-            "socket_timeout": 30,
-            "logger": _YtDlpLogger(logger),
-            "outtmpl": outtmpl,
-            "http_headers": {
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/128.0.6613.120 Safari/537.36"
-                )
-            },
-        }
-
-        cookies_path = client_config.resolved_cookies_path()
-        if cookies_path and cookies_path.exists():
-            ydl_opts["cookiefile"] = str(cookies_path)
-        elif cookies_path:
-            logger.warning("YouTube cookies not found at %s", cookies_path)
-
-        extractor_args = self._build_youtube_extractor_args(client_config)
-        if extractor_args:
-            ydl_opts["extractor_args"] = extractor_args
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if info is None:
-                raise ValueError(f"Failed to download YouTube audio for {url}")
-            file_path = Path(ydl.prepare_filename(info))
-
-        if not file_path.exists():
-            match = next(youtube_dir.glob(f"{stem}.*"), None)
-            if match and match.exists():
-                return match
-            raise FileNotFoundError(f"Downloaded YouTube audio not found at {file_path}")
-
-        return file_path
+        return download_audio_via_ytdlp(
+            url,
+            youtube_dir,
+            output_stem=stem,
+            use_youtube_config=True,
+        )
 
     def process_download_task(self, content_id: int) -> bool:
         """
@@ -818,12 +746,9 @@ class PodcastMediaWorker:
                     )
                     normalized_audio_path = self._normalize_audio_file(audio_path)
                     self.transcribe_worker._get_transcription_service()
-                    transcript_text, detected_language = (
-                        self.transcribe_worker.transcription_service.transcribe_audio(
-                            normalized_audio_path
-                        )
+                    transcript_text, detected_language = transcribe_audio_file_with_metadata(
+                        normalized_audio_path
                     )
-                    transcript_text = transcript_text.strip()
 
                 content.metadata["transcription_date"] = datetime.now(UTC).isoformat()
                 content.metadata["transcription_service"] = (

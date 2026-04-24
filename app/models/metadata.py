@@ -667,6 +667,15 @@ class NewsAggregatorMetadata(BaseModel):
         return clean_title(value)
 
 
+class TweetMetadata(BaseModel):
+    """Tweet-specific media metadata stored on Twitter news items."""
+
+    has_video: bool = False
+    video_duration_ms: int | None = Field(None, ge=0)
+    video_audio_path: str | None = Field(None, max_length=2000)
+    video_transcript: str | None = None
+
+
 SummaryPayload = (
     StructuredSummary
     | InterleavedSummary
@@ -908,6 +917,10 @@ class NewsMetadata(BaseContentMetadata):
     comment_count: int | None = Field(
         None, ge=0, description="Discussion comment count denormalized by discussion fetcher"
     )
+    has_video: bool = False
+    video_duration_ms: int | None = Field(None, ge=0)
+    video_audio_path: str | None = Field(None, max_length=2000)
+    video_transcript: str | None = None
 
 
 # Processing result model retained from the legacy content domain layer

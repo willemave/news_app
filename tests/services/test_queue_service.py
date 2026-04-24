@@ -93,6 +93,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     content_task_id = queue.enqueue(TaskType.SUMMARIZE, content_id=1)
     image_task_id = queue.enqueue(TaskType.GENERATE_IMAGE, content_id=9)
     transcribe_task_id = queue.enqueue(TaskType.TRANSCRIBE, content_id=2)
+    tweet_video_task_id = queue.enqueue(TaskType.DOWNLOAD_TWEET_VIDEO_AUDIO, content_id=4)
     onboarding_task_id = queue.enqueue(TaskType.ONBOARDING_DISCOVER, payload={"user_id": 11})
     integration_task_id = queue.enqueue(
         TaskType.SYNC_INTEGRATION,
@@ -117,6 +118,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
                     content_task_id,
                     image_task_id,
                     transcribe_task_id,
+                    tweet_video_task_id,
                     onboarding_task_id,
                     integration_task_id,
                     agent_digest_task_id,
@@ -130,6 +132,7 @@ def test_enqueue_assigns_default_queue_by_task_type(db_session, monkeypatch):
     assert tasks[content_task_id].queue_name == TaskQueue.CONTENT.value
     assert tasks[image_task_id].queue_name == TaskQueue.IMAGE.value
     assert tasks[transcribe_task_id].queue_name == TaskQueue.MEDIA.value
+    assert tasks[tweet_video_task_id].queue_name == TaskQueue.MEDIA.value
     assert tasks[onboarding_task_id].queue_name == TaskQueue.ONBOARDING.value
     assert tasks[integration_task_id].queue_name == TaskQueue.TWITTER.value
     assert tasks[agent_digest_task_id].queue_name == TaskQueue.CONTENT.value

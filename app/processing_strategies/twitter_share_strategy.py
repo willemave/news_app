@@ -25,6 +25,8 @@ class TweetContent:
     text: str
     author: str | None
     publication_date: datetime | None
+    has_video: bool = False
+    video_duration_ms: int | None = None
 
 
 def resolve_tweet_content(*, url: str, metadata: dict[str, Any] | None = None) -> TweetContent:
@@ -32,7 +34,13 @@ def resolve_tweet_content(*, url: str, metadata: dict[str, Any] | None = None) -
     hydrated_tweet = hydrate_tweet_from_metadata(metadata, tweet_id=tweet_id)
     if hydrated_tweet is not None:
         text, author, publication_date = build_resolved_tweet_content(hydrated_tweet.tweet)
-        return TweetContent(text=text, author=author, publication_date=publication_date)
+        return TweetContent(
+            text=text,
+            author=author,
+            publication_date=publication_date,
+            has_video=hydrated_tweet.tweet.has_video,
+            video_duration_ms=hydrated_tweet.tweet.video_duration_ms,
+        )
 
     fetch_result = fetch_tweet_by_url(url=url)
     if not fetch_result.success or not fetch_result.tweet:
@@ -41,7 +49,13 @@ def resolve_tweet_content(*, url: str, metadata: dict[str, Any] | None = None) -
     text, author, publication_date = build_resolved_tweet_content(fetch_result.tweet)
     if not text:
         raise NonRetryableError("Tweet thread contained no text to summarize")
-    return TweetContent(text=text, author=author, publication_date=publication_date)
+    return TweetContent(
+        text=text,
+        author=author,
+        publication_date=publication_date,
+        has_video=fetch_result.tweet.has_video,
+        video_duration_ms=fetch_result.tweet.video_duration_ms,
+    )
 
 
 class TwitterShareProcessorStrategy(UrlProcessorStrategy):
@@ -73,6 +87,8 @@ class TwitterShareProcessorStrategy(UrlProcessorStrategy):
             "text_content": content.text,
             "content_type": "text",
             "final_url_after_redirects": url,
+            "has_video": content.has_video,
+            "video_duration_ms": content.video_duration_ms,
         }
 
     def prepare_for_llm(self, extracted_data: dict[str, Any]) -> dict[str, Any]:
@@ -81,4 +97,6 @@ class TwitterShareProcessorStrategy(UrlProcessorStrategy):
             "content_to_filter": text_content,
             "content_to_summarize": text_content,
             "is_pdf": False,
+            "has_video": bool(extracted_data.get("has_video")),
+            "video_duration_ms": extracted_data.get("video_duration_ms"),
         }

@@ -24,10 +24,13 @@ X_DEFAULT_SCOPES = [
 ]
 X_TWEET_FIELDS = (
     "created_at,author_id,public_metrics,entities,conversation_id,"
-    "in_reply_to_user_id,referenced_tweets,text,article,note_tweet"
+    "in_reply_to_user_id,referenced_tweets,text,article,note_tweet,attachments"
 )
 X_USER_FIELDS = "name,username"
-X_TWEET_EXPANSIONS = "author_id,referenced_tweets.id,referenced_tweets.id.author_id"
+X_MEDIA_FIELDS = "type,duration_ms,public_metrics"
+X_TWEET_EXPANSIONS = (
+    "author_id,referenced_tweets.id,referenced_tweets.id.author_id,attachments.media_keys"
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,8 @@ class XTweet:
     note_tweet_text: str | None = None
     external_urls: list[str] = field(default_factory=list)
     linked_tweet_ids: list[str] = field(default_factory=list)
+    has_video: bool = False
+    video_duration_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +241,7 @@ def fetch_tweet_by_id(
                 "expansions": X_TWEET_EXPANSIONS,
                 "tweet.fields": X_TWEET_FIELDS,
                 "user.fields": X_USER_FIELDS,
+                "media.fields": X_MEDIA_FIELDS,
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -251,8 +257,10 @@ def fetch_tweet_by_id(
         return XTweetFetchResult(success=False, error="Tweet not found")
     includes = payload.get("includes") if isinstance(payload.get("includes"), dict) else {}
     users = includes.get("users") if isinstance(includes, dict) else []
+    media = includes.get("media") if isinstance(includes, dict) else []
     lookup = _user_lookup(users)
-    tweet = _map_tweet(data, lookup)
+    media_lookup = _media_lookup(media)
+    tweet = _map_tweet(data, lookup, media_lookup)
     if tweet is None:
         return XTweetFetchResult(success=False, error="Unable to parse tweet payload")
     return XTweetFetchResult(success=True, tweet=tweet)
@@ -300,20 +308,23 @@ def fetch_tweets_by_ids(
             "expansions": X_TWEET_EXPANSIONS,
             "tweet.fields": X_TWEET_FIELDS,
             "user.fields": X_USER_FIELDS,
+            "media.fields": X_MEDIA_FIELDS,
         },
     )
 
     data = payload.get("data")
     includes = payload.get("includes") if isinstance(payload.get("includes"), dict) else {}
     users = includes.get("users") if isinstance(includes, dict) else []
+    media = includes.get("media") if isinstance(includes, dict) else []
     lookup = _user_lookup(users)
+    media_lookup = _media_lookup(media)
 
     mapped_by_id: dict[str, XTweet] = {}
     if isinstance(data, list):
         for item in data:
             if not isinstance(item, dict):
                 continue
-            mapped = _map_tweet(item, lookup)
+            mapped = _map_tweet(item, lookup, media_lookup)
             if mapped:
                 mapped_by_id[mapped.id] = mapped
 
@@ -363,6 +374,7 @@ def fetch_bookmarks(
         "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
+        "media.fields": X_MEDIA_FIELDS,
     }
     if pagination_token:
         params["pagination_token"] = pagination_token
@@ -391,9 +403,10 @@ def fetch_reverse_chronological_timeline(
     clamped = max(5, min(max_results, 100))
     params: dict[str, Any] = {
         "max_results": clamped,
-        "expansions": "author_id",
+        "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
+        "media.fields": X_MEDIA_FIELDS,
     }
     if pagination_token:
         params["pagination_token"] = pagination_token
@@ -425,9 +438,10 @@ def fetch_list_tweets(
     clamped = max(5, min(max_results, 100))
     params: dict[str, Any] = {
         "max_results": clamped,
-        "expansions": "author_id",
+        "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
+        "media.fields": X_MEDIA_FIELDS,
     }
     if pagination_token:
         params["pagination_token"] = pagination_token
@@ -460,6 +474,7 @@ def fetch_user_tweets(
         "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
+        "media.fields": X_MEDIA_FIELDS,
     }
     if pagination_token:
         params["pagination_token"] = pagination_token
@@ -494,6 +509,7 @@ def search_recent_tweets(
         "expansions": X_TWEET_EXPANSIONS,
         "tweet.fields": X_TWEET_FIELDS,
         "user.fields": X_USER_FIELDS,
+        "media.fields": X_MEDIA_FIELDS,
     }
     if next_token:
         params["next_token"] = next_token
@@ -558,7 +574,9 @@ def _fetch_tweets_page(
     data = payload.get("data")
     includes = payload.get("includes") if isinstance(payload.get("includes"), dict) else {}
     users = includes.get("users") if isinstance(includes, dict) else []
+    media = includes.get("media") if isinstance(includes, dict) else []
     lookup = _user_lookup(users)
+    media_lookup = _media_lookup(media)
     raw_included_tweets = includes.get("tweets") if isinstance(includes, dict) else []
 
     tweets: list[XTweet] = []
@@ -566,7 +584,7 @@ def _fetch_tweets_page(
         for item in data:
             if not isinstance(item, dict):
                 continue
-            mapped = _map_tweet(item, lookup)
+            mapped = _map_tweet(item, lookup, media_lookup)
             if mapped:
                 tweets.append(mapped)
 
@@ -575,7 +593,7 @@ def _fetch_tweets_page(
         for item in raw_included_tweets:
             if not isinstance(item, dict):
                 continue
-            mapped = _map_tweet(item, lookup)
+            mapped = _map_tweet(item, lookup, media_lookup)
             if mapped:
                 included_tweets[mapped.id] = mapped
 
@@ -821,7 +839,25 @@ def _user_lookup(raw_users: Any) -> dict[str, dict[str, Any]]:
     return lookup
 
 
-def _map_tweet(tweet_data: dict[str, Any], users_by_id: dict[str, dict[str, Any]]) -> XTweet | None:
+def _media_lookup(raw_media: Any) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
+    if not isinstance(raw_media, list):
+        return lookup
+    for item in raw_media:
+        if not isinstance(item, dict):
+            continue
+        media_key = _optional_string(item.get("media_key"))
+        if not media_key:
+            continue
+        lookup[media_key] = item
+    return lookup
+
+
+def _map_tweet(
+    tweet_data: dict[str, Any],
+    users_by_id: dict[str, dict[str, Any]],
+    media_by_key: dict[str, dict[str, Any]] | None = None,
+) -> XTweet | None:
     tweet_id = _optional_string(tweet_data.get("id"))
     article_title, article_text = _extract_article_parts(tweet_data.get("article"))
     note_tweet_text = _extract_note_tweet_text(tweet_data.get("note_tweet"))
@@ -840,6 +876,10 @@ def _map_tweet(tweet_data: dict[str, Any], users_by_id: dict[str, dict[str, Any]
     metrics: dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
     raw_entities = tweet_data.get("entities")
     entities: dict[str, Any] = raw_entities if isinstance(raw_entities, dict) else {}
+    has_video, video_duration_ms = _extract_video_metadata(
+        tweet_data.get("attachments"),
+        media_by_key or {},
+    )
 
     return XTweet(
         id=tweet_id,
@@ -859,6 +899,8 @@ def _map_tweet(tweet_data: dict[str, Any], users_by_id: dict[str, dict[str, Any]
         note_tweet_text=note_tweet_text,
         external_urls=_extract_external_urls(entities),
         linked_tweet_ids=_extract_linked_tweet_ids(tweet_data, entities),
+        has_video=has_video,
+        video_duration_ms=video_duration_ms,
     )
 
 
@@ -879,6 +921,35 @@ def _metric_int(metrics: dict[str, Any], key: str) -> int | None:
     if isinstance(value, str) and value.isdigit():
         return int(value)
     return None
+
+
+def _extract_video_metadata(
+    attachments: Any,
+    media_by_key: dict[str, dict[str, Any]],
+) -> tuple[bool, int | None]:
+    if not isinstance(attachments, dict):
+        return False, None
+    media_keys = attachments.get("media_keys")
+    if not isinstance(media_keys, list):
+        return False, None
+
+    has_video = False
+    durations: list[int] = []
+    for value in media_keys:
+        media_key = _optional_string(value)
+        if not media_key:
+            continue
+        media = media_by_key.get(media_key)
+        if not media:
+            continue
+        if _optional_string(media.get("type")) != "video":
+            continue
+        has_video = True
+        duration_ms = media.get("duration_ms")
+        if isinstance(duration_ms, int) and duration_ms >= 0:
+            durations.append(duration_ms)
+
+    return has_video, max(durations) if durations else None
 
 
 def _referenced_tweet_types(raw_references: Any) -> list[str]:

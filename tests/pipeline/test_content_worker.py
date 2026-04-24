@@ -1,6 +1,7 @@
 """Tests for ContentWorker."""
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -68,6 +69,97 @@ class TestContentWorker:
         result = worker.process_content(123, "test-worker")
 
         assert result is False
+
+    def test_tweet_video_news_items_route_to_video_download_first(
+        self,
+        mock_dependencies,
+        monkeypatch,
+    ):
+        worker = ContentWorker()
+        monkeypatch.setattr(
+            "app.pipeline.worker.settings",
+            SimpleNamespace(
+                tweet_video_enabled=True,
+                tweet_video_max_duration_seconds=600,
+            ),
+        )
+        content = ContentData(
+            id=123,
+            content_type=ContentType.NEWS,
+            url="https://x.com/i/status/123",
+            platform="twitter",
+            status=ContentStatus.PROCESSING,
+            metadata={
+                "platform": "twitter",
+                "has_video": True,
+                "video_duration_ms": 45_000,
+                "content_to_summarize": "Tweet text",
+                "article": {"url": "https://x.com/i/status/123"},
+            },
+        )
+
+        assert worker._tweet_video_audio_task(content) == TaskType.DOWNLOAD_TWEET_VIDEO_AUDIO
+
+    def test_tweet_video_article_share_routes_to_video_download_first(
+        self,
+        mock_dependencies,
+        monkeypatch,
+    ):
+        worker = ContentWorker()
+        monkeypatch.setattr(
+            "app.pipeline.worker.settings",
+            SimpleNamespace(
+                tweet_video_enabled=True,
+                tweet_video_max_duration_seconds=600,
+            ),
+        )
+        content = ContentData(
+            id=123,
+            content_type=ContentType.ARTICLE,
+            url="https://x.com/i/status/123",
+            platform="twitter",
+            status=ContentStatus.PROCESSING,
+            metadata={
+                "platform": "twitter",
+                "has_video": True,
+                "video_duration_ms": 45_000,
+                "content_to_summarize": "Tweet text",
+            },
+        )
+
+        assert worker._tweet_video_audio_task(content) == TaskType.DOWNLOAD_TWEET_VIDEO_AUDIO
+
+    def test_tweet_video_duration_limit_degrades_to_text_summary(
+        self,
+        mock_dependencies,
+        monkeypatch,
+    ):
+        worker = ContentWorker()
+        monkeypatch.setattr(
+            "app.pipeline.worker.settings",
+            SimpleNamespace(
+                tweet_video_enabled=True,
+                tweet_video_max_duration_seconds=10,
+            ),
+        )
+        content = ContentData(
+            id=123,
+            content_type=ContentType.NEWS,
+            url="https://x.com/i/status/123",
+            platform="twitter",
+            status=ContentStatus.PROCESSING,
+            metadata={
+                "platform": "twitter",
+                "has_video": True,
+                "video_duration_ms": 45_000,
+                "content_to_summarize": "Tweet text",
+                "article": {"url": "https://x.com/i/status/123"},
+            },
+        )
+
+        assert worker._tweet_video_audio_task(content) is None
+        assert content.metadata["has_video"] is False
+        assert content.metadata["tweet_video_skip_reason"] == "duration_limit"
 
     def test_process_article_sync_success(self, mock_dependencies):
         """Test successful article processing."""

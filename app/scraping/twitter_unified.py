@@ -347,6 +347,8 @@ class TwitterUnifiedScraper(BaseScraper):
                         "created_at": tweet.created_at or "",
                         "is_retweet": "retweeted" in tweet.referenced_tweet_types,
                         "in_reply_to_status_id": tweet.in_reply_to_user_id,
+                        "has_video": tweet.has_video,
+                        "video_duration_ms": tweet.video_duration_ms,
                         "links": [
                             {
                                 "url": external_url,
@@ -591,7 +593,15 @@ class TwitterUnifiedScraper(BaseScraper):
         for tweet in tweets:
             links = tweet.get("links", [])
             if not links:
-                continue
+                if not tweet.get("has_video") or not tweet.get("url"):
+                    continue
+                links = [
+                    {
+                        "url": tweet.get("url"),
+                        "expanded_url": tweet.get("url"),
+                        "display_url": tweet.get("url"),
+                    }
+                ]
 
             for link in links:
                 article_url = link.get("expanded_url") or link.get("url")
@@ -631,12 +641,16 @@ class TwitterUnifiedScraper(BaseScraper):
                             "replies": tweet.get("replies"),
                             "quotes": tweet.get("quotes"),
                             "tweet_created_at": tweet.get("created_at"),
+                            "has_video": bool(tweet.get("has_video")),
+                            "video_duration_ms": tweet.get("video_duration_ms"),
                             "list_id": list_id,
                             "list_name": list_name,
                             "hours_back": hours_back,
                         },
                     },
                     "discussion_url": tweet.get("url"),
+                    "has_video": bool(tweet.get("has_video")),
+                    "video_duration_ms": tweet.get("video_duration_ms"),
                     "discovery_time": datetime.now(UTC).isoformat(),
                 }
 

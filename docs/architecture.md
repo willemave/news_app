@@ -268,7 +268,7 @@ Unified scrapers for scheduled or manual feed ingestion:
 - worker limits
   - max workers, timeouts, retry limits, checkout timeout
 - external providers
-  - OpenAI, Anthropic, Google, Cerebras, Exa, ElevenLabs
+  - OpenAI, Anthropic, Google, Cerebras, Exa, ElevenLabs, Firecrawl
 - tracing
   - Langfuse host, keys, sample rate, instrumentation mode
 - discovery and onboarding
@@ -287,6 +287,8 @@ Unified scrapers for scheduled or manual feed ingestion:
   - media, logs, and generated images
 - crawl4ai options
   - table extraction and chunking flags
+- Firecrawl
+  - API key and timeout for HTML fallback extraction
 
 ### 6.2 Path conventions
 
@@ -633,8 +635,10 @@ Current task-to-queue mapping in `app/services/queue.py`:
 | `scrape` | `content` |
 | `analyze_url` | `content` |
 | `process_content` | `content` |
-| `download_audio` | `content` |
+| `download_audio` | `transcribe` |
 | `transcribe` | `transcribe` |
+| `download_tweet_video_audio` | `transcribe` |
+| `transcribe_tweet_video` | `transcribe` |
 | `summarize` | `content` |
 | `fetch_discussion` | `content` |
 | `generate_image` | `image` |
@@ -677,6 +681,8 @@ Registered handlers:
 - process content
 - download audio
 - transcribe
+- download tweet video audio
+- transcribe tweet video
 - summarize
 - fetch discussion
 - generate image
@@ -758,8 +764,9 @@ Behavioral notes:
 
 - arXiv can redirect processing toward PDF extraction
 - YouTube extraction can provide transcript and provider thumbnail metadata
+- Twitter/X posts can carry embedded-video metadata and route through media transcription before summarization.
 - image URLs can short-circuit to skipped states
-- HTML is the broad fallback and uses crawl4ai-related extraction paths
+- HTML is the broad fallback: crawl4ai is primary, with Firecrawl scrape as the paid recovery path when crawl4ai fails or returns suspect content.
 
 ### 10.6 Podcast-specific flow
 
@@ -776,6 +783,13 @@ Workers:
 
 - `PodcastDownloadWorker`
 - `PodcastTranscribeWorker`
+
+Tweet video processing reuses the same audio primitives:
+
+- X API ingestion records native video attachments as metadata on Twitter news items.
+- `download_tweet_video_audio` downloads audio from the tweet URL via yt-dlp.
+- `transcribe_tweet_video` writes `video_transcript`, deletes the temporary audio file, and enqueues `summarize`.
+- media failures degrade to the existing tweet-text summary path.
 
 ### 10.7 Summarization
 

@@ -81,6 +81,8 @@ def _tweet_from_snapshot(
         note_tweet_text=coerce_optional_string(snapshot.get("note_tweet_text")),
         external_urls=coerce_string_list(snapshot.get("external_urls")),
         linked_tweet_ids=coerce_string_list(snapshot.get("linked_tweet_ids")),
+        has_video=bool(snapshot.get("has_video")),
+        video_duration_ms=coerce_optional_int(snapshot.get("video_duration_ms")),
     )
 
 
@@ -138,6 +140,8 @@ def hydrate_tweet_from_metadata(
         note_tweet_text=coerce_optional_string(metadata.get("tweet_note_tweet_text")),
         external_urls=coerce_string_list(metadata.get("tweet_external_urls")),
         linked_tweet_ids=coerce_string_list(metadata.get("tweet_linked_tweet_ids")),
+        has_video=bool(metadata.get("has_video")),
+        video_duration_ms=coerce_optional_int(metadata.get("video_duration_ms")),
     )
     return HydratedTweet(tweet=tweet, source="content_metadata")
 

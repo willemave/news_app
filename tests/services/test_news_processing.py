@@ -939,12 +939,12 @@ def test_enrich_news_item_article_passes_context_to_strategy(db_session) -> None
             self.last_context = dict(context or {})
             return {
                 "title": "Recovered article title",
-                "text_content": "Recovered RSS content for enrichment.",
+                "text_content": "Recovered Firecrawl content for enrichment.",
                 "content_type": "html",
                 "source": "example.com",
                 "final_url_after_redirects": url,
                 "gate_page_reason": "access gate detected: challenge/JS wall content",
-                "used_rss_fallback": True,
+                "used_firecrawl_fallback": True,
                 "extraction_error": None,
             }
 

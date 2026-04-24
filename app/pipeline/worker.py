@@ -151,6 +151,7 @@ class ContentWorker:
 
         try:
             enqueue_summarize_task = False
+            next_task_type: TaskType | None = None
             state_persisted = False
             starting_metadata: dict[str, Any] = {}
 
@@ -191,9 +192,15 @@ class ContentWorker:
 
             if success:
                 enqueue_summarize_task = self.processing_workflow.should_enqueue_summarize(content)
-                if enqueue_summarize_task and self._should_reuse_existing_summary(
-                    content,
-                    starting_metadata,
+                if enqueue_summarize_task:
+                    next_task_type = self._tweet_video_audio_task(content)
+                if (
+                    enqueue_summarize_task
+                    and next_task_type is None
+                    and self._should_reuse_existing_summary(
+                        content,
+                        starting_metadata,
+                    )
                 ):
                     current_payload = build_summarization_payload(
                         content.content_type,
@@ -242,9 +249,11 @@ class ContentWorker:
                             raise
 
             if enqueue_summarize_task and state_persisted and content.id is not None:
-                self.queue_gateway.enqueue(TaskType.SUMMARIZE, content_id=content.id)
+                task_type = next_task_type or TaskType.SUMMARIZE
+                self.queue_gateway.enqueue(task_type, content_id=content.id)
                 logger.info(
-                    "Enqueued SUMMARIZE task for content %s (%s)",
+                    "Enqueued %s task for content %s (%s)",
+                    task_type.value,
                     content.id,
                     content.content_type.value,
                 )
@@ -284,6 +293,43 @@ class ContentWorker:
                 },
             )
             return False
+
+    def _tweet_video_audio_task(self, content: ContentData) -> TaskType | None:
+        """Return tweet video preprocessing task when this news item should wait for video text."""
+        metadata = content.metadata or {}
+        platform = (metadata.get("platform") or content.platform or "").lower()
+        if content.content_type not in {ContentType.ARTICLE, ContentType.NEWS}:
+            return None
+        if platform != "twitter":
+            return None
+        if not metadata.get("has_video"):
+            return None
+        if (
+            isinstance(metadata.get("video_transcript"), str)
+            and metadata["video_transcript"].strip()
+        ):
+            return None
+
+        if not settings.tweet_video_enabled:
+            metadata["has_video"] = False
+            metadata["tweet_video_skip_reason"] = "disabled"
+            return None
+
+        duration_ms = metadata.get("video_duration_ms")
+        if isinstance(duration_ms, int):
+            max_ms = settings.tweet_video_max_duration_seconds * 1000
+            if duration_ms > max_ms:
+                metadata["has_video"] = False
+                metadata["tweet_video_skip_reason"] = "duration_limit"
+                logger.info(
+                    "Skipping tweet video for content %s: duration %sms exceeds limit %sms",
+                    content.id,
+                    duration_ms,
+                    max_ms,
+                )
+                return None
+
+        return TaskType.DOWNLOAD_TWEET_VIDEO_AUDIO
 
     def _process_article(self, content: ContentData) -> bool:
         """Process article content."""
@@ -417,16 +463,17 @@ class ContentWorker:
                 "source": existing_metadata.get("source"),  # Never overwrite source from scraper
             }
             gate_page_reason = extracted_data.get("gate_page_reason")
-            if extracted_data.get("used_rss_fallback"):
-                metadata_update["used_rss_fallback"] = True
-                metadata_update["rss_fallback_length"] = extracted_data.get("rss_fallback_length")
-            if extracted_data.get("used_exa_fallback"):
-                metadata_update["used_exa_fallback"] = True
-                metadata_update["exa_fallback_length"] = extracted_data.get("exa_fallback_length")
             if gate_page_reason:
                 metadata_update["gate_page_reason"] = gate_page_reason
-            if extracted_data.get("used_newspaper_fallback"):
-                metadata_update["used_newspaper_fallback"] = True
+            if extracted_data.get("used_firecrawl_fallback"):
+                metadata_update["used_firecrawl_fallback"] = True
+                metadata_update["firecrawl_fallback_length"] = extracted_data.get(
+                    "firecrawl_fallback_length"
+                )
+            if "has_video" in extracted_data:
+                metadata_update["has_video"] = bool(extracted_data.get("has_video"))
+            if extracted_data.get("video_duration_ms") is not None:
+                metadata_update["video_duration_ms"] = extracted_data.get("video_duration_ms")
             if subscribe_to_feed:
                 metadata_update["subscribe_to_feed"] = True
 

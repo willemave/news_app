@@ -8,6 +8,15 @@ def test_settings_default_directories(monkeypatch, tmp_path):
     """Ensure default directory configuration respects the current working directory."""
 
     monkeypatch.chdir(tmp_path)
+    for env_name in (
+        "MEDIA_BASE_DIR",
+        "LOGS_BASE_DIR",
+        "IMAGES_BASE_DIR",
+        "CONTENT_BODY_LOCAL_ROOT",
+        "PODCAST_SCRATCH_DIR",
+        "PERSONAL_MARKDOWN_ROOT",
+    ):
+        monkeypatch.delenv(env_name, raising=False)
     settings = Settings(
         database_url="postgresql://postgres@localhost/test_db",
         JWT_SECRET_KEY="test-secret-key",
@@ -17,6 +26,9 @@ def test_settings_default_directories(monkeypatch, tmp_path):
     assert settings.media_base_dir == tmp_path / "data" / "media"
     assert settings.logs_base_dir == tmp_path / "logs"
     assert settings.podcast_media_dir == (tmp_path / "data" / "media" / "podcasts").resolve()
+    assert (
+        settings.tweet_video_media_dir == (tmp_path / "data" / "media" / "tweet_videos").resolve()
+    )
     assert settings.logs_dir == (tmp_path / "logs").resolve()
 
 
