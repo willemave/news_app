@@ -17,6 +17,7 @@ Change-oriented docs that used to live under `docs/plans/`, `docs/specs/`, and `
 - `dig-deeper-selection-menu/`
 - `ios-chat-stability-2026-04/`
 - `llm-call-sites/`
+- `longform-artifact-system-2026-04/`
 - `news-button-navigation-2025-11/`
 - `news-grouped-view-2025-10/`
 - `news-screenshot-thumbnail/`
