@@ -41,6 +41,8 @@ def infer_summary_kind(summary: Mapping[str, Any] | None) -> SummaryKind | None:
     """Infer summary kind from payload keys for legacy/partial metadata."""
     if not isinstance(summary, Mapping):
         return None
+    if "artifact" in summary and "selection_trace" in summary:
+        return SummaryKind.LONGFORM_ARTIFACT
     if "editorial_narrative" in summary:
         return SummaryKind.LONG_EDITORIAL_NARRATIVE
     if "insights" in summary:

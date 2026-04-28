@@ -23,6 +23,7 @@ from app.constants import (
     SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
+    SUMMARY_KIND_LONGFORM_ARTIFACT,
     SUMMARY_KIND_SHORT_NEWS,
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
@@ -32,6 +33,7 @@ from app.models.contracts import (
     ContentStatus,
     ContentType,
 )
+from app.models.longform_artifacts import LongformArtifactEnvelope
 from app.utils.summary_utils import extract_short_summary, extract_summary_text
 from app.utils.title_utils import clean_title, resolve_content_display_title
 
@@ -682,6 +684,7 @@ SummaryPayload = (
     | InterleavedSummaryV2
     | BulletedSummary
     | EditorialNarrativeSummary
+    | LongformArtifactEnvelope
     | NewsSummary
 )
 
@@ -707,6 +710,10 @@ def _parse_summary_payload(
         raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_LONG_STRUCTURED:
         return StructuredSummary.model_validate(value)
+    if summary_kind == SUMMARY_KIND_LONGFORM_ARTIFACT:
+        if summary_version == SUMMARY_VERSION_V1:
+            return LongformArtifactEnvelope.model_validate(value)
+        raise ValueError(f"Unsupported summary version: {summary_version}")
     if summary_kind == SUMMARY_KIND_SHORT_NEWS:
         return NewsSummary.model_validate(value)
     if summary_version == SUMMARY_VERSION_V1 and "summary" in value and "key_points" in value:
@@ -747,6 +754,7 @@ class BaseContentMetadata(BaseModel):
                 InterleavedSummaryV2,
                 BulletedSummary,
                 EditorialNarrativeSummary,
+                LongformArtifactEnvelope,
                 NewsSummary,
             ),
         ):
@@ -761,7 +769,8 @@ class BaseContentMetadata(BaseModel):
             )
         raise ValueError(
             "Summary must be StructuredSummary, InterleavedSummary, InterleavedSummaryV2, "
-            "BulletedSummary, EditorialNarrativeSummary, NewsSummary, or dict"
+            "BulletedSummary, EditorialNarrativeSummary, LongformArtifactEnvelope, "
+            "NewsSummary, or dict"
         )
 
 
@@ -1063,6 +1072,7 @@ class ContentData(BaseModel):
             SUMMARY_KIND_LONG_INTERLEAVED,
             SUMMARY_KIND_LONG_BULLETS,
             SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
+            SUMMARY_KIND_LONGFORM_ARTIFACT,
         }:
             return summary_data
         # Legacy fallback: infer by payload shape
@@ -1070,6 +1080,7 @@ class ContentData(BaseModel):
             "bullet_points" in summary_data
             or "insights" in summary_data
             or "editorial_narrative" in summary_data
+            or ("artifact" in summary_data and "selection_trace" in summary_data)
         ):
             return summary_data
         return None
@@ -1116,6 +1127,27 @@ class ContentData(BaseModel):
                     {"text": point.get("point", ""), "category": "key_point"}
                     for point in key_points
                     if isinstance(point, dict) and point.get("point")
+                ]
+        if summary_kind == SUMMARY_KIND_LONGFORM_ARTIFACT:
+            artifact = self.structured_summary.get("artifact")
+            payload = artifact.get("payload") if isinstance(artifact, dict) else None
+            raw_points = payload.get("key_points", []) if isinstance(payload, dict) else []
+            artifact_type = artifact.get("type") if isinstance(artifact, dict) else None
+            if isinstance(raw_points, list):
+                return [
+                    {
+                        "text": " — ".join(
+                            part
+                            for part in (
+                                str(point.get("heading") or "").strip(),
+                                str(point.get("content") or "").strip(),
+                            )
+                            if part
+                        ),
+                        "category": str(artifact_type or "key_point"),
+                    }
+                    for point in raw_points
+                    if isinstance(point, dict) and (point.get("heading") or point.get("content"))
                 ]
 
         return []
@@ -1182,6 +1214,19 @@ class ContentData(BaseModel):
                     for quote in raw_quotes
                     if isinstance(quote, dict) and quote.get("text")
                 ]
+        if summary_kind == SUMMARY_KIND_LONGFORM_ARTIFACT:
+            artifact = self.structured_summary.get("artifact")
+            payload = artifact.get("payload") if isinstance(artifact, dict) else None
+            raw_quotes = payload.get("quotes", []) if isinstance(payload, dict) else []
+            if isinstance(raw_quotes, list):
+                return [
+                    {
+                        "text": quote.get("text", ""),
+                        "context": quote.get("attribution", ""),
+                    }
+                    for quote in raw_quotes
+                    if isinstance(quote, dict) and quote.get("text")
+                ]
 
         return []
 
@@ -1228,6 +1273,11 @@ class ContentData(BaseModel):
             if summary_kind == SUMMARY_KIND_LONG_BULLETS:
                 return []
             if summary_kind == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE:
+                return []
+            if summary_kind == SUMMARY_KIND_LONGFORM_ARTIFACT:
+                artifact = self.structured_summary.get("artifact")
+                if isinstance(artifact, dict) and isinstance(artifact.get("type"), str):
+                    return [artifact["type"]]
                 return []
 
         return self.metadata.get("topics", [])

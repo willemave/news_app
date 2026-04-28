@@ -6,16 +6,12 @@ from unittest.mock import Mock
 from sqlalchemy.orm import sessionmaker
 
 from app.constants import (
-    SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
+    SUMMARY_KIND_LONGFORM_ARTIFACT,
     SUMMARY_VERSION_V1,
-    SUMMARY_VERSION_V2,
 )
+from app.models.longform_artifacts import LongformArtifactEnvelope
 from app.models.metadata import (
-    EditorialKeyPoint,
-    EditorialNarrativeSummary,
-    EditorialQuote,
     NewsSummary,
-    ResearchSourceDetails,
 )
 from app.models.schema import Content, ContentStatusEntry
 from app.pipeline.handlers.summarize import SummarizeHandler
@@ -32,6 +28,132 @@ def _override_get_db(db_session):
     return _get_db
 
 
+def _artifact_summary(
+    *,
+    title: str = "Article Title",
+    artifact_type: str = "argument",
+    ask: str = "judge",
+) -> LongformArtifactEnvelope:
+    extras_by_type = {
+        "argument": {
+            "thesis": (
+                "The article argues that execution quality matters more than isolated "
+                "benchmark wins."
+            ),
+            "counterpoint": (
+                "A careful reader could object that benchmarks still capture useful "
+                "progress signals."
+            ),
+        },
+        "findings": {
+            "question": (
+                "The paper asks whether the proposed method improves real benchmark outcomes."
+            ),
+            "method": (
+                "The authors compare model outputs across benchmark suites and report "
+                "measured differences."
+            ),
+            "limits": (
+                "The data does not prove that the result generalizes to every downstream "
+                "deployment."
+            ),
+        },
+    }
+    return LongformArtifactEnvelope.model_validate(
+        {
+            "title": title,
+            "one_line": "This artifact explains the source's central claim and why it matters now.",
+            "ask": ask,
+            "artifact": {
+                "type": artifact_type,
+                "payload": {
+                    "overview": (
+                        "The source lays out a concrete position about execution quality, "
+                        "governance, and measurable impact. It grounds the claim in practical "
+                        "tradeoffs and explains what readers should watch next."
+                    ),
+                    "quotes": [
+                        {
+                            "text": (
+                                "Quote one with enough detail for validation and useful "
+                                "reader context."
+                            ),
+                            "attribution": "Source A",
+                        },
+                        {
+                            "text": (
+                                "Quote two with enough detail for validation and useful "
+                                "reader context."
+                            ),
+                            "attribution": "Source B",
+                        },
+                    ],
+                    "extras": extras_by_type[artifact_type],
+                    "key_points": [
+                        {
+                            "heading": "Execution quality",
+                            "content": (
+                                "The piece says execution quality determines whether technical "
+                                "progress turns into usable results."
+                            ),
+                        },
+                        {
+                            "heading": "Governance controls",
+                            "content": (
+                                "It connects governance controls to practical operating "
+                                "constraints rather than abstract policy."
+                            ),
+                        },
+                        {
+                            "heading": "Measurable impact",
+                            "content": (
+                                "The source emphasizes outcomes that can be observed, "
+                                "measured, and compared over time."
+                            ),
+                        },
+                        {
+                            "heading": "Near-term tradeoffs",
+                            "content": (
+                                "It closes by naming the tradeoffs teams need to manage as "
+                                "conditions change."
+                            ),
+                        },
+                    ],
+                    "takeaway": (
+                        "The useful read is the structure of the claim, not a generic recap."
+                    ),
+                },
+            },
+            "source_context": {
+                "url": "https://example.com",
+                "source_name": "Example",
+                "publication_date": None,
+                "platform": None,
+            },
+            "selection_trace": {
+                "source_hint": "test",
+                "candidates": [artifact_type],
+                "selected": artifact_type,
+                "reason": "The source is shaped around a concrete artifact contract.",
+                "confidence": 0.91,
+            },
+            "feed_preview": {
+                "title": title,
+                "one_line": "A concise preview of the artifact and why it matters now.",
+                "preview_bullets": [
+                    "Execution quality is the main thread.",
+                    "Governance and measurement provide the support.",
+                    "The takeaway names the near-term tradeoff.",
+                ],
+                "reason_to_read": (
+                    "Open this to judge the argument structure rather than scan a recap."
+                ),
+                "artifact_type": artifact_type,
+            },
+        }
+    )
+
+
 class DummySummarizer:
     """Minimal summarizer stub for task routing tests."""
 
@@ -42,11 +164,31 @@ class DummySummarizer:
         content_id: int,
         max_bullet_points: int,
         max_quotes: int,
+        title: str | None = None,
         provider_override: str | None = None,
+        url: str | None = None,
+        platform: str | None = None,
+        source_name: str | None = None,
+        publication_date: str | None = None,
+        metadata=None,
         db=None,
         usage_persist=None,
     ):
-        del content, content_id, max_bullet_points, max_quotes, provider_override, db, usage_persist
+        del (
+            content,
+            content_id,
+            max_bullet_points,
+            max_quotes,
+            title,
+            provider_override,
+            url,
+            platform,
+            source_name,
+            publication_date,
+            metadata,
+            db,
+            usage_persist,
+        )
         if content_type == "news":
             return NewsSummary(
                 title="News Title",
@@ -54,33 +196,7 @@ class DummySummarizer:
                 key_points=["Point 1"],
                 summary="Overview",
             )
-        return EditorialNarrativeSummary(
-            title="Article Title",
-            editorial_narrative=(
-                "First paragraph with concrete details, entities, metrics, and a clear thesis "
-                "about why execution quality, governance controls, and measurable impact matter "
-                "more than isolated benchmark gains.\n\n"
-                "Second paragraph with implications, constraints, and evidence-driven guidance "
-                "that outlines near-term tradeoffs, implementation risks, and practical actions."
-            ),
-            quotes=[
-                EditorialQuote(
-                    text="Quote one with enough detail for validation.",
-                    attribution="Source A",
-                ),
-                EditorialQuote(
-                    text="Quote two with enough detail for validation.",
-                    attribution="Source B",
-                ),
-            ],
-            key_points=[
-                EditorialKeyPoint(point="Key point one with concrete detail and consequence."),
-                EditorialKeyPoint(point="Key point two with concrete detail and consequence."),
-                EditorialKeyPoint(point="Key point three with concrete detail and consequence."),
-                EditorialKeyPoint(point="Key point four with concrete detail and consequence."),
-            ],
-            source_details=None,
-        )
+        return _artifact_summary()
 
 
 def _create_content(db_session, content_type: str) -> Content:
@@ -160,8 +276,9 @@ def test_summarize_article_enqueues_image_when_visible_in_inbox(db_session, test
     )
     db_session.refresh(content)
     assert content.content_metadata is not None
-    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
+    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONGFORM_ARTIFACT
     assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V1
+    assert content.content_metadata["feed_preview"]["artifact_type"] == "argument"
 
 
 def test_summarize_article_does_not_enqueue_image_when_not_visible(db_session) -> None:
@@ -180,7 +297,7 @@ def test_summarize_article_does_not_enqueue_image_when_not_visible(db_session) -
     queue_service.enqueue.assert_not_called()
 
 
-def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session) -> None:
+def test_summarize_pdf_article_writes_longform_artifact(db_session) -> None:
     content = Content(
         content_type="article",
         url="https://example.com/paper.pdf",
@@ -196,40 +313,10 @@ def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session)
 
     queue_service = Mock()
     llm_service = Mock()
-    llm_service.summarize.return_value = EditorialNarrativeSummary(
+    llm_service.summarize.return_value = _artifact_summary(
         title="Paper Title",
-        editorial_narrative=(
-            "First paragraph explains the research question, the setup, and the strongest "
-            "result with concrete detail and measurable signal.\n\n"
-            "Second paragraph covers the evidence, limitations, and practical implications "
-            "for teams evaluating whether the result generalizes."
-        ),
-        quotes=[
-            EditorialQuote(
-                text="Quote one with enough detail for validation.",
-                attribution="Paper",
-            ),
-            EditorialQuote(
-                text="Quote two with enough detail for validation.",
-                attribution="Authors",
-            ),
-        ],
-        key_points=[
-            EditorialKeyPoint(point="Key point one with concrete detail and consequence."),
-            EditorialKeyPoint(point="Key point two with concrete detail and consequence."),
-            EditorialKeyPoint(point="Key point three with concrete detail and consequence."),
-            EditorialKeyPoint(point="Key point four with concrete detail and consequence."),
-        ],
-        source_details=ResearchSourceDetails(
-            hypothesis="This paper tests a concrete scaling claim.",
-            methods=["Evaluation across benchmark suites."],
-            arguments=[
-                "The main method improves the target metric.",
-                "The improvement depends on dataset quality.",
-            ],
-            limitations=["The benchmark coverage is narrow."],
-            implications=["Teams should validate on in-domain data."],
-        ),
+        artifact_type="findings",
+        ask="update",
     )
     handler = SummarizeHandler()
     context = _build_context(db_session, queue_service, llm_service)
@@ -242,11 +329,12 @@ def test_summarize_pdf_article_uses_research_template_and_version_v2(db_session)
 
     assert handler.handle(task, context).success is True
     llm_service.summarize.assert_called_once()
-    assert llm_service.summarize.call_args.kwargs["content_type"] == "editorial_research"
+    assert llm_service.summarize.call_args.kwargs["content_type"] == "longform_artifact"
     db_session.refresh(content)
     assert content.content_metadata is not None
-    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
-    assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V2
+    assert content.content_metadata["summary_kind"] == SUMMARY_KIND_LONGFORM_ARTIFACT
+    assert content.content_metadata["summary_version"] == SUMMARY_VERSION_V1
+    assert content.content_metadata["selection_trace"]["selected"] == "findings"
 
 
 def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> None:
@@ -262,11 +350,7 @@ def test_summarize_article_falls_back_to_content_to_summarize(db_session) -> Non
 
     queue_service = Mock()
     llm_service = Mock()
-    llm_service.summarize.return_value = {
-        "title": "Article Title",
-        "overview": "Summary",
-        "bullet_points": [],
-    }
+    llm_service.summarize.return_value = _artifact_summary()
     handler = SummarizeHandler()
     context = _build_context(db_session, queue_service, llm_service)
 
@@ -292,12 +376,18 @@ def test_summarize_preserves_top_comment_from_concurrent_discussion_update(db_se
             content_id: int,
             max_bullet_points: int,
             max_quotes: int,
+            title: str | None = None,
             provider_override: str | None = None,
+            url: str | None = None,
+            platform: str | None = None,
+            source_name: str | None = None,
+            publication_date: str | None = None,
+            metadata=None,
             db=None,
             usage_persist=None,
-        ) -> dict[str, object]:
-            del content, content_type, max_bullet_points, max_quotes, provider_override, db
-            del usage_persist
+        ) -> LongformArtifactEnvelope:
+            del content, content_type, max_bullet_points, max_quotes, title, provider_override
+            del url, platform, source_name, publication_date, metadata, db, usage_persist
             external_session_factory = sessionmaker(
                 autocommit=False,
                 autoflush=False,
@@ -319,11 +409,7 @@ def test_summarize_preserves_top_comment_from_concurrent_discussion_update(db_se
             finally:
                 external_session.close()
 
-            return {
-                "title": "Article Title",
-                "overview": "Summary",
-                "bullet_points": [],
-            }
+            return _artifact_summary()
 
     queue_service = Mock()
     handler = SummarizeHandler()

@@ -87,6 +87,9 @@ class SummaryKind(StrEnum):
     LONG_BULLETS = "long_bullets"
     LONG_EDITORIAL_NARRATIVE = "long_editorial_narrative"
     SHORT_NEWS = "short_news"
+    DAILY_ROLLUP = "daily_rollup"
+    LONGFORM_ARTIFACT = "longform_artifact"
+    INSIGHT_REPORT = "insight_report"
 
 
 class SummaryVersion(IntEnum):

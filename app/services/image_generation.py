@@ -308,25 +308,51 @@ def _build_infographic_prompt(content: ContentData) -> str:
 
     summary = content.metadata.get("summary", {})
     title = _clamp_text(str(summary.get("title") or content.display_title).strip(), max_chars=180)
-    overview = (
-        summary.get("summary")
-        or summary.get("overview")
-        or summary.get("hook")
-        or summary.get("takeaway")
-        or ""
-    )
-
     key_points: list[str] = []
-    for item in (summary.get("key_points") or summary.get("bullet_points") or [])[:4]:
-        if isinstance(item, dict):
-            value = item.get("text") or item.get("point") or item.get("insight")
-        else:
-            value = item
-        if not value:
-            continue
-        cleaned = _clamp_text(" ".join(str(value).split()).strip(), max_chars=220)
-        if cleaned:
-            key_points.append(cleaned)
+    if isinstance(summary, dict) and isinstance(summary.get("artifact"), dict):
+        artifact = summary["artifact"]
+        payload = artifact.get("payload") if isinstance(artifact, dict) else None
+        overview = (
+            summary.get("one_line")
+            or (payload.get("overview") if isinstance(payload, dict) else None)
+            or (payload.get("takeaway") if isinstance(payload, dict) else None)
+            or ""
+        )
+        raw_points = payload.get("key_points", []) if isinstance(payload, dict) else []
+        for item in raw_points[:4]:
+            if not isinstance(item, dict):
+                continue
+            value = " ".join(
+                part
+                for part in (
+                    str(item.get("heading") or "").strip(),
+                    str(item.get("content") or "").strip(),
+                )
+                if part
+            )
+            cleaned = _clamp_text(" ".join(value.split()).strip(), max_chars=220)
+            if cleaned:
+                key_points.append(cleaned)
+    else:
+        overview = (
+            summary.get("summary")
+            or summary.get("overview")
+            or summary.get("hook")
+            or summary.get("takeaway")
+            or ""
+        )
+
+        for item in (summary.get("key_points") or summary.get("bullet_points") or [])[:4]:
+            raw_value: object | None
+            if isinstance(item, dict):
+                raw_value = item.get("text") or item.get("point") or item.get("insight")
+            else:
+                raw_value = item
+            if not raw_value:
+                continue
+            cleaned = _clamp_text(" ".join(str(raw_value).split()).strip(), max_chars=220)
+            if cleaned:
+                key_points.append(cleaned)
 
     overview_text = _clamp_text(" ".join(str(overview).split()).strip(), max_chars=240)
     if not key_points and overview_text:

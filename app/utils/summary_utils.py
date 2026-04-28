@@ -12,6 +12,18 @@ def extract_short_summary(summary: dict[str, Any] | str | None) -> str | None:
     if not isinstance(summary, dict):
         return None
 
+    one_line = summary.get("one_line")
+    if isinstance(one_line, str) and one_line:
+        return one_line
+
+    artifact = summary.get("artifact")
+    if isinstance(artifact, dict):
+        payload = artifact.get("payload")
+        if isinstance(payload, dict):
+            overview = payload.get("overview")
+            if isinstance(overview, str) and overview:
+                return overview
+
     overview = summary.get("overview")
     if isinstance(overview, str) and overview:
         return overview

@@ -140,7 +140,31 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
     summary_version = parse_summary_version(content.metadata.get("summary_version"))
     if isinstance(summary_data, dict):
         # Check if it's a StructuredSummary, InterleavedSummary, or NewsSummary
-        if summary_kind == SummaryKind.LONG_STRUCTURED:
+        if summary_kind == SummaryKind.LONGFORM_ARTIFACT:
+            artifact = summary_data.get("artifact")
+            payload = artifact.get("payload") if isinstance(artifact, dict) else None
+            summary = (
+                summary_data.get("one_line")
+                or (payload.get("overview") if isinstance(payload, dict) else None)
+                or ""
+            )
+            if isinstance(payload, dict):
+                for point in payload.get("key_points", [])[:5]:
+                    if isinstance(point, dict):
+                        text = " — ".join(
+                            part
+                            for part in (
+                                str(point.get("heading") or "").strip(),
+                                str(point.get("content") or "").strip(),
+                            )
+                            if part
+                        )
+                        if text:
+                            key_points.append(text)
+                for quote in payload.get("quotes", [])[:3]:
+                    if isinstance(quote, dict) and quote.get("text"):
+                        quotes.append(str(quote["text"]))
+        elif summary_kind == SummaryKind.LONG_STRUCTURED:
             summary = summary_data.get("overview", "")
         elif summary_kind == SummaryKind.LONG_INTERLEAVED:
             summary = summary_data.get("hook") or summary_data.get("takeaway", "")
@@ -153,7 +177,9 @@ def _extract_content_context(content: ContentData) -> dict[str, str]:
             summary = summary_data.get("summary", "")
 
         # Get bullet points / key points
-        if summary_kind == SummaryKind.LONG_INTERLEAVED and summary_version == SummaryVersion.V2:
+        if summary_kind == SummaryKind.LONGFORM_ARTIFACT:
+            bullet_points = []
+        elif summary_kind == SummaryKind.LONG_INTERLEAVED and summary_version == SummaryVersion.V2:
             bullet_points = summary_data.get("key_points", [])
         else:
             bullet_points = summary_data.get("key_points") or summary_data.get("bullet_points", [])

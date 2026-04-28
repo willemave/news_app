@@ -9,6 +9,7 @@ from typing import Any, Literal, cast
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.models.longform_artifacts import LongformArtifactEnvelope
 from app.models.metadata import (
     BulletedSummary,
     ContentType,
@@ -21,6 +22,8 @@ from app.models.metadata import (
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
 from app.services.llm_prompts import generate_summary_prompt
+from app.services.longform_artifact_prompts import build_longform_artifact_prompt
+from app.services.longform_artifact_routing import resolve_artifact_source_hint
 from app.services.summarization_templates import is_editorial_prompt_type
 from app.services.vendor_usage import record_model_usage
 
@@ -41,12 +44,14 @@ SummarizationPromptType = Literal[
     "editorial_twitter",
     "editorial_research",
     "editorial_github",
+    "longform_artifact",
 ]
 SummarizationOutputType = (
     type[StructuredSummary]
     | type[InterleavedSummaryV2]
     | type[BulletedSummary]
     | type[EditorialNarrativeSummary]
+    | type[LongformArtifactEnvelope]
     | type[NewsSummary]
 )
 
@@ -91,6 +96,12 @@ def _finalize_summary(summary: SummaryPayload) -> SummaryPayload:
             for quote in summary.quotes
             if len((quote.text or "").strip()) >= MIN_SUMMARY_QUOTE_CHARS
         ]
+    if isinstance(summary, LongformArtifactEnvelope) and summary.artifact.payload.quotes:
+        summary.artifact.payload.quotes = [
+            quote
+            for quote in summary.artifact.payload.quotes
+            if len((quote.text or "").strip()) >= MIN_SUMMARY_QUOTE_CHARS
+        ]
     return summary
 
 
@@ -102,6 +113,8 @@ def resolve_summarization_output_type(
     prompt_type: SummarizationPromptType,
 ) -> SummarizationOutputType:
     """Return the pydantic output type for a canonical summarization prompt type."""
+    if prompt_type == "longform_artifact":
+        return LongformArtifactEnvelope
     if prompt_type == "news":
         return NewsSummary
     if is_editorial_prompt_type(prompt_type):
@@ -133,6 +146,9 @@ def resolve_summarization_spec(
     elif normalized_type == "news":
         prompt_type = "news"
         default_model_spec = models.get("news", default_article_model)
+    elif normalized_type == "longform_artifact":
+        prompt_type = "longform_artifact"
+        default_model_spec = models.get("longform_artifact", editorial_default_model)
     elif normalized_type in {
         "editorial_narrative",
         "editorial_podcast",
@@ -144,6 +160,7 @@ def resolve_summarization_spec(
         "long_bullets",
         "news",
         "structured",
+        "longform_artifact",
     }:
         prompt_type = cast(SummarizationPromptType, normalized_type)
         default_model_spec = models.get(normalized_type, editorial_default_model)
@@ -197,6 +214,7 @@ DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
     "interleaved": "openai:gpt-5.4",
     "long_bullets": "openai:gpt-5.4",
     "editorial_narrative": "openai:gpt-5.4",
+    "longform_artifact": "openai:gpt-5.4",
 }
 
 
@@ -257,6 +275,11 @@ class ContentSummarizer:
         content_id: str | int | None = None,
         provider_override: str | None = None,
         model_hint: str | None = None,
+        url: str | None = None,
+        platform: str | None = None,
+        source_name: str | None = None,
+        publication_date: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
         db: Session | None = None,
         usage_persist: dict[str, Any] | None = None,
     ) -> SummaryPayload | None:
@@ -285,12 +308,33 @@ class ContentSummarizer:
                 normalized_type,
                 self.default_models,
             )
-            system_prompt, user_template = generate_summary_prompt(
-                prompt_type,
-                max_bullet_points,
-                max_quotes,
-            )
-            user_message = _build_user_message(user_template, payload, title)
+            if prompt_type == "longform_artifact":
+                source_content_type = (
+                    str((metadata or {}).get("source_content_type") or "") or normalized_type
+                )
+                source_hint = resolve_artifact_source_hint(
+                    source_content_type,
+                    url=url,
+                    platform=platform,
+                    metadata=metadata,
+                )
+                system_prompt, user_message = build_longform_artifact_prompt(
+                    source_hint=source_hint,
+                    content_payload=payload,
+                    title=title,
+                    url=url,
+                    source_name=source_name,
+                    platform=platform,
+                    publication_date=publication_date,
+                    metadata=metadata,
+                )
+            else:
+                system_prompt, user_template = generate_summary_prompt(
+                    prompt_type,
+                    max_bullet_points,
+                    max_quotes,
+                )
+                user_message = _build_user_message(user_template, payload, title)
 
             default_provider_hint, default_model_hint = _model_hint_from_spec(default_model_spec)
             provider_to_use = provider_override or self.provider_hint or default_provider_hint

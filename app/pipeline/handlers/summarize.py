@@ -10,11 +10,13 @@ from app.constants import (
     SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE,
     SUMMARY_KIND_LONG_INTERLEAVED,
     SUMMARY_KIND_LONG_STRUCTURED,
+    SUMMARY_KIND_LONGFORM_ARTIFACT,
     SUMMARY_KIND_SHORT_NEWS,
     SUMMARY_VERSION_V1,
     SUMMARY_VERSION_V2,
 )
 from app.core.logging import get_logger
+from app.models.longform_artifacts import LongformArtifactEnvelope
 from app.models.metadata import (
     BulletedSummary,
     ContentStatus,
@@ -364,14 +366,23 @@ class SummarizeHandler:
                         _log_lifecycle_event("content.completed")
                     return TaskResult.ok()
 
-                summarization_type, max_bullet_points, max_quotes = (
-                    resolve_summarization_prompt_route(
-                        content.content_type,
-                        url=content.url,
-                        platform=content.platform,
-                        metadata=metadata,
+                if content.content_type in {
+                    ContentType.ARTICLE.value,
+                    ContentType.PODCAST.value,
+                    ContentType.NEWS.value,
+                }:
+                    summarization_type = "longform_artifact"
+                    max_bullet_points = 8
+                    max_quotes = 5
+                else:
+                    summarization_type, max_bullet_points, max_quotes = (
+                        resolve_summarization_prompt_route(
+                            content.content_type,
+                            url=content.url,
+                            platform=content.platform,
+                            metadata=metadata,
+                        )
                     )
-                )
                 provider_override = None
 
                 logger.info(
@@ -385,13 +396,25 @@ class SummarizeHandler:
                 )
 
                 try:
+                    summarization_metadata = dict(metadata)
+                    summarization_metadata["source_content_type"] = content.content_type
                     summary = context.llm_service.summarize(
                         text_to_summarize,
                         content_type=summarization_type,
+                        title=content.title,
                         content_id=content.id,
                         max_bullet_points=max_bullet_points,
                         max_quotes=max_quotes,
                         provider_override=provider_override,
+                        url=content.url,
+                        platform=content.platform,
+                        source_name=content.source,
+                        publication_date=(
+                            content.publication_date.isoformat()
+                            if content.publication_date
+                            else None
+                        ),
+                        metadata=summarization_metadata,
                         db=db,
                         usage_persist={
                             "feature": "summarization",
@@ -449,6 +472,9 @@ class SummarizeHandler:
                     if isinstance(summary, NewsSummary):
                         summary_kind = SUMMARY_KIND_SHORT_NEWS
                         summary_version = SUMMARY_VERSION_V1
+                    elif isinstance(summary, LongformArtifactEnvelope):
+                        summary_kind = SUMMARY_KIND_LONGFORM_ARTIFACT
+                        summary_version = SUMMARY_VERSION_V1
                     elif isinstance(summary, EditorialNarrativeSummary):
                         summary_kind = SUMMARY_KIND_LONG_EDITORIAL_NARRATIVE
                         summary_version = resolve_editorial_summary_version(summarization_type)
@@ -491,6 +517,9 @@ class SummarizeHandler:
                         )
                     else:
                         metadata["summary"] = summary_dict
+                        if isinstance(summary, LongformArtifactEnvelope):
+                            metadata["feed_preview"] = summary_dict.get("feed_preview")
+                            metadata["selection_trace"] = summary_dict.get("selection_trace")
                         if summary_dict.get("title") and not content.title:
                             content.title = summary_dict["title"]
                         logger.info("Generated summary for content %s", content_id)

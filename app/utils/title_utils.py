@@ -118,7 +118,12 @@ def get_section_title(metadata: Any, section_name: str) -> str | None:
 
 def get_summary_title(metadata: Any) -> str | None:
     """Return the canonical summary title from metadata when available."""
-    return get_section_title(metadata, "summary")
+    summary = mapping(mapping(metadata).get("summary"))
+    title = clean_title(summary.get("title"))
+    if title:
+        return title
+    feed_preview = mapping(summary.get("feed_preview"))
+    return clean_title(feed_preview.get("title"))
 
 
 def get_summary_text(metadata: Any) -> str | None:
@@ -126,6 +131,10 @@ def get_summary_text(metadata: Any) -> str | None:
     summary = mapping(mapping(metadata).get("summary"))
     if not summary:
         return None
+    feed_preview = mapping(summary.get("feed_preview"))
+    one_line = feed_preview.get("one_line")
+    if isinstance(one_line, str) and one_line.strip():
+        return one_line.strip()
     return extract_short_summary(summary) or extract_summary_text(summary)
 
 
