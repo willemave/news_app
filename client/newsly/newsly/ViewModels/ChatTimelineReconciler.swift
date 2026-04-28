@@ -80,8 +80,6 @@ struct ChatTimelineReconciler {
                     || localIdentityAliases.values.contains(uuid)
                     || item.retryText != nil
             }
-            .sorted { lhs, rhs in
-                (lhs.message.timestamp, lhs.id.sortKey) < (rhs.message.timestamp, rhs.id.sortKey)
-            }
+            .sorted { $0.isOrderedBefore($1) }
     }
 }

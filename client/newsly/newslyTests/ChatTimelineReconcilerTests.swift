@@ -190,6 +190,45 @@ final class ChatTimelineReconcilerTests: XCTestCase {
         XCTAssertEqual(result.last?.message.councilCandidates.map(\.personaName), ["Skeptic", "Analyst"])
     }
 
+    func testReconcileOrdersSameTimestampTurnAsUserSummaryThenAssistant() {
+        let timestamp = "2026-04-01T10:00:00Z"
+        let detail = detail(messages: [
+            message(
+                id: 3,
+                sourceMessageId: 42,
+                role: .assistant,
+                timestamp: timestamp,
+                content: "Here is the answer"
+            ),
+            message(
+                id: 2,
+                sourceMessageId: 42,
+                role: .tool,
+                timestamp: timestamp,
+                content: "Searched 2 sources",
+                displayType: .processSummary
+            ),
+            message(
+                id: 1,
+                sourceMessageId: 42,
+                role: .user,
+                timestamp: timestamp,
+                content: "Explain this"
+            )
+        ])
+
+        var aliases: [ChatTimelineID: UUID] = [:]
+        let result = ChatTimelineReconciler().reconcile(
+            current: [],
+            detail: detail,
+            pendingSends: [:],
+            localIdentityAliases: &aliases
+        )
+
+        XCTAssertEqual(result.map(\.message.role), [.user, .tool, .assistant])
+        XCTAssertEqual(result.map(\.message.content), ["Explain this", "Searched 2 sources", "Here is the answer"])
+    }
+
     func testReconcilePreservesFailedLocalRetryRow() {
         let localId = UUID(uuidString: "44444444-4444-4444-4444-444444444444")!
         let failedItem = ChatTimelineItem(

@@ -504,11 +504,7 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     }
 
     private func publishTimeline(_ items: [ChatTimelineItem]) {
-        timeline = items.sorted { lhs, rhs in
-            let lhsKey = (lhs.message.timestamp, lhs.message.displayType.sortOrder, lhs.id.sortKey)
-            let rhsKey = (rhs.message.timestamp, rhs.message.displayType.sortOrder, rhs.id.sortKey)
-            return lhsKey < rhsKey
-        }
+        timeline = items.sorted { $0.isOrderedBefore($1) }
         refreshDerivedTimelineState()
     }
 

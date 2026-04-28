@@ -83,7 +83,7 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.inputText, "Final transcript")
         XCTAssertFalse(viewModel.isRecording)
         XCTAssertFalse(viewModel.isTranscribing)
-        XCTAssertTrue(viewModel.allMessages.isEmpty)
+        XCTAssertTrue(viewModel.timeline.isEmpty)
     }
 
     func testStopVoiceRecordingAppendsToExistingDraft() async {
@@ -209,7 +209,7 @@ final class ChatSessionViewModelTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertTrue(viewModel.isSending)
-        XCTAssertEqual(viewModel.allMessages.last?.content, "Hello")
+        XCTAssertEqual(viewModel.timeline.last?.message.content, "Hello")
 
         viewModel.handleDisappear()
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -217,7 +217,7 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isSending)
         XCTAssertFalse(viewModel.isStartingCouncil)
         XCTAssertNil(viewModel.errorMessage)
-        XCTAssertTrue(viewModel.allMessages.isEmpty)
+        XCTAssertTrue(viewModel.timeline.isEmpty)
         ActiveChatSessionManager.shared.reset()
     }
 

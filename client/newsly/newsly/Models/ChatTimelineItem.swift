@@ -57,4 +57,45 @@ struct ChatTimelineItem: Identifiable, Equatable {
     var message: ChatMessage
     var pendingMessageId: Int?
     var retryText: String?
+
+    func isOrderedBefore(_ other: ChatTimelineItem) -> Bool {
+        let lhsKey = (
+            message.timestamp,
+            message.sourceMessageId ?? message.id,
+            message.turnSortOrder,
+            id.sortKey
+        )
+        let rhsKey = (
+            other.message.timestamp,
+            other.message.sourceMessageId ?? other.message.id,
+            other.message.turnSortOrder,
+            other.id.sortKey
+        )
+        return lhsKey < rhsKey
+    }
+}
+
+private extension ChatMessage {
+    var turnSortOrder: Int {
+        if isUser {
+            return 0
+        }
+        if isProcessSummary {
+            return 1
+        }
+        if isAssistant {
+            return 2
+        }
+
+        switch role {
+        case .tool:
+            return 1
+        case .system:
+            return 3
+        case .user:
+            return 0
+        case .assistant:
+            return 2
+        }
+    }
 }
