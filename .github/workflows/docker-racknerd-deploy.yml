@@ -115,6 +115,16 @@ jobs:
               echo \".env.racknerd is required for deploy\" >&2
               exit 1
             fi
+            if grep -q \"^ENVIRONMENT=production$\" .env.racknerd; then
+              if ! grep -q \"^CORS_ALLOW_ORIGINS=\" .env.racknerd; then
+                echo \"CORS_ALLOW_ORIGINS is required when ENVIRONMENT=production\" >&2
+                exit 1
+              fi
+              if grep -q \"^CORS_ALLOW_ORIGINS=\\*$\" .env.racknerd; then
+                echo \"CORS_ALLOW_ORIGINS must be explicit when ENVIRONMENT=production\" >&2
+                exit 1
+              fi
+            fi
             sudo chmod 600 .env.racknerd
             sudo mkdir -p /data
           '"

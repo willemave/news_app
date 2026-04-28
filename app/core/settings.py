@@ -3,7 +3,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from dotenv import load_dotenv
 from pydantic import (
@@ -15,7 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
 DATA_ROOT = Path("/data")
@@ -227,7 +227,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     log_level: str = "INFO"
-    cors_allow_origins: list[str] = Field(default_factory=lambda: ["*"])
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
 
     # Authentication settings
     JWT_SECRET_KEY: str = Field(..., description="Secret key for JWT token signing")
@@ -239,7 +239,9 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str = Field(..., description="Admin password for web access")
     admin_session_expire_minutes: int = Field(default=10_080, ge=1)
     apple_jwks_url: str = "https://appleid.apple.com/auth/keys"
-    apple_signin_audiences: list[str] = Field(default_factory=lambda: ["org.willemaw.newsly"])
+    apple_signin_audiences: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["org.willemaw.newsly"]
+    )
 
     # Worker configuration
     max_workers: int = 1

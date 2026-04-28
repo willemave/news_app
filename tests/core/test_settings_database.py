@@ -1,15 +1,21 @@
 """Tests for database URL validation."""
 
+from typing import Any, cast
+
 import pytest
 from pydantic import ValidationError
 
 from app.core.settings import Settings
 
 
+def build_settings(**kwargs: Any) -> Settings:
+    return Settings(**kwargs)
+
+
 def test_settings_reject_sqlite_database_url() -> None:
     """SQLite DSNs should fail with an explicit deprecation error."""
     with pytest.raises(ValidationError, match="SQLite has been deprecated"):
-        Settings(
+        build_settings(
             database_url="sqlite:///tmp/newsly.db",
             JWT_SECRET_KEY="test-secret-key",
             ADMIN_PASSWORD="test-admin-password",
@@ -18,7 +24,7 @@ def test_settings_reject_sqlite_database_url() -> None:
 
 def test_production_settings_reject_wildcard_cors() -> None:
     with pytest.raises(ValidationError, match="CORS_ALLOW_ORIGINS"):
-        Settings(
+        build_settings(
             database_url="postgresql://postgres@localhost/test",
             JWT_SECRET_KEY="test-secret-key",
             ADMIN_PASSWORD="test-admin-password",
@@ -28,7 +34,7 @@ def test_production_settings_reject_wildcard_cors() -> None:
 
 
 def test_settings_parse_csv_security_lists() -> None:
-    settings = Settings(
+    settings = build_settings(
         database_url="postgresql://postgres@localhost/test",
         JWT_SECRET_KEY="test-secret-key",
         ADMIN_PASSWORD="test-admin-password",
@@ -46,8 +52,36 @@ def test_settings_parse_csv_security_lists() -> None:
     ]
 
 
+def test_settings_parse_csv_security_lists_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://postgres@localhost/test")
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-secret-key")
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-password")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv(
+        "CORS_ALLOW_ORIGINS",
+        "https://app.example.com, https://admin.example.com",
+    )
+    monkeypatch.setenv(
+        "APPLE_SIGNIN_AUDIENCES",
+        "org.willemaw.newsly, org.willemaw.newsly.ShareExtension",
+    )
+
+    settings = build_settings()
+
+    assert settings.cors_allow_origins == [
+        "https://app.example.com",
+        "https://admin.example.com",
+    ]
+    assert settings.apple_signin_audiences == [
+        "org.willemaw.newsly",
+        "org.willemaw.newsly.ShareExtension",
+    ]
+
+
 def test_settings_grouped_views_do_not_expose_secrets() -> None:
-    settings = Settings(
+    settings = build_settings(
         database_url="postgresql://postgres@localhost/test",
         JWT_SECRET_KEY="jwt-secret-value",
         ADMIN_PASSWORD="admin-secret-value",
@@ -56,7 +90,7 @@ def test_settings_grouped_views_do_not_expose_secrets() -> None:
         x_client_secret="x-secret-value",
     )
 
-    diagnostics = settings.redacted_diagnostics()
+    diagnostics = cast(dict[str, Any], settings.redacted_diagnostics())
     rendered = str(diagnostics)
 
     assert diagnostics["redacted"] is True

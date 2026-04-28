@@ -24,6 +24,7 @@ RackNerd now uses `.env.racknerd` directly with the same `/data` container paths
 
 ```bash
 DATABASE_URL=postgresql+psycopg://newsly:...@127.0.0.1:5432/newsly
+CORS_ALLOW_ORIGINS=https://racknerd-3b1b61d.willemsavenue.com
 PGDATA=/data/postgres
 MEDIA_BASE_DIR=/data/media
 LOGS_BASE_DIR=/data/logs
@@ -39,6 +40,7 @@ Then set at minimum:
 - `POSTGRES_PASSWORD`
 - `JWT_SECRET_KEY`
 - `ADMIN_PASSWORD`
+- `CORS_ALLOW_ORIGINS` with the public production origin, because wildcard CORS is rejected when `ENVIRONMENT=production`
 - your provider API keys
 
 ## Deploy flow
