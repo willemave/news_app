@@ -34,6 +34,10 @@ struct ContentSummary: Codable, Identifiable, Equatable {
     let commentCount: Int?
     let newsSummary: String?
     let newsKeyPoints: [String]?
+    let feedPreview: LongformFeedPreview?
+    let artifactType: String?
+    let previewBullets: [String]?
+    let reasonToRead: String?
     private let cachedDisplayDate: Date?
     private let cachedProcessedDate: Date?
     private let cachedItemDate: Date?
@@ -60,6 +64,10 @@ struct ContentSummary: Codable, Identifiable, Equatable {
         case commentCount = "comment_count"
         case newsSummary = "news_summary"
         case newsKeyPoints = "news_key_points"
+        case feedPreview = "feed_preview"
+        case artifactType = "artifact_type"
+        case previewBullets = "preview_bullets"
+        case reasonToRead = "reason_to_read"
     }
 
     private static let displayDateFormatter: DateFormatter = {
@@ -109,7 +117,11 @@ struct ContentSummary: Codable, Identifiable, Equatable {
         topComment: TopComment? = nil,
         commentCount: Int? = nil,
         newsSummary: String? = nil,
-        newsKeyPoints: [String]? = nil
+        newsKeyPoints: [String]? = nil,
+        feedPreview: LongformFeedPreview? = nil,
+        artifactType: String? = nil,
+        previewBullets: [String]? = nil,
+        reasonToRead: String? = nil
     ) {
         self.id = id
         self.contentType = contentType
@@ -132,6 +144,10 @@ struct ContentSummary: Codable, Identifiable, Equatable {
         self.commentCount = commentCount
         self.newsSummary = newsSummary
         self.newsKeyPoints = newsKeyPoints
+        self.feedPreview = feedPreview
+        self.artifactType = artifactType
+        self.previewBullets = previewBullets
+        self.reasonToRead = reasonToRead
         self.cachedDisplayDate = Self.parseDate(processedAt ?? createdAt)
         self.cachedProcessedDate = processedAt.flatMap(Self.parseDate)
         self.cachedItemDate = Self.parseDate(publicationDate ?? processedAt ?? createdAt)
@@ -160,7 +176,11 @@ struct ContentSummary: Codable, Identifiable, Equatable {
             topComment: try container.decodeIfPresent(TopComment.self, forKey: .topComment),
             commentCount: try container.decodeIfPresent(Int.self, forKey: .commentCount),
             newsSummary: try container.decodeIfPresent(String.self, forKey: .newsSummary),
-            newsKeyPoints: try container.decodeIfPresent([String].self, forKey: .newsKeyPoints)
+            newsKeyPoints: try container.decodeIfPresent([String].self, forKey: .newsKeyPoints),
+            feedPreview: try container.decodeIfPresent(LongformFeedPreview.self, forKey: .feedPreview),
+            artifactType: try container.decodeIfPresent(String.self, forKey: .artifactType),
+            previewBullets: try container.decodeIfPresent([String].self, forKey: .previewBullets),
+            reasonToRead: try container.decodeIfPresent(String.self, forKey: .reasonToRead)
         )
     }
 
@@ -187,6 +207,10 @@ struct ContentSummary: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(commentCount, forKey: .commentCount)
         try container.encodeIfPresent(newsSummary, forKey: .newsSummary)
         try container.encodeIfPresent(newsKeyPoints, forKey: .newsKeyPoints)
+        try container.encodeIfPresent(feedPreview, forKey: .feedPreview)
+        try container.encodeIfPresent(artifactType, forKey: .artifactType)
+        try container.encodeIfPresent(previewBullets, forKey: .previewBullets)
+        try container.encodeIfPresent(reasonToRead, forKey: .reasonToRead)
     }
 
     var contentTypeEnum: ContentType? {

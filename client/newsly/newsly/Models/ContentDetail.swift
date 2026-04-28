@@ -31,6 +31,11 @@ struct ContentDetail: Codable, Identifiable {
     let summaryKind: String?
     let summaryVersion: Int?
     let structuredSummaryRaw: [String: AnyCodable]?
+    let longformArtifactRaw: [String: AnyCodable]?
+    let feedPreview: LongformFeedPreview?
+    let artifactType: String?
+    let previewBullets: [String]?
+    let reasonToRead: String?
     let bulletPoints: [BulletPoint]
     let quotes: [Quote]
     let topics: [String]
@@ -71,6 +76,11 @@ struct ContentDetail: Codable, Identifiable {
         case summaryKind = "summary_kind"
         case summaryVersion = "summary_version"
         case structuredSummaryRaw = "structured_summary"
+        case longformArtifactRaw = "longform_artifact"
+        case feedPreview = "feed_preview"
+        case artifactType = "artifact_type"
+        case previewBullets = "preview_bullets"
+        case reasonToRead = "reason_to_read"
         case bulletPoints = "bullet_points"
         case quotes
         case topics
@@ -113,6 +123,11 @@ struct ContentDetail: Codable, Identifiable {
         summaryKind = try container.decodeIfPresent(String.self, forKey: .summaryKind)
         summaryVersion = try container.decodeIfPresent(Int.self, forKey: .summaryVersion)
         structuredSummaryRaw = try container.decodeIfPresent([String: AnyCodable].self, forKey: .structuredSummaryRaw)
+        longformArtifactRaw = try container.decodeIfPresent([String: AnyCodable].self, forKey: .longformArtifactRaw)
+        feedPreview = try container.decodeIfPresent(LongformFeedPreview.self, forKey: .feedPreview)
+        artifactType = try container.decodeIfPresent(String.self, forKey: .artifactType)
+        previewBullets = try container.decodeIfPresent([String].self, forKey: .previewBullets)
+        reasonToRead = try container.decodeIfPresent(String.self, forKey: .reasonToRead)
         bulletPoints = try container.decodeIfPresent([BulletPoint].self, forKey: .bulletPoints) ?? []
         quotes = try container.decodeIfPresent([Quote].self, forKey: .quotes) ?? []
         topics = try container.decodeIfPresent([String].self, forKey: .topics) ?? []
@@ -266,6 +281,20 @@ struct ContentDetail: Codable, Identifiable {
     /// Check if this content has an interleaved summary format
     var hasInterleavedSummary: Bool {
         resolvedSummaryKind == "long_interleaved"
+    }
+
+    var longformArtifact: LongformArtifactEnvelope? {
+        let raw = longformArtifactRaw ?? structuredSummaryRaw
+        guard resolvedSummaryKind == "longform_artifact",
+              let raw else {
+            return nil
+        }
+
+        let decoder = JSONDecoder()
+        if let jsonData = try? JSONSerialization.data(withJSONObject: raw.mapValues { $0.value }) {
+            return try? decoder.decode(LongformArtifactEnvelope.self, from: jsonData)
+        }
+        return nil
     }
 
     /// Parse the raw summary as InterleavedSummary (returns nil if not interleaved format)

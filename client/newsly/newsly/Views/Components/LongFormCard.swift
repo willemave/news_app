@@ -176,6 +176,9 @@ struct LongFormCard: View {
     }
 
     private var summaryText: String? {
+        if let oneLine = content.feedPreview?.oneLine, !oneLine.isEmpty {
+            return oneLine
+        }
         if let shortSummary = content.shortSummary, !shortSummary.isEmpty {
             return shortSummary
         }
@@ -199,6 +202,10 @@ struct LongFormCard: View {
     }
 
     private var badgeLabel: String {
+        if let artifactType = content.artifactType ?? content.feedPreview?.artifactType,
+           !artifactType.isEmpty {
+            return artifactType.replacingOccurrences(of: "_", with: " ").uppercased()
+        }
         if let primaryTopic = content.primaryTopic, !primaryTopic.isEmpty {
             return primaryTopic.uppercased()
         }

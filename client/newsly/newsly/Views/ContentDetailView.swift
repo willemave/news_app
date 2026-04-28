@@ -162,8 +162,20 @@ struct ContentDetailView: View {
                             .padding(.top, 12)
                         }
 
-                        // Summary Section (editorial v1, bulleted v1, interleaved v2, interleaved v1, or structured)
-                        if let editorialSummary = content.editorialSummary {
+                        // Summary Section (artifact, editorial v1, bulleted v1, interleaved v2, interleaved v1, or structured)
+                        if let longformArtifact = content.longformArtifact {
+                            LongformArtifactView(artifact: longformArtifact, contentId: content.id)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.summaryTopPadding)
+                                .onAppear {
+                                    logSummarySection(
+                                        content: content,
+                                        section: "longform_artifact",
+                                        bulletPointCount: longformArtifact.artifact.payload.keyPoints.count,
+                                        insightCount: 0
+                                    )
+                                }
+                        } else if let editorialSummary = content.editorialSummary {
                             EditorialNarrativeSummaryView(summary: editorialSummary, contentId: content.id)
                                 .padding(.horizontal, DetailDesign.horizontalPadding)
                                 .padding(.top, DetailDesign.summaryTopPadding)
@@ -1425,7 +1437,7 @@ struct ContentDetailView: View {
     }
 
     @MainActor
-    private func loadDiscussion(content: ContentDetail, fallbackURL: URL) async {
+    private func loadDiscussion(content: ContentDetail, fallbackURL: URL, refresh: Bool = false) async {
         discussionFallbackURL = fallbackURL
         if isLoadingDiscussion {
             activeSheet = .discussion
@@ -1438,10 +1450,18 @@ struct ContentDetailView: View {
         defer { isLoadingDiscussion = false }
 
         do {
-            let discussion = try await ContentService.shared.refreshContentDiscussion(
-                id: content.id,
-                contentType: content.contentTypeEnum
-            )
+            let discussion: ContentDiscussion
+            if refresh {
+                discussion = try await ContentService.shared.refreshContentDiscussion(
+                    id: content.id,
+                    contentType: content.contentTypeEnum
+                )
+            } else {
+                discussion = try await ContentService.shared.fetchContentDiscussion(
+                    id: content.id,
+                    contentType: content.contentTypeEnum
+                )
+            }
             discussionPayload = discussion
             if discussion.hasRenderableContent {
                 discussionTab = .comments
@@ -1572,7 +1592,7 @@ struct ContentDetailView: View {
 
             if let content = viewModel.content, let url = discussionResolvedFallbackURL {
                 Button("Try again") {
-                    Task { await loadDiscussion(content: content, fallbackURL: url) }
+                    Task { await loadDiscussion(content: content, fallbackURL: url, refresh: true) }
                 }
                 .buttonStyle(.bordered)
             }
