@@ -264,6 +264,16 @@ class ContentService {
         return try await client.request(endpoint)
     }
 
+    func fetchContentDiscussion(id: Int, contentType: ContentType? = nil) async throws -> ContentDiscussion {
+        let path = if contentType == .news {
+            APIEndpoints.newsItemDiscussion(id: id)
+        } else {
+            APIEndpoints.contentDiscussion(id: id)
+        }
+        let endpoint = APIRequestDescriptor<ContentDiscussion>(path: path)
+        return try await client.request(endpoint)
+    }
+
     func trackContentInteraction(
         contentId: Int,
         interactionType: String,
