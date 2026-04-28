@@ -2793,6 +2793,12 @@ func (s *ContentDetailResponse) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 	{
+		if s.ArtifactType.Set {
+			e.FieldStart("artifact_type")
+			s.ArtifactType.Encode(e)
+		}
+	}
+	{
 		if s.BodyAvailable.Set {
 			e.FieldStart("body_available")
 			s.BodyAvailable.Encode(e)
@@ -2867,6 +2873,12 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.FeedPreview.Set {
+			e.FieldStart("feed_preview")
+			s.FeedPreview.Encode(e)
+		}
+	}
+	{
 		if s.FullMarkdown.Set {
 			e.FieldStart("full_markdown")
 			s.FullMarkdown.Encode(e)
@@ -2892,6 +2904,12 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 		if s.IsSavedToKnowledge.Set {
 			e.FieldStart("is_saved_to_knowledge")
 			s.IsSavedToKnowledge.Encode(e)
+		}
+	}
+	{
+		if s.LongformArtifact.Set {
+			e.FieldStart("longform_artifact")
+			s.LongformArtifact.Encode(e)
 		}
 	}
 	{
@@ -2923,6 +2941,12 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.PreviewBullets.Set {
+			e.FieldStart("preview_bullets")
+			s.PreviewBullets.Encode(e)
+		}
+	}
+	{
 		if s.ProcessedAt.Set {
 			e.FieldStart("processed_at")
 			s.ProcessedAt.Encode(e)
@@ -2941,6 +2965,12 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 			elem.Encode(e)
 		}
 		e.ArrEnd()
+	}
+	{
+		if s.ReasonToRead.Set {
+			e.FieldStart("reason_to_read")
+			s.ReasonToRead.Encode(e)
+		}
 	}
 	{
 		e.FieldStart("retry_count")
@@ -3024,47 +3054,52 @@ func (s *ContentDetailResponse) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfContentDetailResponse = [40]string{
-	0:  "body_available",
-	1:  "body_format",
-	2:  "body_kind",
-	3:  "bullet_points",
-	4:  "can_subscribe",
-	5:  "checked_out_at",
-	6:  "checked_out_by",
-	7:  "content_type",
-	8:  "created_at",
-	9:  "detected_feed",
-	10: "discussion_url",
-	11: "display_title",
-	12: "error_message",
-	13: "full_markdown",
-	14: "id",
-	15: "image_url",
-	16: "is_read",
-	17: "is_saved_to_knowledge",
-	18: "metadata",
-	19: "news_article_url",
-	20: "news_discussion_url",
-	21: "news_key_points",
-	22: "news_summary",
-	23: "processed_at",
-	24: "publication_date",
-	25: "quotes",
-	26: "retry_count",
-	27: "short_summary",
-	28: "source",
-	29: "source_url",
-	30: "status",
-	31: "structured_summary",
-	32: "summary",
-	33: "summary_kind",
-	34: "summary_version",
-	35: "thumbnail_url",
-	36: "title",
-	37: "topics",
-	38: "updated_at",
-	39: "url",
+var jsonFieldsNameOfContentDetailResponse = [45]string{
+	0:  "artifact_type",
+	1:  "body_available",
+	2:  "body_format",
+	3:  "body_kind",
+	4:  "bullet_points",
+	5:  "can_subscribe",
+	6:  "checked_out_at",
+	7:  "checked_out_by",
+	8:  "content_type",
+	9:  "created_at",
+	10: "detected_feed",
+	11: "discussion_url",
+	12: "display_title",
+	13: "error_message",
+	14: "feed_preview",
+	15: "full_markdown",
+	16: "id",
+	17: "image_url",
+	18: "is_read",
+	19: "is_saved_to_knowledge",
+	20: "longform_artifact",
+	21: "metadata",
+	22: "news_article_url",
+	23: "news_discussion_url",
+	24: "news_key_points",
+	25: "news_summary",
+	26: "preview_bullets",
+	27: "processed_at",
+	28: "publication_date",
+	29: "quotes",
+	30: "reason_to_read",
+	31: "retry_count",
+	32: "short_summary",
+	33: "source",
+	34: "source_url",
+	35: "status",
+	36: "structured_summary",
+	37: "summary",
+	38: "summary_kind",
+	39: "summary_version",
+	40: "thumbnail_url",
+	41: "title",
+	42: "topics",
+	43: "updated_at",
+	44: "url",
 }
 
 // Decode decodes ContentDetailResponse from json.
@@ -3072,11 +3107,21 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 	if s == nil {
 		return errors.New("invalid: unable to decode ContentDetailResponse to nil")
 	}
-	var requiredBitSet [5]uint8
+	var requiredBitSet [6]uint8
 	s.setDefaults()
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
+		case "artifact_type":
+			if err := func() error {
+				s.ArtifactType.Reset()
+				if err := s.ArtifactType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"artifact_type\"")
+			}
 		case "body_available":
 			if err := func() error {
 				s.BodyAvailable.Reset()
@@ -3108,7 +3153,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"body_kind\"")
 			}
 		case "bullet_points":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				s.BulletPoints = make([]ContentDetailResponseBulletPointsItem, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -3156,7 +3201,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"checked_out_by\"")
 			}
 		case "content_type":
-			requiredBitSet[0] |= 1 << 7
+			requiredBitSet[1] |= 1 << 0
 			if err := func() error {
 				if err := s.ContentType.Decode(d); err != nil {
 					return err
@@ -3166,7 +3211,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"content_type\"")
 			}
 		case "created_at":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := d.Str()
 				s.CreatedAt = string(v)
@@ -3198,7 +3243,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"discussion_url\"")
 			}
 		case "display_title":
-			requiredBitSet[1] |= 1 << 3
+			requiredBitSet[1] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.DisplayTitle = string(v)
@@ -3219,6 +3264,16 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"error_message\"")
 			}
+		case "feed_preview":
+			if err := func() error {
+				s.FeedPreview.Reset()
+				if err := s.FeedPreview.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"feed_preview\"")
+			}
 		case "full_markdown":
 			if err := func() error {
 				s.FullMarkdown.Reset()
@@ -3230,7 +3285,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"full_markdown\"")
 			}
 		case "id":
-			requiredBitSet[1] |= 1 << 6
+			requiredBitSet[2] |= 1 << 0
 			if err := func() error {
 				v, err := d.Int()
 				s.ID = int(v)
@@ -3271,8 +3326,18 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"is_saved_to_knowledge\"")
 			}
+		case "longform_artifact":
+			if err := func() error {
+				s.LongformArtifact.Reset()
+				if err := s.LongformArtifact.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"longform_artifact\"")
+			}
 		case "metadata":
-			requiredBitSet[2] |= 1 << 2
+			requiredBitSet[2] |= 1 << 5
 			if err := func() error {
 				if err := s.Metadata.Decode(d); err != nil {
 					return err
@@ -3321,6 +3386,16 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"news_summary\"")
 			}
+		case "preview_bullets":
+			if err := func() error {
+				s.PreviewBullets.Reset()
+				if err := s.PreviewBullets.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"preview_bullets\"")
+			}
 		case "processed_at":
 			if err := func() error {
 				s.ProcessedAt.Reset()
@@ -3342,7 +3417,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"publication_date\"")
 			}
 		case "quotes":
-			requiredBitSet[3] |= 1 << 1
+			requiredBitSet[3] |= 1 << 5
 			if err := func() error {
 				s.Quotes = make([]ContentDetailResponseQuotesItem, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -3359,8 +3434,18 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"quotes\"")
 			}
+		case "reason_to_read":
+			if err := func() error {
+				s.ReasonToRead.Reset()
+				if err := s.ReasonToRead.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reason_to_read\"")
+			}
 		case "retry_count":
-			requiredBitSet[3] |= 1 << 2
+			requiredBitSet[3] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int()
 				s.RetryCount = int(v)
@@ -3402,7 +3487,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"source_url\"")
 			}
 		case "status":
-			requiredBitSet[3] |= 1 << 6
+			requiredBitSet[4] |= 1 << 3
 			if err := func() error {
 				if err := s.Status.Decode(d); err != nil {
 					return err
@@ -3472,7 +3557,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"title\"")
 			}
 		case "topics":
-			requiredBitSet[4] |= 1 << 5
+			requiredBitSet[5] |= 1 << 2
 			if err := func() error {
 				s.Topics = make([]string, 0)
 				if err := d.Arr(func(d *jx.Decoder) error {
@@ -3502,7 +3587,7 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"updated_at\"")
 			}
 		case "url":
-			requiredBitSet[4] |= 1 << 7
+			requiredBitSet[5] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.URL = string(v)
@@ -3522,12 +3607,13 @@ func (s *ContentDetailResponse) Decode(d *jx.Decoder) error {
 	}
 	// Validate required fields.
 	var failures []validate.FieldError
-	for i, mask := range [5]uint8{
-		0b10001000,
-		0b01001001,
-		0b00000100,
-		0b01000110,
+	for i, mask := range [6]uint8{
+		0b00010000,
+		0b00010011,
+		0b00100001,
 		0b10100000,
+		0b00001000,
+		0b00010100,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -3625,6 +3711,122 @@ func (s ContentDetailResponseBulletPointsItem) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ContentDetailResponseBulletPointsItem) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s ContentDetailResponseFeedPreview) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields implements json.Marshaler.
+func (s ContentDetailResponseFeedPreview) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
+
+		if len(elem) != 0 {
+			e.Raw(elem)
+		}
+	}
+}
+
+// Decode decodes ContentDetailResponseFeedPreview from json.
+func (s *ContentDetailResponseFeedPreview) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ContentDetailResponseFeedPreview to nil")
+	}
+	m := s.init()
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		var elem jx.Raw
+		if err := func() error {
+			v, err := d.RawAppend(nil)
+			elem = jx.Raw(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
+		}
+		m[string(k)] = elem
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ContentDetailResponseFeedPreview")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ContentDetailResponseFeedPreview) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ContentDetailResponseFeedPreview) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s ContentDetailResponseLongformArtifact) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields implements json.Marshaler.
+func (s ContentDetailResponseLongformArtifact) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
+
+		if len(elem) != 0 {
+			e.Raw(elem)
+		}
+	}
+}
+
+// Decode decodes ContentDetailResponseLongformArtifact from json.
+func (s *ContentDetailResponseLongformArtifact) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ContentDetailResponseLongformArtifact to nil")
+	}
+	m := s.init()
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		var elem jx.Raw
+		if err := func() error {
+			v, err := d.RawAppend(nil)
+			elem = jx.Raw(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
+		}
+		m[string(k)] = elem
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ContentDetailResponseLongformArtifact")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ContentDetailResponseLongformArtifact) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ContentDetailResponseLongformArtifact) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -4250,6 +4452,12 @@ func (s *ContentSummaryResponse) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 	{
+		if s.ArtifactType.Set {
+			e.FieldStart("artifact_type")
+			s.ArtifactType.Encode(e)
+		}
+	}
+	{
 		if s.Classification.Set {
 			e.FieldStart("classification")
 			s.Classification.Encode(e)
@@ -4273,6 +4481,12 @@ func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 		if s.DiscussionURL.Set {
 			e.FieldStart("discussion_url")
 			s.DiscussionURL.Encode(e)
+		}
+	}
+	{
+		if s.FeedPreview.Set {
+			e.FieldStart("feed_preview")
+			s.FeedPreview.Encode(e)
 		}
 	}
 	{
@@ -4328,6 +4542,12 @@ func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 		}
 	}
 	{
+		if s.PreviewBullets.Set {
+			e.FieldStart("preview_bullets")
+			s.PreviewBullets.Encode(e)
+		}
+	}
+	{
 		if s.PrimaryTopic.Set {
 			e.FieldStart("primary_topic")
 			s.PrimaryTopic.Encode(e)
@@ -4343,6 +4563,12 @@ func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 		if s.PublicationDate.Set {
 			e.FieldStart("publication_date")
 			s.PublicationDate.Encode(e)
+		}
+	}
+	{
+		if s.ReasonToRead.Set {
+			e.FieldStart("reason_to_read")
+			s.ReasonToRead.Encode(e)
 		}
 	}
 	{
@@ -4397,33 +4623,37 @@ func (s *ContentSummaryResponse) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfContentSummaryResponse = [26]string{
-	0:  "classification",
-	1:  "comment_count",
-	2:  "content_type",
-	3:  "created_at",
-	4:  "discussion_url",
-	5:  "id",
-	6:  "image_url",
-	7:  "is_read",
-	8:  "is_saved_to_knowledge",
-	9:  "news_article_url",
-	10: "news_discussion_url",
-	11: "news_key_points",
-	12: "news_summary",
-	13: "platform",
-	14: "primary_topic",
-	15: "processed_at",
-	16: "publication_date",
-	17: "short_summary",
-	18: "source",
-	19: "source_url",
-	20: "status",
-	21: "thumbnail_url",
-	22: "title",
-	23: "top_comment",
-	24: "url",
-	25: "user_status",
+var jsonFieldsNameOfContentSummaryResponse = [30]string{
+	0:  "artifact_type",
+	1:  "classification",
+	2:  "comment_count",
+	3:  "content_type",
+	4:  "created_at",
+	5:  "discussion_url",
+	6:  "feed_preview",
+	7:  "id",
+	8:  "image_url",
+	9:  "is_read",
+	10: "is_saved_to_knowledge",
+	11: "news_article_url",
+	12: "news_discussion_url",
+	13: "news_key_points",
+	14: "news_summary",
+	15: "platform",
+	16: "preview_bullets",
+	17: "primary_topic",
+	18: "processed_at",
+	19: "publication_date",
+	20: "reason_to_read",
+	21: "short_summary",
+	22: "source",
+	23: "source_url",
+	24: "status",
+	25: "thumbnail_url",
+	26: "title",
+	27: "top_comment",
+	28: "url",
+	29: "user_status",
 }
 
 // Decode decodes ContentSummaryResponse from json.
@@ -4436,6 +4666,16 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
+		case "artifact_type":
+			if err := func() error {
+				s.ArtifactType.Reset()
+				if err := s.ArtifactType.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"artifact_type\"")
+			}
 		case "classification":
 			if err := func() error {
 				s.Classification.Reset()
@@ -4457,7 +4697,7 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"comment_count\"")
 			}
 		case "content_type":
-			requiredBitSet[0] |= 1 << 2
+			requiredBitSet[0] |= 1 << 3
 			if err := func() error {
 				if err := s.ContentType.Decode(d); err != nil {
 					return err
@@ -4467,7 +4707,7 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"content_type\"")
 			}
 		case "created_at":
-			requiredBitSet[0] |= 1 << 3
+			requiredBitSet[0] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.CreatedAt = string(v)
@@ -4488,8 +4728,18 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"discussion_url\"")
 			}
+		case "feed_preview":
+			if err := func() error {
+				s.FeedPreview.Reset()
+				if err := s.FeedPreview.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"feed_preview\"")
+			}
 		case "id":
-			requiredBitSet[0] |= 1 << 5
+			requiredBitSet[0] |= 1 << 7
 			if err := func() error {
 				v, err := d.Int()
 				s.ID = int(v)
@@ -4580,6 +4830,16 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"platform\"")
 			}
+		case "preview_bullets":
+			if err := func() error {
+				s.PreviewBullets.Reset()
+				if err := s.PreviewBullets.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"preview_bullets\"")
+			}
 		case "primary_topic":
 			if err := func() error {
 				s.PrimaryTopic.Reset()
@@ -4609,6 +4869,16 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return nil
 			}(); err != nil {
 				return errors.Wrap(err, "decode field \"publication_date\"")
+			}
+		case "reason_to_read":
+			if err := func() error {
+				s.ReasonToRead.Reset()
+				if err := s.ReasonToRead.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"reason_to_read\"")
 			}
 		case "short_summary":
 			if err := func() error {
@@ -4641,7 +4911,7 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"source_url\"")
 			}
 		case "status":
-			requiredBitSet[2] |= 1 << 4
+			requiredBitSet[3] |= 1 << 0
 			if err := func() error {
 				if err := s.Status.Decode(d); err != nil {
 					return err
@@ -4681,7 +4951,7 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"top_comment\"")
 			}
 		case "url":
-			requiredBitSet[3] |= 1 << 0
+			requiredBitSet[3] |= 1 << 4
 			if err := func() error {
 				v, err := d.Str()
 				s.URL = string(v)
@@ -4712,10 +4982,10 @@ func (s *ContentSummaryResponse) Decode(d *jx.Decoder) error {
 	// Validate required fields.
 	var failures []validate.FieldError
 	for i, mask := range [4]uint8{
-		0b00101100,
+		0b10011000,
 		0b00000000,
-		0b00010000,
-		0b00000001,
+		0b00000000,
+		0b00010001,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.
@@ -4757,6 +5027,64 @@ func (s *ContentSummaryResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *ContentSummaryResponse) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode implements json.Marshaler.
+func (s ContentSummaryResponseFeedPreview) Encode(e *jx.Encoder) {
+	e.ObjStart()
+	s.encodeFields(e)
+	e.ObjEnd()
+}
+
+// encodeFields implements json.Marshaler.
+func (s ContentSummaryResponseFeedPreview) encodeFields(e *jx.Encoder) {
+	for k, elem := range s {
+		e.FieldStart(k)
+
+		if len(elem) != 0 {
+			e.Raw(elem)
+		}
+	}
+}
+
+// Decode decodes ContentSummaryResponseFeedPreview from json.
+func (s *ContentSummaryResponseFeedPreview) Decode(d *jx.Decoder) error {
+	if s == nil {
+		return errors.New("invalid: unable to decode ContentSummaryResponseFeedPreview to nil")
+	}
+	m := s.init()
+	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
+		var elem jx.Raw
+		if err := func() error {
+			v, err := d.RawAppend(nil)
+			elem = jx.Raw(v)
+			if err != nil {
+				return err
+			}
+			return nil
+		}(); err != nil {
+			return errors.Wrapf(err, "decode field %q", k)
+		}
+		m[string(k)] = elem
+		return nil
+	}); err != nil {
+		return errors.Wrap(err, "decode ContentSummaryResponseFeedPreview")
+	}
+
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s ContentSummaryResponseFeedPreview) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *ContentSummaryResponseFeedPreview) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -6979,6 +7307,106 @@ func (s *OptNilAgentOnboardingStartRequestPreferences) UnmarshalJSON(data []byte
 	return s.Decode(d)
 }
 
+// Encode encodes ContentDetailResponseFeedPreview as json.
+func (o OptNilContentDetailResponseFeedPreview) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	if o.Null {
+		e.Null()
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ContentDetailResponseFeedPreview from json.
+func (o *OptNilContentDetailResponseFeedPreview) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptNilContentDetailResponseFeedPreview to nil")
+	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+
+		var v ContentDetailResponseFeedPreview
+		o.Value = v
+		o.Set = true
+		o.Null = true
+		return nil
+	}
+	o.Set = true
+	o.Null = false
+	o.Value = make(ContentDetailResponseFeedPreview)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptNilContentDetailResponseFeedPreview) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptNilContentDetailResponseFeedPreview) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ContentDetailResponseLongformArtifact as json.
+func (o OptNilContentDetailResponseLongformArtifact) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	if o.Null {
+		e.Null()
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ContentDetailResponseLongformArtifact from json.
+func (o *OptNilContentDetailResponseLongformArtifact) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptNilContentDetailResponseLongformArtifact to nil")
+	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+
+		var v ContentDetailResponseLongformArtifact
+		o.Value = v
+		o.Set = true
+		o.Null = true
+		return nil
+	}
+	o.Set = true
+	o.Null = false
+	o.Value = make(ContentDetailResponseLongformArtifact)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptNilContentDetailResponseLongformArtifact) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptNilContentDetailResponseLongformArtifact) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
 // Encode encodes ContentDetailResponseStructuredSummary as json.
 func (o OptNilContentDetailResponseStructuredSummary) Encode(e *jx.Encoder) {
 	if !o.Set {
@@ -7025,6 +7453,56 @@ func (s OptNilContentDetailResponseStructuredSummary) MarshalJSON() ([]byte, err
 
 // UnmarshalJSON implements stdjson.Unmarshaler.
 func (s *OptNilContentDetailResponseStructuredSummary) UnmarshalJSON(data []byte) error {
+	d := jx.DecodeBytes(data)
+	return s.Decode(d)
+}
+
+// Encode encodes ContentSummaryResponseFeedPreview as json.
+func (o OptNilContentSummaryResponseFeedPreview) Encode(e *jx.Encoder) {
+	if !o.Set {
+		return
+	}
+	if o.Null {
+		e.Null()
+		return
+	}
+	o.Value.Encode(e)
+}
+
+// Decode decodes ContentSummaryResponseFeedPreview from json.
+func (o *OptNilContentSummaryResponseFeedPreview) Decode(d *jx.Decoder) error {
+	if o == nil {
+		return errors.New("invalid: unable to decode OptNilContentSummaryResponseFeedPreview to nil")
+	}
+	if d.Next() == jx.Null {
+		if err := d.Null(); err != nil {
+			return err
+		}
+
+		var v ContentSummaryResponseFeedPreview
+		o.Value = v
+		o.Set = true
+		o.Null = true
+		return nil
+	}
+	o.Set = true
+	o.Null = false
+	o.Value = make(ContentSummaryResponseFeedPreview)
+	if err := o.Value.Decode(d); err != nil {
+		return err
+	}
+	return nil
+}
+
+// MarshalJSON implements stdjson.Marshaler.
+func (s OptNilContentSummaryResponseFeedPreview) MarshalJSON() ([]byte, error) {
+	e := jx.Encoder{}
+	s.Encode(&e)
+	return e.Bytes(), nil
+}
+
+// UnmarshalJSON implements stdjson.Unmarshaler.
+func (s *OptNilContentSummaryResponseFeedPreview) UnmarshalJSON(data []byte) error {
 	d := jx.DecodeBytes(data)
 	return s.Decode(d)
 }
@@ -9035,6 +9513,12 @@ func (s *SummaryKind) Decode(d *jx.Decoder) error {
 		*s = SummaryKindLongEditorialNarrative
 	case SummaryKindShortNews:
 		*s = SummaryKindShortNews
+	case SummaryKindDailyRollup:
+		*s = SummaryKindDailyRollup
+	case SummaryKindLongformArtifact:
+		*s = SummaryKindLongformArtifact
+	case SummaryKindInsightReport:
+		*s = SummaryKindInsightReport
 	default:
 		*s = SummaryKind(v)
 	}

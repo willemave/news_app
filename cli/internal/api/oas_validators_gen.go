@@ -616,6 +616,24 @@ func (s *ContentDetailResponse) Validate() error {
 		})
 	}
 	if err := func() error {
+		if value, ok := s.PreviewBullets.Get(); ok {
+			if err := func() error {
+				if value == nil {
+					return errors.New("nil is invalid value")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "preview_bullets",
+			Error: err,
+		})
+	}
+	if err := func() error {
 		if s.Quotes == nil {
 			return errors.New("nil is invalid value")
 		}
@@ -874,6 +892,24 @@ func (s *ContentSummaryResponse) Validate() error {
 	}(); err != nil {
 		failures = append(failures, validate.FieldError{
 			Name:  "news_key_points",
+			Error: err,
+		})
+	}
+	if err := func() error {
+		if value, ok := s.PreviewBullets.Get(); ok {
+			if err := func() error {
+				if value == nil {
+					return errors.New("nil is invalid value")
+				}
+				return nil
+			}(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}(); err != nil {
+		failures = append(failures, validate.FieldError{
+			Name:  "preview_bullets",
 			Error: err,
 		})
 	}
@@ -1462,6 +1498,12 @@ func (s SummaryKind) Validate() error {
 	case "long_editorial_narrative":
 		return nil
 	case "short_news":
+		return nil
+	case "daily_rollup":
+		return nil
+	case "longform_artifact":
+		return nil
+	case "insight_report":
 		return nil
 	default:
 		return errors.Errorf("invalid value: %v", s)

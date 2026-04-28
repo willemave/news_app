@@ -197,3 +197,24 @@ class TestTopComment:
         )
 
         assert response.top_comment is None
+
+    def test_top_comment_suppressed_for_techmeme_discussion_link_preview(self):
+        """Techmeme discussion links should not render as feed comment snippets."""
+        domain = _make_domain_mock(
+            content_type=ContentType.NEWS,
+            metadata={
+                "discussion_url": "https://www.techmeme.com/260217/p39#a260217p39",
+                "top_comment": {"author": "x.com", "text": "@sama"},
+            },
+            platform="techmeme",
+        )
+        row = _make_content_row(platform="techmeme")
+
+        response = build_content_summary_response(
+            content=row,
+            domain_content=domain,
+            is_read=False,
+            is_saved_to_knowledge=False,
+        )
+
+        assert response.top_comment is None

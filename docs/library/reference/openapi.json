@@ -1653,6 +1653,18 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "artifact_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact type",
+            "title": "Artifact Type"
+          },
           "body_available": {
             "default": false,
             "description": "Whether canonical body text is available",
@@ -1773,6 +1785,19 @@
             "description": "Error message if processing failed",
             "title": "Error Message"
           },
+          "feed_preview": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact feed preview payload",
+            "title": "Feed Preview"
+          },
           "full_markdown": {
             "anyOf": [
               {
@@ -1813,6 +1838,19 @@
             "description": "Whether the content has been saved to the user's knowledge library",
             "title": "Is Saved To Knowledge",
             "type": "boolean"
+          },
+          "longform_artifact": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Typed longform artifact envelope",
+            "title": "Longform Artifact"
           },
           "metadata": {
             "additionalProperties": true,
@@ -1871,6 +1909,21 @@
             "description": "Short overview synthesized for news items",
             "title": "News Summary"
           },
+          "preview_bullets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact feed-preview bullets",
+            "title": "Preview Bullets"
+          },
           "processed_at": {
             "anyOf": [
               {
@@ -1905,6 +1958,18 @@
             },
             "title": "Quotes",
             "type": "array"
+          },
+          "reason_to_read": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Feed-preview reason explaining why the item is worth opening",
+            "title": "Reason To Read"
           },
           "retry_count": {
             "description": "Number of retry attempts",
@@ -2369,6 +2434,18 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "artifact_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact type",
+            "title": "Artifact Type"
+          },
           "classification": {
             "anyOf": [
               {
@@ -2412,6 +2489,19 @@
             ],
             "description": "Discussion URL (tweet, HN thread, etc.) when available",
             "title": "Discussion Url"
+          },
+          "feed_preview": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact feed preview payload",
+            "title": "Feed Preview"
           },
           "id": {
             "description": "Unique identifier",
@@ -2505,6 +2595,21 @@
             "description": "Content platform (e.g., twitter, substack, youtube)",
             "title": "Platform"
           },
+          "preview_bullets": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Longform artifact feed-preview bullets",
+            "title": "Preview Bullets"
+          },
           "primary_topic": {
             "anyOf": [
               {
@@ -2540,6 +2645,18 @@
             ],
             "description": "ISO timestamp of when content was published",
             "title": "Publication Date"
+          },
+          "reason_to_read": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Feed-preview reason explaining why the item is worth opening",
+            "title": "Reason To Read"
           },
           "short_summary": {
             "anyOf": [
@@ -5700,7 +5817,10 @@
           "long_interleaved",
           "long_bullets",
           "long_editorial_narrative",
-          "short_news"
+          "short_news",
+          "daily_rollup",
+          "longform_artifact",
+          "insight_report"
         ],
         "title": "SummaryKind",
         "type": "string"

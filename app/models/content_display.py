@@ -52,6 +52,13 @@ def resolve_image_urls(domain_content: ContentData) -> tuple[str | None, str | N
 
 def is_ready_for_long_form_summary(domain_content: ContentData) -> bool:
     """Return True when long-form content has enough summary data for feed display."""
+    metadata = domain_content.metadata or {}
+    if metadata.get("summary_kind") == "longform_artifact":
+        summary = metadata.get("summary")
+        if isinstance(summary, dict) and isinstance(summary.get("artifact"), dict):
+            feed_preview = summary.get("feed_preview") or metadata.get("feed_preview")
+            return isinstance(feed_preview, dict) or bool(summary.get("one_line"))
+
     if domain_content.content_type == ContentType.ARTICLE:
         if domain_content.structured_summary and domain_content.bullet_points:
             return True

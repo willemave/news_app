@@ -6623,6 +6623,9 @@ internal enum Components {
             case longBullets = "long_bullets"
             case longEditorialNarrative = "long_editorial_narrative"
             case shortNews = "short_news"
+            case dailyRollup = "daily_rollup"
+            case longformArtifact = "longform_artifact"
+            case insightReport = "insight_report"
         }
         /// Supported summary schema versions.
         ///

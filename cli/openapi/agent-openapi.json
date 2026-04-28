@@ -1383,6 +1383,12 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "artifact_type": {
+            "description": "Longform artifact type",
+            "nullable": true,
+            "title": "Artifact Type",
+            "type": "string"
+          },
           "body_available": {
             "default": false,
             "description": "Whether canonical body text is available",
@@ -1461,6 +1467,13 @@
             "title": "Error Message",
             "type": "string"
           },
+          "feed_preview": {
+            "additionalProperties": true,
+            "description": "Longform artifact feed preview payload",
+            "nullable": true,
+            "title": "Feed Preview",
+            "type": "object"
+          },
           "full_markdown": {
             "description": "Full article content formatted as markdown",
             "nullable": true,
@@ -1489,6 +1502,13 @@
             "description": "Whether the content has been saved to the user's knowledge library",
             "title": "Is Saved To Knowledge",
             "type": "boolean"
+          },
+          "longform_artifact": {
+            "additionalProperties": true,
+            "description": "Typed longform artifact envelope",
+            "nullable": true,
+            "title": "Longform Artifact",
+            "type": "object"
           },
           "metadata": {
             "additionalProperties": true,
@@ -1523,6 +1543,15 @@
             "title": "News Summary",
             "type": "string"
           },
+          "preview_bullets": {
+            "description": "Longform artifact feed-preview bullets",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Preview Bullets",
+            "type": "array"
+          },
           "processed_at": {
             "description": "ISO timestamp when content was processed",
             "nullable": true,
@@ -1545,6 +1574,12 @@
             },
             "title": "Quotes",
             "type": "array"
+          },
+          "reason_to_read": {
+            "description": "Feed-preview reason explaining why the item is worth opening",
+            "nullable": true,
+            "title": "Reason To Read",
+            "type": "string"
           },
           "retry_count": {
             "description": "Number of retry attempts",
@@ -1901,6 +1936,12 @@
           "url": "https://example.com/article"
         },
         "properties": {
+          "artifact_type": {
+            "description": "Longform artifact type",
+            "nullable": true,
+            "title": "Artifact Type",
+            "type": "string"
+          },
           "classification": {
             "$ref": "#/components/schemas/ContentClassification",
             "description": "Content classification (to_read/skip)",
@@ -1926,6 +1967,13 @@
             "nullable": true,
             "title": "Discussion Url",
             "type": "string"
+          },
+          "feed_preview": {
+            "additionalProperties": true,
+            "description": "Longform artifact feed preview payload",
+            "nullable": true,
+            "title": "Feed Preview",
+            "type": "object"
           },
           "id": {
             "description": "Unique identifier",
@@ -1983,6 +2031,15 @@
             "title": "Platform",
             "type": "string"
           },
+          "preview_bullets": {
+            "description": "Longform artifact feed-preview bullets",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Preview Bullets",
+            "type": "array"
+          },
           "primary_topic": {
             "description": "Primary topic extracted from summary topics or platform name",
             "nullable": true,
@@ -1999,6 +2056,12 @@
             "description": "ISO timestamp of when content was published",
             "nullable": true,
             "title": "Publication Date",
+            "type": "string"
+          },
+          "reason_to_read": {
+            "description": "Feed-preview reason explaining why the item is worth opening",
+            "nullable": true,
+            "title": "Reason To Read",
             "type": "string"
           },
           "short_summary": {
@@ -4537,7 +4600,10 @@
           "long_interleaved",
           "long_bullets",
           "long_editorial_narrative",
-          "short_news"
+          "short_news",
+          "daily_rollup",
+          "longform_artifact",
+          "insight_report"
         ],
         "title": "SummaryKind",
         "type": "string"

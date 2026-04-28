@@ -62,6 +62,9 @@ enum APISummaryKind: String, Codable, CaseIterable {
     case long_bullets = "long_bullets"
     case long_editorial_narrative = "long_editorial_narrative"
     case short_news = "short_news"
+    case daily_rollup = "daily_rollup"
+    case longform_artifact = "longform_artifact"
+    case insight_report = "insight_report"
 }
 
 enum APISummaryVersion: Int, Codable, CaseIterable {

@@ -1094,6 +1094,8 @@ func (s *ContentClassification) UnmarshalText(data []byte) error {
 // Detailed response for a single content item.
 // Ref: #/components/schemas/ContentDetailResponse
 type ContentDetailResponse struct {
+	// Longform artifact type.
+	ArtifactType OptNilString `json:"artifact_type"`
 	// Whether canonical body text is available.
 	BodyAvailable OptBool `json:"body_available"`
 	// Resolved body format (text or markdown).
@@ -1120,6 +1122,8 @@ type ContentDetailResponse struct {
 	DisplayTitle string `json:"display_title"`
 	// Error message if processing failed.
 	ErrorMessage OptNilString `json:"error_message"`
+	// Longform artifact feed preview payload.
+	FeedPreview OptNilContentDetailResponseFeedPreview `json:"feed_preview"`
 	// Full article content formatted as markdown.
 	FullMarkdown OptNilString `json:"full_markdown"`
 	// Unique identifier.
@@ -1130,6 +1134,8 @@ type ContentDetailResponse struct {
 	IsRead OptBool `json:"is_read"`
 	// Whether the content has been saved to the user's knowledge library.
 	IsSavedToKnowledge OptBool `json:"is_saved_to_knowledge"`
+	// Typed longform artifact envelope.
+	LongformArtifact OptNilContentDetailResponseLongformArtifact `json:"longform_artifact"`
 	// Content-specific metadata.
 	Metadata ContentDetailResponseMetadata `json:"metadata"`
 	// Canonical article link for news content.
@@ -1140,12 +1146,16 @@ type ContentDetailResponse struct {
 	NewsKeyPoints OptNilStringArray `json:"news_key_points"`
 	// Short overview synthesized for news items.
 	NewsSummary OptNilString `json:"news_summary"`
+	// Longform artifact feed-preview bullets.
+	PreviewBullets OptNilStringArray `json:"preview_bullets"`
 	// ISO timestamp when content was processed.
 	ProcessedAt OptNilString `json:"processed_at"`
 	// ISO timestamp of when content was published.
 	PublicationDate OptNilString `json:"publication_date"`
 	// Quotes from structured summary.
 	Quotes []ContentDetailResponseQuotesItem `json:"quotes"`
+	// Feed-preview reason explaining why the item is worth opening.
+	ReasonToRead OptNilString `json:"reason_to_read"`
 	// Number of retry attempts.
 	RetryCount int `json:"retry_count"`
 	// Short version of summary for list view.
@@ -1174,6 +1184,11 @@ type ContentDetailResponse struct {
 	UpdatedAt OptNilString `json:"updated_at"`
 	// Canonical URL of the content.
 	URL string `json:"url"`
+}
+
+// GetArtifactType returns the value of ArtifactType.
+func (s *ContentDetailResponse) GetArtifactType() OptNilString {
+	return s.ArtifactType
 }
 
 // GetBodyAvailable returns the value of BodyAvailable.
@@ -1241,6 +1256,11 @@ func (s *ContentDetailResponse) GetErrorMessage() OptNilString {
 	return s.ErrorMessage
 }
 
+// GetFeedPreview returns the value of FeedPreview.
+func (s *ContentDetailResponse) GetFeedPreview() OptNilContentDetailResponseFeedPreview {
+	return s.FeedPreview
+}
+
 // GetFullMarkdown returns the value of FullMarkdown.
 func (s *ContentDetailResponse) GetFullMarkdown() OptNilString {
 	return s.FullMarkdown
@@ -1264,6 +1284,11 @@ func (s *ContentDetailResponse) GetIsRead() OptBool {
 // GetIsSavedToKnowledge returns the value of IsSavedToKnowledge.
 func (s *ContentDetailResponse) GetIsSavedToKnowledge() OptBool {
 	return s.IsSavedToKnowledge
+}
+
+// GetLongformArtifact returns the value of LongformArtifact.
+func (s *ContentDetailResponse) GetLongformArtifact() OptNilContentDetailResponseLongformArtifact {
+	return s.LongformArtifact
 }
 
 // GetMetadata returns the value of Metadata.
@@ -1291,6 +1316,11 @@ func (s *ContentDetailResponse) GetNewsSummary() OptNilString {
 	return s.NewsSummary
 }
 
+// GetPreviewBullets returns the value of PreviewBullets.
+func (s *ContentDetailResponse) GetPreviewBullets() OptNilStringArray {
+	return s.PreviewBullets
+}
+
 // GetProcessedAt returns the value of ProcessedAt.
 func (s *ContentDetailResponse) GetProcessedAt() OptNilString {
 	return s.ProcessedAt
@@ -1304,6 +1334,11 @@ func (s *ContentDetailResponse) GetPublicationDate() OptNilString {
 // GetQuotes returns the value of Quotes.
 func (s *ContentDetailResponse) GetQuotes() []ContentDetailResponseQuotesItem {
 	return s.Quotes
+}
+
+// GetReasonToRead returns the value of ReasonToRead.
+func (s *ContentDetailResponse) GetReasonToRead() OptNilString {
+	return s.ReasonToRead
 }
 
 // GetRetryCount returns the value of RetryCount.
@@ -1376,6 +1411,11 @@ func (s *ContentDetailResponse) GetURL() string {
 	return s.URL
 }
 
+// SetArtifactType sets the value of ArtifactType.
+func (s *ContentDetailResponse) SetArtifactType(val OptNilString) {
+	s.ArtifactType = val
+}
+
 // SetBodyAvailable sets the value of BodyAvailable.
 func (s *ContentDetailResponse) SetBodyAvailable(val OptBool) {
 	s.BodyAvailable = val
@@ -1441,6 +1481,11 @@ func (s *ContentDetailResponse) SetErrorMessage(val OptNilString) {
 	s.ErrorMessage = val
 }
 
+// SetFeedPreview sets the value of FeedPreview.
+func (s *ContentDetailResponse) SetFeedPreview(val OptNilContentDetailResponseFeedPreview) {
+	s.FeedPreview = val
+}
+
 // SetFullMarkdown sets the value of FullMarkdown.
 func (s *ContentDetailResponse) SetFullMarkdown(val OptNilString) {
 	s.FullMarkdown = val
@@ -1464,6 +1509,11 @@ func (s *ContentDetailResponse) SetIsRead(val OptBool) {
 // SetIsSavedToKnowledge sets the value of IsSavedToKnowledge.
 func (s *ContentDetailResponse) SetIsSavedToKnowledge(val OptBool) {
 	s.IsSavedToKnowledge = val
+}
+
+// SetLongformArtifact sets the value of LongformArtifact.
+func (s *ContentDetailResponse) SetLongformArtifact(val OptNilContentDetailResponseLongformArtifact) {
+	s.LongformArtifact = val
 }
 
 // SetMetadata sets the value of Metadata.
@@ -1491,6 +1541,11 @@ func (s *ContentDetailResponse) SetNewsSummary(val OptNilString) {
 	s.NewsSummary = val
 }
 
+// SetPreviewBullets sets the value of PreviewBullets.
+func (s *ContentDetailResponse) SetPreviewBullets(val OptNilStringArray) {
+	s.PreviewBullets = val
+}
+
 // SetProcessedAt sets the value of ProcessedAt.
 func (s *ContentDetailResponse) SetProcessedAt(val OptNilString) {
 	s.ProcessedAt = val
@@ -1504,6 +1559,11 @@ func (s *ContentDetailResponse) SetPublicationDate(val OptNilString) {
 // SetQuotes sets the value of Quotes.
 func (s *ContentDetailResponse) SetQuotes(val []ContentDetailResponseQuotesItem) {
 	s.Quotes = val
+}
+
+// SetReasonToRead sets the value of ReasonToRead.
+func (s *ContentDetailResponse) SetReasonToRead(val OptNilString) {
+	s.ReasonToRead = val
 }
 
 // SetRetryCount sets the value of RetryCount.
@@ -1585,6 +1645,30 @@ func (s *ContentDetailResponseBulletPointsItem) init() ContentDetailResponseBull
 	m := *s
 	if m == nil {
 		m = map[string]string{}
+		*s = m
+	}
+	return m
+}
+
+// Longform artifact feed preview payload.
+type ContentDetailResponseFeedPreview map[string]jx.Raw
+
+func (s *ContentDetailResponseFeedPreview) init() ContentDetailResponseFeedPreview {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
+}
+
+// Typed longform artifact envelope.
+type ContentDetailResponseLongformArtifact map[string]jx.Raw
+
+func (s *ContentDetailResponseLongformArtifact) init() ContentDetailResponseLongformArtifact {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
 		*s = m
 	}
 	return m
@@ -1863,6 +1947,8 @@ func (s *ContentSubmissionResponse) SetTaskID(val OptNilInt) {
 // Summary information for a content item in list view.
 // Ref: #/components/schemas/ContentSummaryResponse
 type ContentSummaryResponse struct {
+	// Longform artifact type.
+	ArtifactType OptNilString `json:"artifact_type"`
 	// Content classification (to_read/skip).
 	Classification OptContentClassification `json:"classification"`
 	// Discussion comment count from aggregator or discussion fetcher.
@@ -1873,6 +1959,8 @@ type ContentSummaryResponse struct {
 	CreatedAt string `json:"created_at"`
 	// Discussion URL (tweet, HN thread, etc.) when available.
 	DiscussionURL OptNilString `json:"discussion_url"`
+	// Longform artifact feed preview payload.
+	FeedPreview OptNilContentSummaryResponseFeedPreview `json:"feed_preview"`
 	// Unique identifier.
 	ID int `json:"id"`
 	// URL of full-size AI-generated image for this content.
@@ -1891,12 +1979,16 @@ type ContentSummaryResponse struct {
 	NewsSummary OptNilString `json:"news_summary"`
 	// Content platform (e.g., twitter, substack, youtube).
 	Platform OptNilString `json:"platform"`
+	// Longform artifact feed-preview bullets.
+	PreviewBullets OptNilStringArray `json:"preview_bullets"`
 	// Primary topic extracted from summary topics or platform name.
 	PrimaryTopic OptNilString `json:"primary_topic"`
 	// ISO timestamp when content was processed.
 	ProcessedAt OptNilString `json:"processed_at"`
 	// ISO timestamp of when content was published.
 	PublicationDate OptNilString `json:"publication_date"`
+	// Feed-preview reason explaining why the item is worth opening.
+	ReasonToRead OptNilString `json:"reason_to_read"`
 	// Short summary for display; for news items this returns the excerpt or first item text.
 	ShortSummary OptNilString `json:"short_summary"`
 	// Content source (e.g., substack name, podcast name).
@@ -1915,6 +2007,11 @@ type ContentSummaryResponse struct {
 	URL string `json:"url"`
 	// Per-user content status (e.g., inbox, archived).
 	UserStatus OptNilString `json:"user_status"`
+}
+
+// GetArtifactType returns the value of ArtifactType.
+func (s *ContentSummaryResponse) GetArtifactType() OptNilString {
+	return s.ArtifactType
 }
 
 // GetClassification returns the value of Classification.
@@ -1940,6 +2037,11 @@ func (s *ContentSummaryResponse) GetCreatedAt() string {
 // GetDiscussionURL returns the value of DiscussionURL.
 func (s *ContentSummaryResponse) GetDiscussionURL() OptNilString {
 	return s.DiscussionURL
+}
+
+// GetFeedPreview returns the value of FeedPreview.
+func (s *ContentSummaryResponse) GetFeedPreview() OptNilContentSummaryResponseFeedPreview {
+	return s.FeedPreview
 }
 
 // GetID returns the value of ID.
@@ -1987,6 +2089,11 @@ func (s *ContentSummaryResponse) GetPlatform() OptNilString {
 	return s.Platform
 }
 
+// GetPreviewBullets returns the value of PreviewBullets.
+func (s *ContentSummaryResponse) GetPreviewBullets() OptNilStringArray {
+	return s.PreviewBullets
+}
+
 // GetPrimaryTopic returns the value of PrimaryTopic.
 func (s *ContentSummaryResponse) GetPrimaryTopic() OptNilString {
 	return s.PrimaryTopic
@@ -2000,6 +2107,11 @@ func (s *ContentSummaryResponse) GetProcessedAt() OptNilString {
 // GetPublicationDate returns the value of PublicationDate.
 func (s *ContentSummaryResponse) GetPublicationDate() OptNilString {
 	return s.PublicationDate
+}
+
+// GetReasonToRead returns the value of ReasonToRead.
+func (s *ContentSummaryResponse) GetReasonToRead() OptNilString {
+	return s.ReasonToRead
 }
 
 // GetShortSummary returns the value of ShortSummary.
@@ -2047,6 +2159,11 @@ func (s *ContentSummaryResponse) GetUserStatus() OptNilString {
 	return s.UserStatus
 }
 
+// SetArtifactType sets the value of ArtifactType.
+func (s *ContentSummaryResponse) SetArtifactType(val OptNilString) {
+	s.ArtifactType = val
+}
+
 // SetClassification sets the value of Classification.
 func (s *ContentSummaryResponse) SetClassification(val OptContentClassification) {
 	s.Classification = val
@@ -2070,6 +2187,11 @@ func (s *ContentSummaryResponse) SetCreatedAt(val string) {
 // SetDiscussionURL sets the value of DiscussionURL.
 func (s *ContentSummaryResponse) SetDiscussionURL(val OptNilString) {
 	s.DiscussionURL = val
+}
+
+// SetFeedPreview sets the value of FeedPreview.
+func (s *ContentSummaryResponse) SetFeedPreview(val OptNilContentSummaryResponseFeedPreview) {
+	s.FeedPreview = val
 }
 
 // SetID sets the value of ID.
@@ -2117,6 +2239,11 @@ func (s *ContentSummaryResponse) SetPlatform(val OptNilString) {
 	s.Platform = val
 }
 
+// SetPreviewBullets sets the value of PreviewBullets.
+func (s *ContentSummaryResponse) SetPreviewBullets(val OptNilStringArray) {
+	s.PreviewBullets = val
+}
+
 // SetPrimaryTopic sets the value of PrimaryTopic.
 func (s *ContentSummaryResponse) SetPrimaryTopic(val OptNilString) {
 	s.PrimaryTopic = val
@@ -2130,6 +2257,11 @@ func (s *ContentSummaryResponse) SetProcessedAt(val OptNilString) {
 // SetPublicationDate sets the value of PublicationDate.
 func (s *ContentSummaryResponse) SetPublicationDate(val OptNilString) {
 	s.PublicationDate = val
+}
+
+// SetReasonToRead sets the value of ReasonToRead.
+func (s *ContentSummaryResponse) SetReasonToRead(val OptNilString) {
+	s.ReasonToRead = val
 }
 
 // SetShortSummary sets the value of ShortSummary.
@@ -2175,6 +2307,18 @@ func (s *ContentSummaryResponse) SetURL(val string) {
 // SetUserStatus sets the value of UserStatus.
 func (s *ContentSummaryResponse) SetUserStatus(val OptNilString) {
 	s.UserStatus = val
+}
+
+// Longform artifact feed preview payload.
+type ContentSummaryResponseFeedPreview map[string]jx.Raw
+
+func (s *ContentSummaryResponseFeedPreview) init() ContentSummaryResponseFeedPreview {
+	m := *s
+	if m == nil {
+		m = map[string]jx.Raw{}
+		*s = m
+	}
+	return m
 }
 
 // First discussion comment {author, text} for preview.
@@ -3454,6 +3598,132 @@ func (o OptNilAgentOnboardingStartRequestPreferences) Or(d AgentOnboardingStartR
 	return d
 }
 
+// NewOptNilContentDetailResponseFeedPreview returns new OptNilContentDetailResponseFeedPreview with value set to v.
+func NewOptNilContentDetailResponseFeedPreview(v ContentDetailResponseFeedPreview) OptNilContentDetailResponseFeedPreview {
+	return OptNilContentDetailResponseFeedPreview{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilContentDetailResponseFeedPreview is optional nullable ContentDetailResponseFeedPreview.
+type OptNilContentDetailResponseFeedPreview struct {
+	Value ContentDetailResponseFeedPreview
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilContentDetailResponseFeedPreview was set.
+func (o OptNilContentDetailResponseFeedPreview) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilContentDetailResponseFeedPreview) Reset() {
+	var v ContentDetailResponseFeedPreview
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilContentDetailResponseFeedPreview) SetTo(v ContentDetailResponseFeedPreview) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilContentDetailResponseFeedPreview) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilContentDetailResponseFeedPreview) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v ContentDetailResponseFeedPreview
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilContentDetailResponseFeedPreview) Get() (v ContentDetailResponseFeedPreview, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilContentDetailResponseFeedPreview) Or(d ContentDetailResponseFeedPreview) ContentDetailResponseFeedPreview {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilContentDetailResponseLongformArtifact returns new OptNilContentDetailResponseLongformArtifact with value set to v.
+func NewOptNilContentDetailResponseLongformArtifact(v ContentDetailResponseLongformArtifact) OptNilContentDetailResponseLongformArtifact {
+	return OptNilContentDetailResponseLongformArtifact{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilContentDetailResponseLongformArtifact is optional nullable ContentDetailResponseLongformArtifact.
+type OptNilContentDetailResponseLongformArtifact struct {
+	Value ContentDetailResponseLongformArtifact
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilContentDetailResponseLongformArtifact was set.
+func (o OptNilContentDetailResponseLongformArtifact) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilContentDetailResponseLongformArtifact) Reset() {
+	var v ContentDetailResponseLongformArtifact
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilContentDetailResponseLongformArtifact) SetTo(v ContentDetailResponseLongformArtifact) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilContentDetailResponseLongformArtifact) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilContentDetailResponseLongformArtifact) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v ContentDetailResponseLongformArtifact
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilContentDetailResponseLongformArtifact) Get() (v ContentDetailResponseLongformArtifact, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilContentDetailResponseLongformArtifact) Or(d ContentDetailResponseLongformArtifact) ContentDetailResponseLongformArtifact {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
 // NewOptNilContentDetailResponseStructuredSummary returns new OptNilContentDetailResponseStructuredSummary with value set to v.
 func NewOptNilContentDetailResponseStructuredSummary(v ContentDetailResponseStructuredSummary) OptNilContentDetailResponseStructuredSummary {
 	return OptNilContentDetailResponseStructuredSummary{
@@ -3511,6 +3781,69 @@ func (o OptNilContentDetailResponseStructuredSummary) Get() (v ContentDetailResp
 
 // Or returns value if set, or given parameter if does not.
 func (o OptNilContentDetailResponseStructuredSummary) Or(d ContentDetailResponseStructuredSummary) ContentDetailResponseStructuredSummary {
+	if v, ok := o.Get(); ok {
+		return v
+	}
+	return d
+}
+
+// NewOptNilContentSummaryResponseFeedPreview returns new OptNilContentSummaryResponseFeedPreview with value set to v.
+func NewOptNilContentSummaryResponseFeedPreview(v ContentSummaryResponseFeedPreview) OptNilContentSummaryResponseFeedPreview {
+	return OptNilContentSummaryResponseFeedPreview{
+		Value: v,
+		Set:   true,
+	}
+}
+
+// OptNilContentSummaryResponseFeedPreview is optional nullable ContentSummaryResponseFeedPreview.
+type OptNilContentSummaryResponseFeedPreview struct {
+	Value ContentSummaryResponseFeedPreview
+	Set   bool
+	Null  bool
+}
+
+// IsSet returns true if OptNilContentSummaryResponseFeedPreview was set.
+func (o OptNilContentSummaryResponseFeedPreview) IsSet() bool { return o.Set }
+
+// Reset unsets value.
+func (o *OptNilContentSummaryResponseFeedPreview) Reset() {
+	var v ContentSummaryResponseFeedPreview
+	o.Value = v
+	o.Set = false
+	o.Null = false
+}
+
+// SetTo sets value to v.
+func (o *OptNilContentSummaryResponseFeedPreview) SetTo(v ContentSummaryResponseFeedPreview) {
+	o.Set = true
+	o.Null = false
+	o.Value = v
+}
+
+// IsNull returns true if value is Null.
+func (o OptNilContentSummaryResponseFeedPreview) IsNull() bool { return o.Null }
+
+// SetToNull sets value to null.
+func (o *OptNilContentSummaryResponseFeedPreview) SetToNull() {
+	o.Set = true
+	o.Null = true
+	var v ContentSummaryResponseFeedPreview
+	o.Value = v
+}
+
+// Get returns value and boolean that denotes whether value was set.
+func (o OptNilContentSummaryResponseFeedPreview) Get() (v ContentSummaryResponseFeedPreview, ok bool) {
+	if o.Null {
+		return v, false
+	}
+	if !o.Set {
+		return v, false
+	}
+	return o.Value, true
+}
+
+// Or returns value if set, or given parameter if does not.
+func (o OptNilContentSummaryResponseFeedPreview) Or(d ContentSummaryResponseFeedPreview) ContentSummaryResponseFeedPreview {
 	if v, ok := o.Get(); ok {
 		return v
 	}
@@ -4744,6 +5077,9 @@ const (
 	SummaryKindLongBullets            SummaryKind = "long_bullets"
 	SummaryKindLongEditorialNarrative SummaryKind = "long_editorial_narrative"
 	SummaryKindShortNews              SummaryKind = "short_news"
+	SummaryKindDailyRollup            SummaryKind = "daily_rollup"
+	SummaryKindLongformArtifact       SummaryKind = "longform_artifact"
+	SummaryKindInsightReport          SummaryKind = "insight_report"
 )
 
 // AllValues returns all SummaryKind values.
@@ -4754,6 +5090,9 @@ func (SummaryKind) AllValues() []SummaryKind {
 		SummaryKindLongBullets,
 		SummaryKindLongEditorialNarrative,
 		SummaryKindShortNews,
+		SummaryKindDailyRollup,
+		SummaryKindLongformArtifact,
+		SummaryKindInsightReport,
 	}
 }
 
@@ -4769,6 +5108,12 @@ func (s SummaryKind) MarshalText() ([]byte, error) {
 	case SummaryKindLongEditorialNarrative:
 		return []byte(s), nil
 	case SummaryKindShortNews:
+		return []byte(s), nil
+	case SummaryKindDailyRollup:
+		return []byte(s), nil
+	case SummaryKindLongformArtifact:
+		return []byte(s), nil
+	case SummaryKindInsightReport:
 		return []byte(s), nil
 	default:
 		return nil, errors.Errorf("invalid value: %q", s)
@@ -4792,6 +5137,15 @@ func (s *SummaryKind) UnmarshalText(data []byte) error {
 		return nil
 	case SummaryKindShortNews:
 		*s = SummaryKindShortNews
+		return nil
+	case SummaryKindDailyRollup:
+		*s = SummaryKindDailyRollup
+		return nil
+	case SummaryKindLongformArtifact:
+		*s = SummaryKindLongformArtifact
+		return nil
+	case SummaryKindInsightReport:
+		*s = SummaryKindInsightReport
 		return nil
 	default:
 		return errors.Errorf("invalid value: %q", data)

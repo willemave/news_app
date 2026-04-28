@@ -82,6 +82,16 @@ class ContentSummaryResponse(BaseModel):
     comment_count: int | None = Field(
         None, description="Discussion comment count from aggregator or discussion fetcher"
     )
+    feed_preview: dict[str, Any] | None = Field(
+        None, description="Longform artifact feed preview payload"
+    )
+    artifact_type: str | None = Field(None, description="Longform artifact type")
+    preview_bullets: list[str] | None = Field(
+        None, description="Longform artifact feed-preview bullets"
+    )
+    reason_to_read: str | None = Field(
+        None, description="Feed-preview reason explaining why the item is worth opening"
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -471,6 +481,19 @@ class ContentDetailResponse(BaseModel):
     )
     structured_summary: dict[str, Any] | None = Field(
         None, description="Structured summary with bullet points and quotes"
+    )
+    longform_artifact: dict[str, Any] | None = Field(
+        None, description="Typed longform artifact envelope"
+    )
+    feed_preview: dict[str, Any] | None = Field(
+        None, description="Longform artifact feed preview payload"
+    )
+    artifact_type: str | None = Field(None, description="Longform artifact type")
+    preview_bullets: list[str] | None = Field(
+        None, description="Longform artifact feed-preview bullets"
+    )
+    reason_to_read: str | None = Field(
+        None, description="Feed-preview reason explaining why the item is worth opening"
     )
     bullet_points: list[dict[str, str]] = Field(
         ..., description="Bullet points from structured summary"
