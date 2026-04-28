@@ -12,6 +12,7 @@ from pydantic_ai.models.openai import (
     OpenAIChatModel,
     OpenAIResponsesModel,
     OpenAIResponsesModelSettings,
+    ReasoningEffort,
 )
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.cerebras import CerebrasProvider
@@ -44,7 +45,7 @@ PROVIDER_PREFIXES: dict[str, str] = {
 }
 
 PROVIDER_DEFAULTS: dict[str, str] = {
-    LLMProvider.OPENAI.value: "openai:gpt-5.4",
+    LLMProvider.OPENAI.value: "openai:gpt-5.5",
     LLMProvider.ANTHROPIC.value: "anthropic:claude-opus-4-5-20251101",
     LLMProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
     LLMProvider.CEREBRAS.value: "cerebras:zai-glm-4.7",
@@ -139,7 +140,10 @@ def resolve_effective_api_key(
     return platform_keys.get(provider_name)
 
 
-def _build_openai_responses_model_settings() -> OpenAIResponsesModelSettings:
+def _build_openai_responses_model_settings(
+    *,
+    reasoning_effort: ReasoningEffort = None,
+) -> OpenAIResponsesModelSettings:
     """Return default settings for OpenAI Responses models.
 
     We disable reasoning item ID replay because chat history is rewritten for
@@ -148,16 +152,20 @@ def _build_openai_responses_model_settings() -> OpenAIResponsesModelSettings:
     repeated system-prompt prefixes can stay warm longer.
     """
 
-    return {
+    model_settings: OpenAIResponsesModelSettings = {
         "openai_prompt_cache_retention": "24h",
         "openai_send_reasoning_ids": False,
     }
+    if reasoning_effort:
+        model_settings["openai_reasoning_effort"] = reasoning_effort
+    return model_settings
 
 
 def build_pydantic_model(
     model_spec: str,
     *,
     api_key_override: str | None = None,
+    openai_reasoning_effort: ReasoningEffort = None,
 ) -> tuple[Model | str, ModelSettings | None]:
     """Construct a pydantic-ai Model with explicit providers where required.
 
@@ -243,10 +251,13 @@ def build_pydantic_model(
             if provider_prefix
             else (model_spec.split(":", 1)[1] if ":" in model_spec else model_spec)
         )
-        return (
-            OpenAIResponsesModel(model_to_use, provider=OpenAIProvider(api_key=resolved_api_key)),
-            _build_openai_responses_model_settings(),
+        openai_model_settings = _build_openai_responses_model_settings(
+            reasoning_effort=openai_reasoning_effort,
         )
+        return OpenAIResponsesModel(
+            model_to_use,
+            provider=OpenAIProvider(api_key=resolved_api_key),
+        ), openai_model_settings
 
     return model_spec, None
 

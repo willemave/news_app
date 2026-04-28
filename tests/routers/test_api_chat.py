@@ -81,7 +81,7 @@ def test_create_chat_session_with_content(
     session = data["session"]
     assert session["content_id"] == content.id
     assert session["llm_provider"] == "openai"
-    assert session["llm_model"] == "openai:gpt-5.4"
+    assert session["llm_model"] == "openai:gpt-5.5"
     assert session["session_type"] == "knowledge_chat"
     assert session["article_title"] == "Test Article"
     assert session["article_summary"] is not None
@@ -1173,7 +1173,7 @@ def test_delete_chat_session_wrong_user(client: TestClient, db_session: Session)
 def test_different_llm_providers(client: TestClient, db_session: Session) -> None:
     """Test creating sessions with different LLM providers."""
     providers = [
-        ("openai", "openai:gpt-5.4"),
+        ("openai", "openai:gpt-5.5"),
         ("anthropic", "anthropic:claude-opus-4-5-20251101"),
         ("google", "google-gla:gemini-3-pro-preview"),
     ]

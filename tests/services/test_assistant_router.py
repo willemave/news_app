@@ -81,11 +81,16 @@ def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:
     """Assistant agent construction should use the shared model factory."""
 
     assistant_router._agents.clear()
-    calls: list[tuple[str, str | None]] = []
+    calls: list[tuple[str, str | None, str | None]] = []
     sentinel_model = TestModel(custom_output_text="ok")
 
-    def _fake_build(model_spec: str, *, api_key_override: str | None = None):
-        calls.append((model_spec, api_key_override))
+    def _fake_build(
+        model_spec: str,
+        *,
+        api_key_override: str | None = None,
+        openai_reasoning_effort: str | None = None,
+    ):
+        calls.append((model_spec, api_key_override, openai_reasoning_effort))
         return sentinel_model, {"timeout": 5}
 
     monkeypatch.setattr(assistant_router, "build_pydantic_model", _fake_build)
@@ -95,7 +100,7 @@ def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:
         api_key_override="user-key",
     )
 
-    assert calls == [("openai:gpt-5.4", "user-key")]
+    assert calls == [("openai:gpt-5.4", "user-key", "low")]
     assert agent.model is sentinel_model
 
     assistant_router._agents.clear()

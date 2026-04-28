@@ -10,6 +10,7 @@ from time import perf_counter
 from fastapi.concurrency import run_in_threadpool
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
+from pydantic_ai.models.openai import ReasoningEffort
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
@@ -38,6 +39,7 @@ from app.services.vendor_costs import extract_usage_from_result, record_vendor_u
 
 logger = get_logger(__name__)
 
+CHAT_OPENAI_REASONING_EFFORT: ReasoningEffort = "low"
 CONTEXT_WINDOW_TOKENS = 200_000
 SYSTEM_AND_ARTICLE_BUDGET_RATIO = 0.75
 TOKEN_CHARS_PER_TOKEN = 4
@@ -328,6 +330,7 @@ def get_chat_agent(
     model, model_settings = build_pydantic_model(
         model_spec,
         api_key_override=api_key_override,
+        openai_reasoning_effort=CHAT_OPENAI_REASONING_EFFORT,
     )
 
     agent: Agent[ChatDeps, str] = Agent(

@@ -13,6 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import HttpUrl, TypeAdapter
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ToolReturnPart
+from pydantic_ai.models.openai import ReasoningEffort
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import get_session_factory
@@ -77,6 +78,8 @@ ASSISTANT_SESSION_TYPES = {
 }
 _agents: dict[tuple[str, str], Agent[AssistantDeps, str]] = {}
 URL_ADAPTER = TypeAdapter(HttpUrl)
+
+ASSISTANT_OPENAI_REASONING_EFFORT: ReasoningEffort = "low"
 
 ASSISTANT_SYSTEM_PROMPT = (
     "You are Newsly's contextual assistant. "
@@ -552,6 +555,7 @@ def _get_or_create_agent(
     model, model_settings = build_pydantic_model(
         model_spec,
         api_key_override=api_key_override,
+        openai_reasoning_effort=ASSISTANT_OPENAI_REASONING_EFFORT,
     )
 
     agent: Agent[AssistantDeps, str] = Agent(
