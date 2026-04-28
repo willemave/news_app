@@ -50,7 +50,7 @@ final class AssistantFeedOptionActionModel: ObservableObject {
             subscribedOptionIds.insert(option.id)
             ToastService.shared.showSuccess("Subscribed to \(option.title)")
         } catch let apiError as APIError {
-            if case .httpError(let statusCode) = apiError, statusCode == 400 {
+            if case .httpError(let statusCode, _) = apiError, statusCode == 400 {
                 subscribedOptionIds.insert(option.id)
                 ToastService.shared.show("Already subscribed", type: .info)
                 return

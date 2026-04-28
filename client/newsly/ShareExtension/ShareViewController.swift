@@ -270,7 +270,10 @@ final class ShareViewController: UIViewController {
                 throw ShareError.invalidURL
             case .networkError(let underlying):
                 throw ShareError.networkError(underlying.localizedDescription)
-            case .httpError(let statusCode):
+            case .httpError(let statusCode, let detail):
+                if let message = detail?.trimmingCharacters(in: .whitespacesAndNewlines), !message.isEmpty {
+                    throw ShareError.serverError(message)
+                }
                 throw ShareError.serverError("Request failed with status \(statusCode)")
             case .decodingError(let underlying):
                 throw ShareError.serverError(underlying.localizedDescription)

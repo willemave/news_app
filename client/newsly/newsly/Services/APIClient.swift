@@ -16,7 +16,7 @@ enum APIError: LocalizedError {
     case noData
     case decodingError(Error)
     case networkError(Error)
-    case httpError(statusCode: Int)
+    case httpError(statusCode: Int, detail: String?)
     case unauthorized
     case unknown
 
@@ -30,7 +30,10 @@ enum APIError: LocalizedError {
             return "Failed to decode response: \(error.localizedDescription)"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
-        case .httpError(let statusCode):
+        case .httpError(let statusCode, let detail):
+            if let detail, !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return detail
+            }
             return "HTTP error: \(statusCode)"
         case .unauthorized:
             return "Unauthorized - please sign in again"
@@ -243,7 +246,7 @@ class APIClient {
                     logger.error(
                         "[APIClient] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode) detail=\((detail ?? "n/a"), privacy: .public)"
                     )
-                    throw APIError.httpError(statusCode: httpResponse.statusCode)
+                    throw APIError.httpError(statusCode: httpResponse.statusCode, detail: detail)
                 }
 
                 guard allowRefresh else {
@@ -289,7 +292,10 @@ class APIClient {
             }
 
             guard (200...299).contains(httpResponse.statusCode) else {
-                throw APIError.httpError(statusCode: httpResponse.statusCode)
+                throw APIError.httpError(
+                    statusCode: httpResponse.statusCode,
+                    detail: extractErrorDetail(from: data)
+                )
             }
 
             return (data, httpResponse)
@@ -362,11 +368,15 @@ class APIClient {
                                 logger.error(
                                     "[Stream] Non-auth HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)"
                                 )
-                                continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
+                                continuation.finish(
+                                    throwing: APIError.httpError(statusCode: httpResponse.statusCode, detail: nil)
+                                )
                             }
                         } else {
                             logger.error("[Stream] HTTP error | endpoint=\(endpoint, privacy: .public) status=\(httpResponse.statusCode)")
-                            continuation.finish(throwing: APIError.httpError(statusCode: httpResponse.statusCode))
+                            continuation.finish(
+                                throwing: APIError.httpError(statusCode: httpResponse.statusCode, detail: nil)
+                            )
                         }
                         return
                     }

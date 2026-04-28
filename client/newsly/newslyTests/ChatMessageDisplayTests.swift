@@ -262,7 +262,7 @@ final class ChatMessageDisplayTests: XCTestCase {
         )
         let model = AssistantFeedOptionActionModel(
             service: MockAssistantFeedSubscriptionService(
-                result: .failure(APIError.httpError(statusCode: 400))
+                result: .failure(APIError.httpError(statusCode: 400, detail: nil))
             )
         )
 
