@@ -236,6 +236,24 @@ struct OnboardingCompleteRequest: Codable {
     let twitterUsername: String?
     let newsListPreferencePrompt: String?
 
+    init(
+        selectedSources: [OnboardingSelectedSource],
+        selectedSubreddits: [String],
+        selectedAggregators: [OnboardingSelectedAggregator] = [],
+        profileSummary: String?,
+        inferredTopics: [String]?,
+        twitterUsername: String?,
+        newsListPreferencePrompt: String?
+    ) {
+        self.selectedSources = selectedSources
+        self.selectedSubreddits = selectedSubreddits
+        self.selectedAggregators = selectedAggregators
+        self.profileSummary = profileSummary
+        self.inferredTopics = inferredTopics
+        self.twitterUsername = twitterUsername
+        self.newsListPreferencePrompt = newsListPreferencePrompt
+    }
+
     enum CodingKeys: String, CodingKey {
         case selectedSources = "selected_sources"
         case selectedSubreddits = "selected_subreddits"

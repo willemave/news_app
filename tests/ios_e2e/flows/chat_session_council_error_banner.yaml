@@ -16,16 +16,18 @@ appId: "${APP_ID}"
 - assertVisible:
     text: Initial mocked assistant reply.
 - assertVisible:
-    id: knowledge.start_council
+    id: knowledge.mode_menu
 - tapOn:
-    id: knowledge.start_council
+    id: knowledge.mode_menu
+- tapOn:
+    text: Council
 - assertVisible:
     id: knowledge.chat_error_banner
 - assertVisible:
     text: Council setup required
 - assertVisible:
-    id: knowledge.chat_error_add_experts
+    text: Add Experts
 - tapOn:
-    id: knowledge.chat_error_add_experts
+    text: Add Experts
 - assertVisible:
     id: settings.council_section

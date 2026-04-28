@@ -13,7 +13,7 @@ appId: "${APP_ID}"
       newslyE2ECompleteOnboarding: true
       newslyE2ECompleteTutorial: true
 - tapOn:
-    text: Knowledge
+    id: tab.knowledge
 - assertVisible:
     text: Quick Actions
 - tapOn:

@@ -469,8 +469,9 @@ def test_personalized_onboarding_flow_runs_live_audio_discovery_with_fake_mic(
         include_social=False,
         lane_name=None,
         lane_target=None,
+        telemetry=None,
     ):
-        del num_results, include_social
+        del num_results, include_social, telemetry
         return [
             _DiscoveryWebResult(
                 title=f"{lane_name or 'Discovery'} result {index + 1}",

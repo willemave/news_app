@@ -16,9 +16,11 @@ appId: "${APP_ID}"
 - assertVisible:
     id: knowledge.chat_input
 - assertVisible:
-    id: knowledge.start_council
+    id: knowledge.mode_menu
 - tapOn:
-    id: knowledge.start_council
+    id: knowledge.mode_menu
+- tapOn:
+    text: Council
 - assertVisible:
     text: Initial mocked assistant reply.
 - assertVisible:

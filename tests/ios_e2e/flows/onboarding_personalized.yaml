@@ -15,17 +15,19 @@ appId: "${APP_ID}"
       newslyE2EFakeSpeechEnabled: true
       newslyE2EFakeSpeechTranscript: "${TRANSCRIPT}"
 - assertVisible:
-    text: Set up your feeds
+    text: Newsbuddy
 - tapOn:
     text: Personalize with voice
 - assertVisible:
     text: Tell us what you read
 - assertVisible:
-    text: LISTENING...
+    text: LISTENING
 - tapOn:
-    text: Recording. Tap to stop.
-- assertVisible:
-    text: NEWSLETTERS
+    text: Tap again when you're done.
+- extendedWaitUntil:
+    visible:
+      text: NEWSLETTERS
+    timeout: 30000
 - assertVisible:
     text: Your picks
 - assertVisible:
@@ -35,13 +37,15 @@ appId: "${APP_ID}"
 - tapOn:
     text: Latent Space
 - tapOn:
-    text: Start reading
+    text: Continue with 5
+- tapOn:
+    text: Start with 7 sources
 - assertVisible:
     text: What to expect
 - tapOn:
-    text: Let's go
+    text: Open my feed
 - tapOn:
-    text: Long Form
+    id: tab.long_form
 - assertVisible:
     text: Your long-form feed is being assembled
 - assertVisible:
