@@ -50,6 +50,11 @@ def _cluster_metadata(item: NewsItem) -> dict[str, Any]:
 
 
 def _top_comment(item: NewsItem) -> dict[str, str] | None:
+    platform = str(item.platform or "").strip().lower()
+    discussion_url = str(item.discussion_url or "").strip().lower()
+    if platform == "techmeme" or "techmeme.com" in discussion_url:
+        return None
+
     raw_top_comment = dict(item.raw_metadata or {}).get("top_comment")
     if not isinstance(raw_top_comment, dict):
         return None
@@ -156,6 +161,10 @@ def present_news_item_summary(
         primary_topic=None,
         top_comment=top_comment,
         comment_count=_comment_count(item),
+        feed_preview=None,
+        artifact_type=None,
+        preview_bullets=None,
+        reason_to_read=None,
     )
 
 
@@ -225,6 +234,11 @@ def present_news_item_detail(
         summary_kind=None,
         summary_version=None,
         structured_summary=None,
+        longform_artifact=None,
+        feed_preview=None,
+        artifact_type=None,
+        preview_bullets=None,
+        reason_to_read=None,
         bullet_points=[],
         quotes=[],
         topics=[],

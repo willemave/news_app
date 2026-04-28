@@ -1130,24 +1130,28 @@ def _extract_discussion_preview_fields(
     comments = discussion_data.get("comments", [])
 
     top_comment: dict[str, str] | None = None
-    for comment_entry in comments:
-        if not isinstance(comment_entry, dict):
-            continue
-        author = str(comment_entry.get("author") or "unknown")
-        if author in TOP_COMMENT_SKIP_AUTHORS or any(
-            author.endswith(suffix) for suffix in TOP_COMMENT_SKIP_SUFFIXES
-        ):
-            continue
-        text = comment_entry.get("compact_text") or comment_entry.get("text") or ""
-        if text.strip():
-            top_comment = {"author": author, "text": str(text)}
-            break
-
     stats = discussion_data.get("stats", {})
+
+    if mode == "comments":
+        for comment_entry in comments:
+            if not isinstance(comment_entry, dict):
+                continue
+            author = str(comment_entry.get("author") or "unknown")
+            if author in TOP_COMMENT_SKIP_AUTHORS or any(
+                author.endswith(suffix) for suffix in TOP_COMMENT_SKIP_SUFFIXES
+            ):
+                continue
+            text = comment_entry.get("compact_text") or comment_entry.get("text") or ""
+            if text.strip():
+                top_comment = {"author": author, "text": str(text)}
+                break
+
     if mode == "comments":
         comment_count = stats.get("declared_comment_count")
     elif mode == "discussion_list":
-        comment_count = len(comments) if comments else None
+        comment_count = stats.get("item_count")
+        if comment_count is None and comments:
+            comment_count = len(comments)
     else:
         comment_count = None
 

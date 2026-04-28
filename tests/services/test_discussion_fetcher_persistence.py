@@ -333,7 +333,7 @@ def test_fetch_and_store_denormalizes_comment_count_for_hn(db_session, monkeypat
     assert _require_mapping(content.content_metadata)["comment_count"] == 42
 
 
-def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
+def test_fetch_and_store_denormalizes_discussion_count_for_techmeme_without_top_comment(
     db_session,
     monkeypatch,
 ) -> None:
@@ -342,6 +342,7 @@ def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
         metadata={
             "platform": "techmeme",
             "discussion_url": "https://www.techmeme.com/260217/p39#a260217p39",
+            "top_comment": {"author": "x.com", "text": "@sama"},
         },
     )
 
@@ -368,7 +369,7 @@ def test_fetch_and_store_denormalizes_comment_count_for_techmeme(
     db_session.refresh(content)
     content_metadata = _require_mapping(content.content_metadata)
     assert content_metadata["comment_count"] == 2
-    assert _require_mapping(content_metadata["top_comment"])["author"] == "news.ycombinator.com"
+    assert "top_comment" not in content_metadata
 
 
 def test_fetch_and_store_discussion_preserves_concurrent_metadata_updates(

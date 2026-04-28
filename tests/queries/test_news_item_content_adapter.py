@@ -55,6 +55,24 @@ def test_present_news_item_summary_maps_directly_to_content_card() -> None:
     assert response.is_read is True
 
 
+def test_present_news_item_summary_suppresses_techmeme_link_preview_comment() -> None:
+    item = _news_item()
+    item.platform = "techmeme"
+    item.source_label = "Techmeme"
+    item.discussion_url = "https://www.techmeme.com/260217/p39#a260217p39"
+    item.raw_metadata = {
+        "article": {"title": "Article title"},
+        "summary": {"classification": "to_read", "title": "Summary title"},
+        "top_comment": {"author": "x.com", "text": "@sama"},
+        "comment_count": "8",
+    }
+
+    response = present_news_item_summary(item, is_read=False)
+
+    assert response.top_comment is None
+    assert response.comment_count == 8
+
+
 def test_present_news_item_detail_builds_content_detail_without_content_metadata() -> None:
     response = present_news_item_detail(_news_item(), is_read=False)
 
