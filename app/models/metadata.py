@@ -354,6 +354,40 @@ EditorialSourceDetails = Annotated[
 ]
 
 
+class InterestingExternalLink(BaseModel):
+    """Curated outbound link from article text worth showing in the reader."""
+
+    url: str = Field(..., max_length=2048)
+    title: str | None = Field(None, max_length=300)
+    reason: str = Field(..., min_length=5, max_length=300)
+    category: Literal[
+        "primary_source",
+        "research",
+        "documentation",
+        "tool",
+        "dataset",
+        "company_product",
+        "related_context",
+        "other",
+    ] = "other"
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+    @field_validator("title")
+    @classmethod
+    def clean_optional_text(cls, value: str | None) -> str | None:
+        """Trim optional text and collapse empty values."""
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("reason", mode="before")
+    @classmethod
+    def clean_reason(cls, value: Any) -> Any:
+        """Trim required reason text."""
+        return value.strip() if isinstance(value, str) else value
+
+
 class EditorialArchetypeReaction(BaseModel):
     """Persona-style reaction block for long-form summaries."""
 
@@ -821,6 +855,11 @@ class ArticleMetadata(BaseContentMetadata):
     publication_date: datetime | None = None
     content_type: str = Field(default="html", pattern="^(pdf|html|text|markdown|image)$")
     final_url_after_redirects: str | None = Field(None, max_length=2000)
+    interesting_external_links: list[InterestingExternalLink] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Curated external links from the article body that are worth surfacing.",
+    )
 
 
 # Podcast metadata from app/schemas/metadata.py

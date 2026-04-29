@@ -11,7 +11,11 @@ from app.core.logging import get_logger
 from app.models.content_submission import ContentSubmissionResponse, SubmitContentRequest
 from app.models.metadata import ContentClassification, ContentStatus, ContentType
 from app.models.metadata_access import metadata_view
-from app.models.metadata_state import normalize_metadata_shape, update_processing_state
+from app.models.metadata_state import (
+    append_share_and_chat_request,
+    normalize_metadata_shape,
+    update_processing_state,
+)
 from app.models.schema import Content, ProcessingTask
 from app.models.user import User
 from app.repositories import knowledge_repository
@@ -150,41 +154,6 @@ def _ensure_analyze_url_task(
     return int(task_id)
 
 
-def _append_share_and_chat_user(
-    metadata: dict[str, object] | None,
-    user_id: int,
-) -> dict[str, object]:
-    """Append the user to pending share-and-chat metadata.
-
-    Args:
-        metadata: Existing content metadata.
-        user_id: User requesting share-and-chat.
-
-    Returns:
-        Updated metadata dictionary.
-    """
-    updated = normalize_metadata_shape(dict(metadata or {}))
-    raw_users = updated.get("share_and_chat_user_ids")
-    user_ids: list[int] = []
-
-    if isinstance(raw_users, list):
-        for value in raw_users:
-            try:
-                user_ids.append(int(value))
-            except (TypeError, ValueError):
-                continue
-    elif raw_users is not None:
-        try:
-            user_ids.append(int(raw_users))
-        except (TypeError, ValueError):
-            user_ids = []
-
-    if user_id not in user_ids:
-        user_ids.append(user_id)
-
-    return update_processing_state(updated, share_and_chat_user_ids=user_ids)
-
-
 def _apply_submission_user_state(
     db: Session,
     *,
@@ -192,6 +161,7 @@ def _apply_submission_user_state(
     content_id: int,
     save_to_knowledge_and_mark_read: bool,
     share_and_chat: bool,
+    chat_initial_message: str | None,
     enqueue_dig_deeper: bool = False,
 ) -> None:
     should_mark_read = save_to_knowledge_and_mark_read or share_and_chat
@@ -201,7 +171,12 @@ def _apply_submission_user_state(
         # This flag now means "save to knowledge and mark read".
         knowledge_repository.save_to_knowledge(db, content_id, user_id)
     if share_and_chat and enqueue_dig_deeper:
-        enqueue_dig_deeper_task(db, content_id, user_id)
+        enqueue_dig_deeper_task(
+            db,
+            content_id,
+            user_id,
+            initial_message=chat_initial_message,
+        )
 
 
 def _should_enqueue_analysis_for_existing_content(
@@ -247,6 +222,9 @@ def submit_user_content(
     crawl_links = payload.crawl_links
     subscribe_to_feed = payload.subscribe_to_feed
     share_and_chat = payload.share_and_chat and not subscribe_to_feed
+    chat_initial_message = (
+        payload.chat_initial_message.strip() if payload.chat_initial_message else None
+    )
     save_to_knowledge_and_mark_read = (
         payload.save_to_knowledge_and_mark_read and not subscribe_to_feed
     )
@@ -293,8 +271,10 @@ def submit_user_content(
             db.commit()
         else:
             if share_and_chat and existing_status != ContentStatus.COMPLETED.value:
-                existing.content_metadata = _append_share_and_chat_user(
-                    existing.content_metadata, current_user_id
+                existing.content_metadata = append_share_and_chat_request(
+                    existing.content_metadata,
+                    user_id=current_user_id,
+                    initial_message=chat_initial_message,
                 )
                 metadata_updated = True
             status_created = ensure_inbox_status(
@@ -310,6 +290,7 @@ def submit_user_content(
                 content_id=existing_content_id,
                 save_to_knowledge_and_mark_read=save_to_knowledge_and_mark_read,
                 share_and_chat=share_and_chat,
+                chat_initial_message=chat_initial_message,
                 enqueue_dig_deeper=existing_status == ContentStatus.COMPLETED.value,
             )
         task_id: int | None = None
@@ -355,7 +336,11 @@ def submit_user_content(
     if platform_hint:
         metadata = update_processing_state(metadata, platform_hint=platform_hint)
     if share_and_chat:
-        metadata = _append_share_and_chat_user(metadata, current_user_id)
+        metadata = append_share_and_chat_request(
+            metadata,
+            user_id=current_user_id,
+            initial_message=chat_initial_message,
+        )
 
     # Create content with UNKNOWN type - will be updated by ANALYZE_URL task
     new_content = Content(
@@ -423,6 +408,7 @@ def submit_user_content(
             content_id=new_content_id,
             save_to_knowledge_and_mark_read=save_to_knowledge_and_mark_read,
             share_and_chat=share_and_chat,
+            chat_initial_message=chat_initial_message,
         )
     task_id = _ensure_analyze_url_task(
         db,

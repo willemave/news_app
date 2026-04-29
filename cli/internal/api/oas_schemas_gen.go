@@ -4916,6 +4916,8 @@ func (*SubmitContentOK) submitContentRes() {}
 // Request to submit a user-provided URL for processing.
 // Ref: #/components/schemas/SubmitContentRequest
 type SubmitContentRequest struct {
+	// Optional first user message for share-and-chat sessions.
+	ChatInitialMessage OptNilString `json:"chat_initial_message"`
 	// Content type hint. If omitted, the server will infer based on the URL.
 	ContentType OptContentType `json:"content_type"`
 	// Whether to create additional content items from relevant links discovered on the submitted page.
@@ -4937,6 +4939,11 @@ type SubmitContentRequest struct {
 	Title OptNilString `json:"title"`
 	// URL to submit (http/https only).
 	URL url.URL `json:"url"`
+}
+
+// GetChatInitialMessage returns the value of ChatInitialMessage.
+func (s *SubmitContentRequest) GetChatInitialMessage() OptNilString {
+	return s.ChatInitialMessage
 }
 
 // GetContentType returns the value of ContentType.
@@ -4982,6 +4989,11 @@ func (s *SubmitContentRequest) GetTitle() OptNilString {
 // GetURL returns the value of URL.
 func (s *SubmitContentRequest) GetURL() url.URL {
 	return s.URL
+}
+
+// SetChatInitialMessage sets the value of ChatInitialMessage.
+func (s *SubmitContentRequest) SetChatInitialMessage(val OptNilString) {
+	s.ChatInitialMessage = val
 }
 
 // SetContentType sets the value of ContentType.

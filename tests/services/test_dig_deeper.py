@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
 from app.models.metadata import ContentStatus, ContentType
-from app.models.schema import Content, ContentDiscussion
-from app.services.dig_deeper import build_dig_deeper_prompt
+from app.models.schema import ChatMessage, Content, ContentDiscussion, ProcessingTask
+from app.services.dig_deeper import (
+    build_dig_deeper_prompt,
+    create_dig_deeper_message,
+    enqueue_dig_deeper_task,
+)
+from app.services.queue import TaskType
 
 
 def _create_news_content(db_session) -> Content:
@@ -94,3 +101,38 @@ def test_build_dig_deeper_prompt_includes_discussion_group_topics(db_session) ->
     assert "Discussion context:" in prompt
     assert "Discussion thread topics:" in prompt
     assert "Main stories: OpenAI announces new roadmap, Analysts debate timing" in prompt
+
+
+def test_create_dig_deeper_message_uses_share_initial_message(db_session) -> None:
+    content = _create_news_content(db_session)
+
+    session_id, message_id, prompt = create_dig_deeper_message(
+        db_session,
+        content,
+        user_id=1,
+        initial_message="What should I ask the author?",
+    )
+
+    assert prompt == "What should I ask the author?"
+    message = db_session.query(ChatMessage).filter(ChatMessage.id == message_id).first()
+    assert message is not None
+    assert message.session_id == session_id
+    assert message.status == "processing"
+    assert "What should I ask the author?" in json.dumps(json.loads(message.message_list))
+
+
+def test_enqueue_dig_deeper_task_stores_initial_message(db_session) -> None:
+    content = _create_news_content(db_session)
+    assert content.id is not None
+
+    task_id = enqueue_dig_deeper_task(
+        db_session,
+        content_id=content.id,
+        user_id=1,
+        initial_message="Help me brief this.",
+    )
+
+    task = db_session.query(ProcessingTask).filter(ProcessingTask.id == task_id).first()
+    assert task is not None
+    assert task.task_type == TaskType.DIG_DEEPER.value
+    assert task.payload == {"user_id": 1, "initial_message": "Help me brief this."}

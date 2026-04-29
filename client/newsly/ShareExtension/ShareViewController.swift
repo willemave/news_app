@@ -12,6 +12,7 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
     case addContent
     case addLinks
     case addFeed
+    case chat
 
     var title: String {
         switch self {
@@ -21,6 +22,8 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Add links"
         case .addFeed:
             return "Add feed"
+        case .chat:
+            return "Chat"
         }
     }
 
@@ -32,11 +35,13 @@ fileprivate enum LinkHandlingMode: String, CaseIterable {
             return "Also crawl important links found on the page."
         case .addFeed:
             return "Subscribe to this site's feed in Newsbuddy."
+        case .chat:
+            return "Save to Knowledge and start a chat after processing."
         }
     }
 }
 
-final class ShareViewController: UIViewController {
+final class ShareViewController: UIViewController, UITextViewDelegate {
 
     private var sharedURL: URL?
     private var linkHandlingMode: LinkHandlingMode = .addContent
@@ -49,7 +54,14 @@ final class ShareViewController: UIViewController {
         title: "Save to knowledge",
         description: "Download and summarize this item, then mark it read and save it to your knowledge library."
     )
+    private let chatPromptStack = UIStackView()
+    private let chatPromptLabel = UILabel()
+    private let chatPromptTextView = UITextView()
     private let submitButton = UIButton(type: .system)
+
+    private var chatInitialMessage: String {
+        chatPromptTextView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -62,6 +74,7 @@ final class ShareViewController: UIViewController {
 
         configureLayout()
         configureOptions()
+        configureChatPrompt()
         configureSubmitButton()
 
         extractSharedURL()
@@ -109,6 +122,7 @@ final class ShareViewController: UIViewController {
         contentStack.addArrangedSubview(titleLabel)
         contentStack.addArrangedSubview(optionsStack)
         contentStack.addArrangedSubview(knowledgeSaveToggleView)
+        contentStack.addArrangedSubview(chatPromptStack)
         contentStack.addArrangedSubview(submitButton)
 
         view.addSubview(contentStack)
@@ -130,6 +144,29 @@ final class ShareViewController: UIViewController {
         }
     }
 
+    private func configureChatPrompt() {
+        chatPromptStack.axis = .vertical
+        chatPromptStack.spacing = 8
+        chatPromptStack.alignment = .fill
+        chatPromptStack.isHidden = true
+
+        chatPromptLabel.text = "First message"
+        chatPromptLabel.font = .preferredFont(forTextStyle: .subheadline)
+        chatPromptLabel.textColor = .secondaryLabel
+
+        chatPromptTextView.delegate = self
+        chatPromptTextView.font = .preferredFont(forTextStyle: .body)
+        chatPromptTextView.backgroundColor = .secondarySystemBackground
+        chatPromptTextView.layer.cornerRadius = 10
+        chatPromptTextView.layer.borderWidth = 1
+        chatPromptTextView.layer.borderColor = UIColor.separator.cgColor
+        chatPromptTextView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        chatPromptTextView.heightAnchor.constraint(equalToConstant: 104).isActive = true
+
+        chatPromptStack.addArrangedSubview(chatPromptLabel)
+        chatPromptStack.addArrangedSubview(chatPromptTextView)
+    }
+
     private func configureSubmitButton() {
         var configuration = UIButton.Configuration.filled()
         configuration.title = "Submit"
@@ -142,17 +179,28 @@ final class ShareViewController: UIViewController {
         optionViews.forEach { mode, view in
             view.isSelected = (mode == linkHandlingMode)
         }
+        chatPromptStack.isHidden = linkHandlingMode != .chat
+        updateSubmitButtonTitle()
         updateKnowledgeSaveToggleAvailability()
+        updateSubmitState()
     }
 
     private func updateSubmitState() {
-        submitButton.isEnabled = sharedURL != nil
+        let hasRequiredMessage = linkHandlingMode != .chat || !chatInitialMessage.isEmpty
+        submitButton.isEnabled = sharedURL != nil && hasRequiredMessage
     }
 
     @objc private func handleOptionTapped(_ sender: OptionRowView) {
         guard let match = optionViews.first(where: { $0.value == sender })?.key else { return }
         linkHandlingMode = match
         updateSelectionUI()
+        if match == .chat {
+            chatPromptTextView.becomeFirstResponder()
+        }
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+        updateSubmitState()
     }
 
     @objc private func handleSubmitTapped() {
@@ -233,6 +281,12 @@ final class ShareViewController: UIViewController {
     }
 
     private func updateKnowledgeSaveToggleAvailability() {
+        if linkHandlingMode == .chat {
+            knowledgeSaveToggleView.isOn = true
+            knowledgeSaveToggleView.isEnabled = false
+            return
+        }
+
         let isAvailable = linkHandlingMode != .addFeed
         if !isAvailable && knowledgeSaveToggleView.isOn {
             knowledgeSaveToggleView.isOn = false
@@ -240,17 +294,27 @@ final class ShareViewController: UIViewController {
         knowledgeSaveToggleView.isEnabled = isAvailable
     }
 
+    private func updateSubmitButtonTitle() {
+        var configuration = submitButton.configuration ?? UIButton.Configuration.filled()
+        configuration.title = linkHandlingMode == .chat ? "Start chat" : "Submit"
+        submitButton.configuration = configuration
+    }
+
     // MARK: - API Submission
 
     private func submitURL(_ url: URL) async throws {
         let handler = ShareURLRouting.handler(for: url)
+        let shouldStartChat = linkHandlingMode == .chat
         var body: [String: Any] = [
             "url": url.absoluteString,
-            "crawl_links": linkHandlingMode == .addLinks,
-            "share_and_chat": false,
-            "save_to_knowledge_and_mark_read": knowledgeSaveToggleView.isOn,
-            "subscribe_to_feed": linkHandlingMode == .addFeed,
+            "crawl_links": linkHandlingMode == .addLinks && !shouldStartChat,
+            "share_and_chat": shouldStartChat,
+            "save_to_knowledge_and_mark_read": shouldStartChat || knowledgeSaveToggleView.isOn,
+            "subscribe_to_feed": linkHandlingMode == .addFeed && !shouldStartChat,
         ]
+        if shouldStartChat {
+            body["chat_initial_message"] = chatInitialMessage
+        }
         if let platform = handler.platform {
             body["platform"] = platform
         }

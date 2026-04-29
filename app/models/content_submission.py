@@ -48,6 +48,11 @@ class SubmitContentRequest(BaseModel):
             "after processing completes."
         ),
     )
+    chat_initial_message: str | None = Field(
+        None,
+        max_length=2000,
+        description="Optional first user message for share-and-chat sessions.",
+    )
     save_to_knowledge_and_mark_read: bool = Field(
         False,
         description=(
@@ -67,6 +72,7 @@ class SubmitContentRequest(BaseModel):
                 "crawl_links": True,
                 "subscribe_to_feed": False,
                 "share_and_chat": False,
+                "chat_initial_message": None,
                 "save_to_knowledge_and_mark_read": False,
             }
         }

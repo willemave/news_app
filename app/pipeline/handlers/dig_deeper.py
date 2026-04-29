@@ -25,6 +25,8 @@ class DigDeeperHandler:
         payload = task.payload if isinstance(task.payload, dict) else {}
         content_id = task.content_id or payload.get("content_id")
         user_id = payload.get("user_id")
+        raw_initial_message = payload.get("initial_message")
+        initial_message = raw_initial_message if isinstance(raw_initial_message, str) else None
 
         if not content_id or not user_id:
             logger.error(
@@ -57,6 +59,7 @@ class DigDeeperHandler:
                 db,
                 content,
                 int(user_id),
+                initial_message=initial_message,
             )
 
         try:

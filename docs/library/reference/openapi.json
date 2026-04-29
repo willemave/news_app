@@ -5686,6 +5686,19 @@
           "url": "https://open.spotify.com/episode/abc123"
         },
         "properties": {
+          "chat_initial_message": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional first user message for share-and-chat sessions.",
+            "title": "Chat Initial Message"
+          },
           "content_type": {
             "anyOf": [
               {

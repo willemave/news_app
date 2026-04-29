@@ -9133,6 +9133,12 @@ func (s *SubmitContentRequest) Encode(e *jx.Encoder) {
 // encodeFields encodes fields.
 func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 	{
+		if s.ChatInitialMessage.Set {
+			e.FieldStart("chat_initial_message")
+			s.ChatInitialMessage.Encode(e)
+		}
+	}
+	{
 		if s.ContentType.Set {
 			e.FieldStart("content_type")
 			s.ContentType.Encode(e)
@@ -9186,16 +9192,17 @@ func (s *SubmitContentRequest) encodeFields(e *jx.Encoder) {
 	}
 }
 
-var jsonFieldsNameOfSubmitContentRequest = [9]string{
-	0: "content_type",
-	1: "crawl_links",
-	2: "instruction",
-	3: "platform",
-	4: "save_to_knowledge_and_mark_read",
-	5: "share_and_chat",
-	6: "subscribe_to_feed",
-	7: "title",
-	8: "url",
+var jsonFieldsNameOfSubmitContentRequest = [10]string{
+	0: "chat_initial_message",
+	1: "content_type",
+	2: "crawl_links",
+	3: "instruction",
+	4: "platform",
+	5: "save_to_knowledge_and_mark_read",
+	6: "share_and_chat",
+	7: "subscribe_to_feed",
+	8: "title",
+	9: "url",
 }
 
 // Decode decodes SubmitContentRequest from json.
@@ -9208,6 +9215,16 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 
 	if err := d.ObjBytes(func(d *jx.Decoder, k []byte) error {
 		switch string(k) {
+		case "chat_initial_message":
+			if err := func() error {
+				s.ChatInitialMessage.Reset()
+				if err := s.ChatInitialMessage.Decode(d); err != nil {
+					return err
+				}
+				return nil
+			}(); err != nil {
+				return errors.Wrap(err, "decode field \"chat_initial_message\"")
+			}
 		case "content_type":
 			if err := func() error {
 				s.ContentType.Reset()
@@ -9289,7 +9306,7 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 				return errors.Wrap(err, "decode field \"title\"")
 			}
 		case "url":
-			requiredBitSet[1] |= 1 << 0
+			requiredBitSet[1] |= 1 << 1
 			if err := func() error {
 				v, err := json.DecodeURI(d)
 				s.URL = v
@@ -9311,7 +9328,7 @@ func (s *SubmitContentRequest) Decode(d *jx.Decoder) error {
 	var failures []validate.FieldError
 	for i, mask := range [2]uint8{
 		0b00000000,
-		0b00000001,
+		0b00000010,
 	} {
 		if result := (requiredBitSet[i] & mask) ^ mask; result != 0 {
 			// Mask only required fields and check equality to mask using XOR.

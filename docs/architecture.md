@@ -1123,11 +1123,12 @@ OpenAPI is authoritative for the public wire format. Checked-in Go and Swift gen
 
 The share extension lives in `client/newsly/ShareExtension/`.
 
-`ShareViewController.swift` currently supports three submission modes:
+`ShareViewController.swift` currently supports four submission modes:
 
 - Add content
 - Add links
 - Add feed
+- Chat
 
 The extension:
 
@@ -1135,6 +1136,7 @@ The extension:
 - shares auth state through the app group / shared keychain
 - submits URLs to the backend
 - lets the user choose whether the backend should summarize, crawl linked pages, or subscribe to the site feed
+- can submit a chat-start request that saves the item to Knowledge, processes it normally, and uses the typed share-sheet message as the first content-linked chat turn
 
 ## 19. Admin UI
 

@@ -96,6 +96,7 @@ struct ContentDetailView: View {
     @State private var didTriggerSwipeHaptic: Bool = false
     // Transcript/Full Article collapsed state
     @State private var isTranscriptExpanded: Bool = false
+    @State private var isReferencedLinksExpanded: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     init(
         contentId: Int,
@@ -235,6 +236,13 @@ struct ContentDetailView: View {
                                         insightCount: 0
                                     )
                                 }
+                        }
+
+                        let referencedLinks = content.interestingExternalLinks
+                        if !referencedLinks.isEmpty {
+                            referencedLinksSection(links: referencedLinks)
+                                .padding(.horizontal, DetailDesign.horizontalPadding)
+                                .padding(.top, DetailDesign.sectionSpacing)
                         }
 
                         if content.contentTypeEnum == .news {
@@ -1876,6 +1884,65 @@ struct ContentDetailView: View {
     }
 
     // MARK: - Modern Section Components (Flat, no borders)
+    @ViewBuilder
+    private func referencedLinksSection(links: [InterestingExternalLink]) -> some View {
+        modernExpandableSection(
+            title: "Referenced Links",
+            icon: "link",
+            isExpanded: $isReferencedLinksExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(links.enumerated()), id: \.element.id) { index, link in
+                    referencedLinkRow(link)
+                    if index < links.count - 1 {
+                        Divider()
+                            .padding(.vertical, 10)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func referencedLinkRow(_ link: InterestingExternalLink) -> some View {
+        if let url = URL(string: link.url) {
+            Link(destination: url) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.subheadline)
+                        .foregroundColor(.accentColor)
+                        .frame(width: 20, height: 20)
+
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(link.title ?? link.url)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+
+                        Text(link.reason)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+
+                        Text(link.url)
+                            .font(.caption2)
+                            .foregroundColor(.secondary.opacity(0.85))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("content.referenced_link.\(link.id)")
+        }
+    }
+
     @ViewBuilder
     private func modernSectionCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()

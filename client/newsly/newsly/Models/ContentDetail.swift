@@ -7,6 +7,33 @@
 
 import Foundation
 
+private extension String {
+    var nonEmptyTrimmed: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+struct InterestingExternalLink: Identifiable, Hashable {
+    let url: String
+    let title: String?
+    let reason: String
+
+    var id: String { url }
+
+    init?(metadata: [String: Any]) {
+        guard let url = metadata["url"] as? String,
+              !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        self.url = url
+        self.title = (metadata["title"] as? String)?.nonEmptyTrimmed
+        self.reason = (metadata["reason"] as? String)?.nonEmptyTrimmed
+            ?? "Useful supporting context from the article."
+    }
+}
+
 struct ContentDetail: Codable, Identifiable {
     let id: Int
     let contentType: String
@@ -258,6 +285,21 @@ struct ContentDetail: Codable, Identifiable {
         }
 
         return result
+    }
+
+    var interestingExternalLinks: [InterestingExternalLink] {
+        guard let rawLinks = metadata["interesting_external_links"]?.value as? [[String: Any]] else {
+            return []
+        }
+
+        var seen: Set<String> = []
+        return rawLinks.compactMap { rawLink in
+            guard let link = InterestingExternalLink(metadata: rawLink),
+                  seen.insert(link.url).inserted else {
+                return nil
+            }
+            return link
+        }
     }
 
     // MARK: - Summary Type Detection

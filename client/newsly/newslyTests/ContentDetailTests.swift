@@ -168,6 +168,71 @@ final class ContentDetailTests: XCTestCase {
         XCTAssertEqual(detail.primaryTimestamp, "2026-04-02T09:00:00Z")
     }
 
+    func testInterestingExternalLinksDecodeFromMetadata() throws {
+        let detail = try decodeDetail(
+            from: """
+            {
+              "id": 10,
+              "content_type": "article",
+              "url": "https://example.com/story-4",
+              "title": "Story title",
+              "display_title": "Display title",
+              "source": "Example",
+              "status": "completed",
+              "error_message": null,
+              "retry_count": 0,
+              "metadata": {
+                "interesting_external_links": [
+                  {
+                    "url": "https://papers.example.org/model",
+                    "title": "Original model paper",
+                    "reason": "Primary source for the methodology.",
+                    "category": "primary_source",
+                    "confidence": 0.95
+                  }
+                ]
+              },
+              "created_at": "2026-04-02T10:00:00Z",
+              "updated_at": null,
+              "processed_at": "2026-04-02T10:05:00Z",
+              "checked_out_by": null,
+              "checked_out_at": null,
+              "publication_date": null,
+              "is_read": false,
+              "is_saved_to_knowledge": false,
+              "summary": null,
+              "short_summary": null,
+              "summary_kind": null,
+              "summary_version": null,
+              "structured_summary": null,
+              "bullet_points": [],
+              "quotes": [],
+              "topics": [],
+              "full_markdown": null,
+              "body_available": false,
+              "body_kind": null,
+              "body_format": null,
+              "news_article_url": null,
+              "news_discussion_url": null,
+              "news_key_points": [],
+              "news_summary": null,
+              "image_url": null,
+              "thumbnail_url": null,
+              "detected_feed": null,
+              "can_subscribe": false
+            }
+            """
+        )
+
+        XCTAssertEqual(detail.interestingExternalLinks.count, 1)
+        XCTAssertEqual(detail.interestingExternalLinks[0].url, "https://papers.example.org/model")
+        XCTAssertEqual(detail.interestingExternalLinks[0].title, "Original model paper")
+        XCTAssertEqual(
+            detail.interestingExternalLinks[0].reason,
+            "Primary source for the methodology."
+        )
+    }
+
     private func decodeDetail(from json: String) throws -> ContentDetail {
         let data = Data(json.utf8)
         return try JSONDecoder().decode(ContentDetail.self, from: data)

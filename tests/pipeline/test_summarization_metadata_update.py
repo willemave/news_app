@@ -7,9 +7,14 @@ import pytest
 
 from app.models.metadata import (
     ContentQuote,
+    InterestingExternalLink,
     NewsSummary,
     StructuredSummary,
     SummaryBulletPoint,
+)
+from app.models.metadata_state import (
+    extract_share_and_chat_requests,
+    remove_processing_fields,
 )
 from app.models.schema import Content
 from app.pipeline.handlers.summarize import SummarizeHandler
@@ -40,6 +45,44 @@ def _build_context(db_session, llm_service):
         worker_id="test-worker",
         db_factory=_db_context,
     )
+
+
+def test_extract_share_and_chat_requests_preserves_initial_messages():
+    requests = extract_share_and_chat_requests(
+        {
+            "share_and_chat_user_ids": [1, "2"],
+            "share_and_chat_requests": [
+                {"user_id": 1, "initial_message": "Explain the implications."},
+                {"user_id": "3"},
+            ],
+        }
+    )
+
+    assert requests == [
+        {"user_id": 1, "initial_message": "Explain the implications."},
+        {"user_id": 3},
+        {"user_id": 2},
+    ]
+
+
+def test_remove_processing_fields_clears_flat_and_structured_metadata():
+    metadata = remove_processing_fields(
+        {
+            "share_and_chat_user_ids": [1],
+            "share_and_chat_requests": [{"user_id": 1}],
+            "processing": {
+                "share_and_chat_user_ids": [1],
+                "share_and_chat_requests": [{"user_id": 1}],
+                "submitted_via": "share_sheet",
+            },
+        },
+        "share_and_chat_user_ids",
+        "share_and_chat_requests",
+    )
+
+    assert "share_and_chat_user_ids" not in metadata
+    assert "share_and_chat_requests" not in metadata
+    assert metadata["processing"] == {"submitted_via": "share_sheet"}
 
 
 @pytest.fixture
@@ -117,11 +160,15 @@ def test_summarize_task_updates_podcast_metadata(db_session, mock_structured_sum
     assert content.content_metadata["excerpt"]
     assert content.content_metadata["source"] == "Test Podcast Feed"
 
-    assert content.status == "completed"
+    assert content.status == "awaiting_image"
     assert content.processed_at is not None
 
 
-def test_summarize_task_updates_article_metadata(db_session, mock_structured_summary):
+def test_summarize_task_updates_article_metadata(
+    db_session,
+    mock_structured_summary,
+    monkeypatch,
+):
     """Test that summarize task properly updates article metadata."""
     content = Mock(spec=Content)
     content.id = 1
@@ -137,6 +184,10 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
 
     llm_service = Mock()
     llm_service.summarize.return_value = mock_structured_summary
+    monkeypatch.setattr(
+        "app.pipeline.handlers.summarize.select_interesting_external_links",
+        lambda *_args, **_kwargs: [],
+    )
 
     handler = SummarizeHandler()
     context = _build_context(db_session, llm_service)
@@ -160,6 +211,71 @@ def test_summarize_task_updates_article_metadata(db_session, mock_structured_sum
     assert content.content_metadata["source"] == "Test Blog"
     assert "content" not in content.content_metadata
     assert content.content_metadata["excerpt"]
+
+
+def test_summarize_task_persists_interesting_external_links(
+    db_session,
+    mock_structured_summary,
+    monkeypatch,
+):
+    """Article summarization should add curated links to metadata without body fields."""
+    content = Mock(spec=Content)
+    content.id = 1
+    content.content_type = "article"
+    content.status = "processing"
+    content.content_metadata = {
+        "content": "Read the [paper](https://papers.example.org/model) for methodology.",
+        "source": "Test Blog",
+    }
+    content.url = "https://example.com/post"
+    content.title = "Test Article"
+    content.source = "Test Blog"
+    content.platform = None
+    content.publication_date = None
+    content.processed_at = None
+    content.error_message = None
+    content.checked_out_by = None
+    content.checked_out_at = None
+
+    db_session.first.return_value = content
+
+    llm_service = Mock()
+    llm_service.summarize.return_value = mock_structured_summary
+    monkeypatch.setattr(
+        "app.pipeline.handlers.summarize.select_interesting_external_links",
+        lambda *_args, **_kwargs: [
+            InterestingExternalLink(
+                url="https://papers.example.org/model",
+                title="Original model paper",
+                reason="Primary source for the methodology.",
+                category="primary_source",
+                confidence=0.95,
+            )
+        ],
+    )
+
+    handler = SummarizeHandler()
+    context = _build_context(db_session, llm_service)
+
+    task = TaskEnvelope(
+        id=1,
+        task_type=TaskType.SUMMARIZE,
+        content_id=1,
+        payload={"content_id": 1},
+    )
+
+    result = handler.handle(task, context)
+
+    assert result.success is True
+    assert content.content_metadata["interesting_external_links"] == [
+        {
+            "url": "https://papers.example.org/model",
+            "title": "Original model paper",
+            "reason": "Primary source for the methodology.",
+            "category": "primary_source",
+            "confidence": 0.95,
+        }
+    ]
 
 
 def test_summarize_task_updates_news_metadata(db_session):
@@ -215,10 +331,10 @@ def test_summarize_task_updates_news_metadata(db_session):
 
     llm_service.summarize.assert_called_once()
     call_kwargs = llm_service.summarize.call_args.kwargs
-    assert call_kwargs["content_type"] == "news"
+    assert call_kwargs["content_type"] == "longform_artifact"
     assert call_kwargs["provider_override"] is None
-    assert call_kwargs["max_bullet_points"] == 4
-    assert call_kwargs["max_quotes"] == 0
+    assert call_kwargs["max_bullet_points"] == 8
+    assert call_kwargs["max_quotes"] == 5
 
     call_args = llm_service.summarize.call_args.args
     assert "Context:" in call_args[0]
@@ -321,5 +437,5 @@ def test_summarize_task_skips_llm_when_input_fingerprint_matches(db_session):
 
     assert result.success is True
     llm_service.summarize.assert_not_called()
-    assert content.status == "completed"
+    assert content.status == "awaiting_image"
     assert content.processed_at is not None

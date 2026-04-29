@@ -12,6 +12,7 @@ from app.core.logging import get_logger
 from app.models.schema import ChatSession, Content, ContentDiscussion, ProcessingTask
 from app.services.chat_agent import create_processing_message, process_message_async
 from app.services.llm_models import DEFAULT_MODEL, DEFAULT_PROVIDER
+from app.services.personal_markdown_library import sync_personal_markdown_for_content
 from app.services.queue import TaskQueue, TaskStatus, TaskType
 from app.utils.title_utils import resolve_content_display_title
 
@@ -36,6 +37,14 @@ def _require_session_id(session: ChatSession) -> int:
     if session_id is None:
         raise ValueError("Chat session must be persisted before use")
     return session_id
+
+
+def _require_content_id(content: Content) -> int:
+    """Return a persisted content ID or raise."""
+    content_id = content.id
+    if content_id is None:
+        raise ValueError("Content must be persisted before use")
+    return int(content_id)
 
 
 def _require_message_id(message: Any) -> int:
@@ -273,6 +282,22 @@ def get_or_create_dig_deeper_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+    try:
+        sync_personal_markdown_for_content(
+            db,
+            user_id=user_id,
+            content_id=_require_content_id(content),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to sync personal markdown for dig-deeper session",
+            extra={
+                "component": "dig_deeper",
+                "operation": "create_session",
+                "item_id": content.id,
+                "context_data": {"user_id": user_id, "session_id": session.id},
+            },
+        )
     return session
 
 
@@ -280,6 +305,7 @@ def create_dig_deeper_message(
     db: Session,
     content: Content,
     user_id: int,
+    initial_message: str | None = None,
 ) -> tuple[int, int, str]:
     """Create a processing message for a dig-deeper chat.
 
@@ -292,7 +318,9 @@ def create_dig_deeper_message(
         Tuple of (session_id, message_id, prompt).
     """
     session = get_or_create_dig_deeper_session(db, content, user_id)
-    prompt = build_dig_deeper_prompt(db, content)
+    prompt = initial_message.strip() if initial_message and initial_message.strip() else None
+    if prompt is None:
+        prompt = build_dig_deeper_prompt(db, content)
     session_id = _require_session_id(session)
     message = create_processing_message(db, session_id, prompt)
     return session_id, _require_message_id(message), prompt
@@ -324,7 +352,13 @@ def run_dig_deeper_message(
     )
 
 
-def enqueue_dig_deeper_task(db: Session, content_id: int, user_id: int) -> int:
+def enqueue_dig_deeper_task(
+    db: Session,
+    content_id: int,
+    user_id: int,
+    *,
+    initial_message: str | None = None,
+) -> int:
     """Enqueue a dig-deeper task for later processing.
 
     Args:
@@ -336,6 +370,8 @@ def enqueue_dig_deeper_task(db: Session, content_id: int, user_id: int) -> int:
         Processing task ID.
     """
     payload: dict[str, Any] = {"user_id": user_id}
+    if initial_message and initial_message.strip():
+        payload["initial_message"] = initial_message.strip()
     task = ProcessingTask(
         task_type=TaskType.DIG_DEEPER.value,
         content_id=content_id,

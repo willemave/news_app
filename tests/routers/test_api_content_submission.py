@@ -486,7 +486,11 @@ def test_submit_share_and_chat_marks_read_and_tracks_user(client, db_session, te
     """Submitting with share_and_chat should mark content as read and track the user."""
     response = client.post(
         "/api/content/submit",
-        json={"url": "https://example.com/article", "share_and_chat": True},
+        json={
+            "url": "https://example.com/article",
+            "share_and_chat": True,
+            "chat_initial_message": "What should I pay attention to?",
+        },
     )
 
     assert response.status_code == 201
@@ -495,6 +499,12 @@ def test_submit_share_and_chat_marks_read_and_tracks_user(client, db_session, te
     created = db_session.query(Content).filter(Content.id == data["content_id"]).first()
     assert created is not None
     assert created.content_metadata.get("share_and_chat_user_ids") == [test_user.id]
+    assert created.content_metadata.get("share_and_chat_requests") == [
+        {
+            "user_id": test_user.id,
+            "initial_message": "What should I pay attention to?",
+        }
+    ]
 
     read_status_row = (
         db_session.query(ContentReadStatus)
@@ -521,7 +531,11 @@ def test_share_and_chat_existing_completed_enqueues_dig_deeper_task(client, db_s
 
     response = client.post(
         "/api/content/submit",
-        json={"url": existing.url, "share_and_chat": True},
+        json={
+            "url": existing.url,
+            "share_and_chat": True,
+            "chat_initial_message": "Compare this with the current consensus.",
+        },
     )
 
     assert response.status_code == 200
@@ -533,6 +547,36 @@ def test_share_and_chat_existing_completed_enqueues_dig_deeper_task(client, db_s
     )
     assert task is not None
     assert task.queue_name == TaskQueue.CHAT.value
+    assert task.payload == {
+        "user_id": test_user.id,
+        "initial_message": "Compare this with the current consensus.",
+    }
+
+
+def test_share_and_chat_saves_to_knowledge_when_requested(client, db_session, test_user):
+    """Share-and-chat can also save the submitted item to Knowledge."""
+    response = client.post(
+        "/api/content/submit",
+        json={
+            "url": "https://example.com/chat-knowledge",
+            "share_and_chat": True,
+            "chat_initial_message": "Help me use this later.",
+            "save_to_knowledge_and_mark_read": True,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    knowledge_save = (
+        db_session.query(ContentKnowledgeSave)
+        .filter(
+            ContentKnowledgeSave.user_id == test_user.id,
+            ContentKnowledgeSave.content_id == data["content_id"],
+        )
+        .first()
+    )
+    assert knowledge_save is not None
 
 
 def test_submit_save_to_knowledge_and_mark_read_marks_read_and_saves(

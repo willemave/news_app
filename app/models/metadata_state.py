@@ -22,6 +22,7 @@ PROCESSING_FIELD_NAMES: set[str] = {
     "detected_feed",
     "all_detected_feeds",
     "share_and_chat_user_ids",
+    "share_and_chat_requests",
     "submitted_by_user_id",
     "submitted_via",
     "platform_hint",
@@ -31,6 +32,21 @@ PROCESSING_FIELD_NAMES: set[str] = {
     "tweet_enrichment",
     "tweet_only",
 }
+
+
+def _coerce_positive_int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _clean_text(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
 
 
 def normalize_metadata_shape(raw_metadata: dict[str, Any] | None) -> dict[str, Any]:
@@ -107,3 +123,94 @@ def update_processing_state(
         normalized[key] = value
     return normalized
 
+
+def remove_processing_fields(
+    metadata: dict[str, Any] | None,
+    *field_names: str,
+) -> dict[str, Any]:
+    """Remove processing fields from both structured and flat metadata."""
+    normalized = normalize_metadata_shape(metadata)
+    processing = dict(normalized.get(PROCESSING_KEY, {}))
+    for field_name in field_names:
+        normalized.pop(field_name, None)
+        processing.pop(field_name, None)
+    normalized[PROCESSING_KEY] = processing
+    return normalized
+
+
+def extract_share_and_chat_user_ids(metadata: dict[str, Any] | None) -> list[int]:
+    """Return valid pending share-and-chat user IDs from metadata."""
+    raw_users = merge_runtime_metadata(metadata).get("share_and_chat_user_ids")
+    raw_values = raw_users if isinstance(raw_users, list) else [raw_users]
+    user_ids: list[int] = []
+
+    for raw_value in raw_values:
+        user_id = _coerce_positive_int(raw_value)
+        if user_id is not None and user_id not in user_ids:
+            user_ids.append(user_id)
+
+    return user_ids
+
+
+def extract_share_and_chat_requests(
+    metadata: dict[str, Any] | None,
+) -> list[dict[str, object]]:
+    """Return pending share-and-chat requests, including legacy user-id entries."""
+    metadata_view = merge_runtime_metadata(metadata)
+    requests: list[dict[str, object]] = []
+    raw_requests = metadata_view.get("share_and_chat_requests")
+
+    if isinstance(raw_requests, list):
+        for raw_request in raw_requests:
+            if not isinstance(raw_request, dict):
+                continue
+            user_id = _coerce_positive_int(raw_request.get("user_id"))
+            if user_id is None:
+                continue
+            request: dict[str, object] = {"user_id": user_id}
+            initial_message = _clean_text(raw_request.get("initial_message"))
+            if initial_message:
+                request["initial_message"] = initial_message
+            requests.append(request)
+
+    existing_user_ids: set[int] = set()
+    for request in requests:
+        request_user_id = request.get("user_id")
+        if isinstance(request_user_id, int):
+            existing_user_ids.add(request_user_id)
+    for user_id in extract_share_and_chat_user_ids(metadata_view):
+        if user_id not in existing_user_ids:
+            requests.append({"user_id": user_id})
+            existing_user_ids.add(user_id)
+
+    return requests
+
+
+def append_share_and_chat_request(
+    metadata: dict[str, Any] | None,
+    *,
+    user_id: int,
+    initial_message: str | None,
+) -> dict[str, Any]:
+    """Record or replace one pending share-and-chat request."""
+    normalized = normalize_metadata_shape(metadata)
+    request_user_ids = extract_share_and_chat_user_ids(normalized)
+    if user_id not in request_user_ids:
+        request_user_ids.append(user_id)
+
+    request: dict[str, object] = {"user_id": user_id}
+    cleaned_message = _clean_text(initial_message)
+    if cleaned_message:
+        request["initial_message"] = cleaned_message
+
+    requests = [
+        existing
+        for existing in extract_share_and_chat_requests(normalized)
+        if existing.get("user_id") != user_id
+    ]
+    requests.append(request)
+    return update_processing_state(
+        normalized,
+        share_and_chat_user_ids=request_user_ids,
+        share_and_chat_requests=requests,
+    )

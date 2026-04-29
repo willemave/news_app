@@ -4499,6 +4499,13 @@
           "url": "https://open.spotify.com/episode/abc123"
         },
         "properties": {
+          "chat_initial_message": {
+            "description": "Optional first user message for share-and-chat sessions.",
+            "maxLength": 2000,
+            "nullable": true,
+            "title": "Chat Initial Message",
+            "type": "string"
+          },
           "content_type": {
             "$ref": "#/components/schemas/ContentType",
             "description": "Content type hint. If omitted, the server will infer based on the URL.",

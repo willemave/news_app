@@ -61,6 +61,7 @@ API_METADATA_LARGE_VALUE_ALLOWLIST: frozenset[str] = frozenset(
         "summary_kind",
         "summary_version",
         "summarization_date",
+        "interesting_external_links",
     }
 )
 API_METADATA_MAX_VALUE_CHARS = 12_000

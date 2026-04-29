@@ -26,6 +26,10 @@ from app.models.metadata import (
     InterleavedSummaryV2,
     NewsSummary,
 )
+from app.models.metadata_state import (
+    extract_share_and_chat_requests,
+    remove_processing_fields,
+)
 from app.models.schema import Content
 from app.pipeline.task_context import TaskContext
 from app.pipeline.task_models import TaskEnvelope, TaskResult
@@ -34,6 +38,7 @@ from app.services.content_lifecycle import build_content_lifecycle_log_extra
 from app.services.content_metadata_merge import refresh_merge_content_metadata
 from app.services.content_status_state_machine import ContentStatusStateMachine
 from app.services.dig_deeper import enqueue_dig_deeper_task
+from app.services.interesting_external_links import select_interesting_external_links
 from app.services.long_form_images import (
     enqueue_visible_long_form_image_if_needed,
     has_generated_long_form_image,
@@ -76,26 +81,6 @@ def _is_retryable_summarization_error(exc: Exception) -> bool:
 
     message = str(exc).lower()
     return any(token in message for token in RETRYABLE_SUMMARIZATION_TOKENS)
-
-
-def _extract_share_and_chat_user_ids(metadata: dict[str, Any]) -> list[int]:
-    """Extract share-and-chat user IDs from metadata if present."""
-    raw_users = metadata.get("share_and_chat_user_ids")
-    user_ids: list[int] = []
-
-    if isinstance(raw_users, list):
-        for value in raw_users:
-            try:
-                user_ids.append(int(value))
-            except (TypeError, ValueError):
-                continue
-    elif raw_users is not None:
-        try:
-            user_ids.append(int(raw_users))
-        except (TypeError, ValueError):
-            user_ids = []
-
-    return [user_id for user_id in user_ids if user_id > 0]
 
 
 class SummarizeHandler:
@@ -462,7 +447,7 @@ class SummarizeHandler:
                 if summary is not None:
                     base_metadata = _load_latest_metadata()
                     metadata = dict(base_metadata)
-                    share_and_chat_user_ids = _extract_share_and_chat_user_ids(metadata)
+                    share_and_chat_requests = extract_share_and_chat_requests(metadata)
                     summary_dict = (
                         summary.model_dump(mode="json", by_alias=True)
                         if hasattr(summary, "model_dump")
@@ -526,8 +511,31 @@ class SummarizeHandler:
 
                     metadata["summarization_date"] = datetime.now(UTC).isoformat()
                     metadata["summarization_input_fingerprint"] = input_fingerprint
-                    if share_and_chat_user_ids:
-                        metadata.pop("share_and_chat_user_ids", None)
+                    if share_and_chat_requests:
+                        metadata = remove_processing_fields(
+                            metadata,
+                            "share_and_chat_user_ids",
+                            "share_and_chat_requests",
+                        )
+                    if content.content_type == ContentType.ARTICLE.value:
+                        interesting_links = select_interesting_external_links(
+                            text_to_summarize,
+                            source_url=str(content.url),
+                            title=content.title,
+                            usage_persist={
+                                "feature": "interesting_external_links",
+                                "operation": "interesting_external_links.select",
+                                "source": "queue",
+                                "task_id": task.id,
+                                "content_id": content.id,
+                                "metadata": {"url": str(content.url)},
+                            },
+                        )
+                        if interesting_links:
+                            metadata["interesting_external_links"] = [
+                                link.model_dump(mode="json", exclude_none=True)
+                                for link in interesting_links
+                            ]
 
                     content.content_metadata = refresh_merge_content_metadata(
                         db,
@@ -552,13 +560,24 @@ class SummarizeHandler:
                     if content.status == ContentStatus.COMPLETED.value:
                         _log_lifecycle_event("content.completed")
 
-                    if share_and_chat_user_ids:
-                        for user_id in share_and_chat_user_ids:
-                            enqueue_dig_deeper_task(db, content_id, user_id)
+                    if share_and_chat_requests:
+                        for request in share_and_chat_requests:
+                            user_id = request.get("user_id")
+                            if not isinstance(user_id, int):
+                                continue
+                            initial_message = request.get("initial_message")
+                            enqueue_dig_deeper_task(
+                                db,
+                                content_id,
+                                user_id,
+                                initial_message=(
+                                    initial_message if isinstance(initial_message, str) else None
+                                ),
+                            )
                         logger.info(
                             "Enqueued dig-deeper tasks for content %s (users=%s)",
                             content_id,
-                            share_and_chat_user_ids,
+                            [request["user_id"] for request in share_and_chat_requests],
                         )
 
                     if content.content_type == ContentType.NEWS.value:
