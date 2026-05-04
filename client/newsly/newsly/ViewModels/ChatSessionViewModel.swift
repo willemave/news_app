@@ -424,8 +424,8 @@ Find counterbalancing arguments online for \(subject). Use the exa_web_search to
     }
 
     private var backgroundTrackingMessageId: Int? {
-        if let processingMessage = timeline.first(where: { $0.message.isProcessing })?.message {
-            return processingMessage.sourceMessageId ?? processingMessage.id
+        if let processingItem = timeline.first(where: { $0.message.isProcessing }) {
+            return processingItem.message.sourceMessageId ?? processingItem.pendingMessageId
         }
 
         if session?.isProcessing == true {

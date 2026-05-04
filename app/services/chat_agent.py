@@ -600,12 +600,21 @@ def build_article_context(
     return None
 
 
-def load_message_history(db: Session, session_id: int) -> list[ModelMessage]:
-    """Load all messages for a chat session from the database.
+def load_message_history(
+    db: Session,
+    session_id: int,
+    *,
+    exclude_message_id: int | None = None,
+    completed_only: bool = True,
+) -> list[ModelMessage]:
+    """Load model history for a chat session from the database.
 
     Args:
         db: Database session.
         session_id: Chat session ID.
+        exclude_message_id: Optional active turn row to omit from history.
+        completed_only: When true, ignore processing/failed rows so placeholders
+            and failed partial turns do not become model context.
 
     Returns:
         List of ModelMessage objects in chronological order.
@@ -613,12 +622,12 @@ def load_message_history(db: Session, session_id: int) -> list[ModelMessage]:
     messages: list[ModelMessage] = []
 
     # Query chat_messages ordered by created_at
-    db_messages = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at)
-        .all()
-    )
+    query = db.query(ChatMessage).filter(ChatMessage.session_id == session_id)
+    if exclude_message_id is not None:
+        query = query.filter(ChatMessage.id != exclude_message_id)
+    if completed_only:
+        query = query.filter(ChatMessage.status == MessageProcessingStatus.COMPLETED.value)
+    db_messages = query.order_by(ChatMessage.created_at).all()
 
     for db_msg in db_messages:
         try:
@@ -650,12 +659,14 @@ def _dump_messages_json(
         if message.get("kind") != "request":
             continue
         parts = message.get("parts") or []
-        if not parts:
-            break
-        first_part = parts[0]
-        if isinstance(first_part, dict) and "content" in first_part:
-            first_part["content"] = display_user_prompt
-        break
+        for part in parts:
+            if (
+                isinstance(part, dict)
+                and part.get("part_kind") == "user-prompt"
+                and "content" in part
+            ):
+                part["content"] = display_user_prompt
+                return json.dumps(payload, separators=(",", ":"))
     return json.dumps(payload, separators=(",", ":"))
 
 
@@ -1275,9 +1286,14 @@ async def process_message_async(
             ),
         )
 
-        # Load history (excluding the processing message we just created)
+        # Load prior completed history, excluding the processing row for this turn.
         history_start = perf_counter()
-        history = load_message_history(db, session_row_id)
+        history = load_message_history(
+            db,
+            session_row_id,
+            exclude_message_id=message_id,
+            completed_only=True,
+        )
         history_ms = (perf_counter() - history_start) * 1000
         logger.info(
             "Async chat history loaded",
@@ -1515,7 +1531,9 @@ async def generate_initial_suggestions(
         )
         agent_ms = (perf_counter() - agent_start) * 1000
         _log_chat_usage(result, session, session_row_id, None, "initial_suggestions")
-        new_messages = result.new_messages()
+        from pydantic_ai.messages import ModelResponse, TextPart
+
+        new_messages = [ModelResponse(parts=[TextPart(content=result.output_text)])]
         save_start = perf_counter()
         save_messages(db, session_row_id, new_messages)
         save_ms = (perf_counter() - save_start) * 1000
@@ -1555,7 +1573,7 @@ async def generate_initial_suggestions(
         )
 
         return ChatRunResult(
-            output_text=result.output,
+            output_text=result.output_text,
             new_messages=new_messages,
             all_messages=result.all_messages,
             tool_calls=getattr(result, "tool_calls", []),
