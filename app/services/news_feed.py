@@ -12,10 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.constants import (
-    AGGREGATOR_SCRAPER_TYPE,
-    NEWS_FEED_VISIBLE_LIMIT,
-)
+from app.constants import AGGREGATOR_SCRAPER_TYPE
 from app.models.api.common import (
     ContentDetailResponse,
     ContentListResponse,
@@ -182,26 +179,14 @@ def _news_item_is_read_clause(*, user_id: int):
 
 
 def _visible_news_item_query(db: Session, *, user_id: int):
-    """Return the user's visible representative news items, capped to N rows.
-
-    The pipeline keeps ingesting and clustering everything; the cap just trims
-    the user-facing feed to the most recent ``NEWS_FEED_VISIBLE_LIMIT`` rows so
-    the iOS list doesn't grow without bound. The cap is applied as a subquery
-    of ids so callers can chain extra filters/order-bys/cursor pagination on
-    top without re-implementing the cap.
-    """
+    """Return the user's visible representative news items."""
     visibility_clause = build_visible_news_item_filter(db, user_id=user_id)
-    sort_expr = _news_item_sort_timestamp_expr()
-    recent_id_subq = (
-        select(NewsItem.id)
-        .where(NewsItem.status == NewsItemStatus.READY.value)
-        .where(NewsItem.representative_news_item_id.is_(None))
-        .where(visibility_clause)
-        .order_by(sort_expr.desc(), NewsItem.id.desc())
-        .limit(NEWS_FEED_VISIBLE_LIMIT)
-        .subquery()
+    return (
+        db.query(NewsItem)
+        .filter(NewsItem.status == NewsItemStatus.READY.value)
+        .filter(NewsItem.representative_news_item_id.is_(None))
+        .filter(visibility_clause)
     )
-    return db.query(NewsItem).filter(NewsItem.id.in_(select(recent_id_subq.c.id)))
 
 
 def list_visible_news_items(
@@ -227,6 +212,8 @@ def list_visible_news_items(
         query = query.filter(~is_read)
     elif read_filter == "read":
         query = query.filter(is_read)
+
+    total = int(query.with_entities(func.count(NewsItem.id)).scalar() or 0)
 
     if last_sort_timestamp is not None and last_id is not None:
         query = query.filter(
@@ -268,7 +255,7 @@ def list_visible_news_items(
             next_cursor=next_cursor,
             has_more=has_more,
             page_size=len(rows),
-            total=len(rows),
+            total=total,
         ),
     )
 

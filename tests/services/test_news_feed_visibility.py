@@ -10,7 +10,6 @@ import pytest
 from app.constants import (
     AGGREGATOR_FEED_URL_PREFIX,
     AGGREGATOR_SCRAPER_TYPE,
-    NEWS_FEED_VISIBLE_LIMIT,
 )
 from app.models.contracts import NewsItemStatus, NewsItemVisibilityScope
 from app.models.schema import NewsItem, UserScraperConfig
@@ -164,14 +163,14 @@ def test_visibility_filters_brutalist_topics(db_session, test_user, base_time) -
     assert titles == ["Brutalist science"]
 
 
-def test_visibility_caps_visible_feed_at_news_feed_visible_limit(
+def test_visibility_paginates_all_visible_feed_items(
     db_session, test_user, base_time
 ) -> None:
     user_id = test_user.id
     assert user_id is not None
 
-    over_cap = NEWS_FEED_VISIBLE_LIMIT + 5
-    for i in range(over_cap):
+    item_count = 105
+    for i in range(item_count):
         _global_news_item(
             db_session,
             ingest_key=f"hn-{i:03d}",
@@ -182,12 +181,11 @@ def test_visibility_caps_visible_feed_at_news_feed_visible_limit(
         )
     _add_aggregator_subscription(db_session, user_id=user_id, key="hackernews")
 
-    # Unread count must not exceed the cap, even though 105 items exist.
-    assert count_unread_news_items(db_session, user_id=user_id) == NEWS_FEED_VISIBLE_LIMIT
+    assert count_unread_news_items(db_session, user_id=user_id) == item_count
 
-    # Paginating beyond the cap stops at NEWS_FEED_VISIBLE_LIMIT total items.
     fetched_titles: list[str | None] = []
     cursor: str | None = None
+    first_page_total: int | None = None
     while True:
         response = list_visible_news_items(
             db_session,
@@ -196,12 +194,15 @@ def test_visibility_caps_visible_feed_at_news_feed_visible_limit(
             cursor=cursor,
             limit=25,
         )
+        if first_page_total is None:
+            first_page_total = response.meta.total
         fetched_titles.extend(item.title for item in response.contents)
         cursor = response.meta.next_cursor
         if not cursor:
             break
 
-    assert len(fetched_titles) == NEWS_FEED_VISIBLE_LIMIT
-    # Most-recent-first: cap keeps the newest items.
-    assert fetched_titles[0] == f"Story {over_cap - 1}"
-    assert fetched_titles[-1] == f"Story {over_cap - NEWS_FEED_VISIBLE_LIMIT}"
+    assert first_page_total == item_count
+    assert len(fetched_titles) == item_count
+    # Most-recent-first: pagination reaches the oldest visible item.
+    assert fetched_titles[0] == f"Story {item_count - 1}"
+    assert fetched_titles[-1] == "Story 0"
