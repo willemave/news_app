@@ -249,6 +249,37 @@ final class ChatSessionViewModelTests: XCTestCase {
         ActiveChatSessionManager.shared.reset()
     }
 
+    func testHandleDisappearBeforeServerAckDoesNotTrackLocalPlaceholder() async {
+        let chatService = MockChatSessionService(sendMessageHandler: { _, _ in
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            throw CancellationError()
+        })
+        ActiveChatSessionManager.shared.reset()
+        let viewModel = ChatSessionViewModel(
+            route: ChatSessionRoute(session: Self.session(
+                contentId: 7,
+                articleTitle: "Tracked Article"
+            )),
+            dependencies: .test(
+                transcriptionService: MockChatSpeechTranscriber(transcript: "Ignored"),
+                chatService: chatService
+            )
+        )
+
+        viewModel.inputText = "Track only after backend ack"
+        viewModel.performSendMessage()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertTrue(viewModel.isSending)
+        XCTAssertEqual(viewModel.timeline.last?.message.content, "Track only after backend ack")
+
+        viewModel.handleDisappear()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertNil(ActiveChatSessionManager.shared.getSession(forContentId: 7))
+        ActiveChatSessionManager.shared.reset()
+    }
+
     private static func session(
         contentId: Int? = nil,
         articleTitle: String? = nil,

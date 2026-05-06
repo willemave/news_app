@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pydantic_ai.models.test import TestModel
 
 from app.core.settings import get_settings
+from app.models.internal.assistant import AssistantScreenContext
 from app.models.schema import Content, ContentStatusEntry, UserScraperConfig
 from app.repositories.search_repository import (
     search_news,
@@ -75,6 +76,22 @@ def test_build_turn_instructions_skips_small_talk() -> None:
     """Small talk should not force a tool route."""
 
     assert assistant_router._build_turn_instructions("hello") is None
+
+
+def test_build_screen_context_snapshot_omits_user_id(db_session, test_user) -> None:
+    """Screen snapshots should not expose backend user IDs to model-visible text."""
+
+    snapshot = assistant_router.build_screen_context_snapshot(
+        db_session,
+        user_id=test_user.id,
+        screen_context=AssistantScreenContext(
+            screen_type="knowledge_hub",
+            screen_title="Knowledge",
+        ),
+    )
+
+    assert "Screen Type: knowledge_hub" in snapshot
+    assert "User ID:" not in snapshot
 
 
 def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:

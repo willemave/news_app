@@ -1020,7 +1020,6 @@ def build_screen_context_snapshot(
             if transcript_excerpt:
                 lines.append(f"  Transcript Excerpt: {transcript_excerpt}")
 
-    lines.append(f"User ID: {user_id}")
     return "\n".join(lines)
 
 
@@ -1168,7 +1167,12 @@ async def process_assistant_turn_async(
         model_spec = _resolve_session_model(session)
 
         history_start = perf_counter()
-        history = load_message_history(db, session_row_id)
+        history = load_message_history(
+            db,
+            session_row_id,
+            exclude_message_id=message_id,
+            completed_only=True,
+        )
         history_ms = (perf_counter() - history_start) * 1000
         logger.info(
             "Assistant history loaded",

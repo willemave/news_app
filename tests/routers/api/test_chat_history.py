@@ -223,6 +223,77 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
     assert all(message.display_type.value == "message" for message in display_messages)
 
 
+def test_extract_messages_for_display_sanitizes_legacy_model_facing_user_prompt(
+    db_session,
+) -> None:
+    session = ChatSession(
+        user_id=123,
+        title="Assistant chat",
+        session_type="knowledge_chat",
+        llm_provider="openai",
+        llm_model="openai:gpt-5.4",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    payload = json.dumps(
+        [
+            {
+                "parts": [
+                    {
+                        "content": (
+                            "Turn instructions:\nUse search_content.\n\n"
+                            "User request:\nFind my saved notes about AI chips.\n\n"
+                            "Current context:\nScreen Type: knowledge_hub\nUser ID: 123"
+                        ),
+                        "timestamp": "2026-03-08T17:05:02.295881Z",
+                        "part_kind": "user-prompt",
+                    }
+                ],
+                "timestamp": "2026-03-08T17:05:02.296029Z",
+                "instructions": None,
+                "kind": "request",
+                "run_id": "run-1",
+                "metadata": None,
+            },
+            {
+                "parts": [
+                    {
+                        "content": "I found the saved notes.",
+                        "id": None,
+                        "provider_name": None,
+                        "provider_details": None,
+                        "part_kind": "text",
+                    }
+                ],
+                "usage": {},
+                "model_name": "gpt-5.4",
+                "timestamp": "2026-03-08T17:06:38.689805Z",
+                "kind": "response",
+                "provider_name": "openai",
+                "provider_url": "https://api.openai.com",
+                "provider_details": None,
+                "finish_reason": "stop",
+                "run_id": "run-1",
+                "metadata": None,
+            },
+        ]
+    )
+    db_session.add(ChatMessage(session_id=session.id, message_list=payload, status="completed"))
+    db_session.commit()
+    assert session.id is not None
+
+    display_messages = _extract_messages_for_display(db_session, session.id)
+
+    assert [message.role.value for message in display_messages] == ["user", "assistant"]
+    assert display_messages[0].content == "Find my saved notes about AI chips."
+    rendered = "\n".join(message.content for message in display_messages)
+    assert "Turn instructions:" not in rendered
+    assert "Current context:" not in rendered
+    assert "User ID:" not in rendered
+
+
 def test_extract_last_message_preview_prefers_final_assistant_text(db_session) -> None:
     session = ChatSession(
         user_id=123,

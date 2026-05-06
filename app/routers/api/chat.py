@@ -86,6 +86,13 @@ _SEARCH_TOOL_NAMES = {
     "search_personal_library",
 }
 
+_INTERNAL_USER_PROMPT_SENTINELS = (
+    "Use the provided session context below",
+    "Provided reference context is available below",
+    "You are starting a new conversation about the article described in your context",
+    "Turn instructions:",
+)
+
 
 def _require_session_id(session: ChatSession) -> int:
     session_id = session.id
@@ -133,6 +140,28 @@ def _format_process_summary_label(
         return "Thinking • Considered the request"
 
     return None
+
+
+def _extract_visible_user_prompt(raw_content: object) -> str | None:
+    """Return client-visible user text from a stored model prompt."""
+    text = str(raw_content).strip()
+    if not text:
+        return None
+
+    marker = "User request:\n"
+    if marker in text:
+        request_text = text.split(marker, 1)[1]
+        for suffix in ("\n\nCurrent context:", "\n\nSession Context:", "\n\nArticle Context:"):
+            if suffix in request_text:
+                request_text = request_text.split(suffix, 1)[0]
+                break
+        request_text = request_text.strip()
+        return request_text or None
+
+    if any(sentinel in text for sentinel in _INTERNAL_USER_PROMPT_SENTINELS):
+        return None
+
+    return text
 
 
 def _load_render_metadata(db_message: ChatMessage) -> ChatMessageRenderMetadata | None:
@@ -322,8 +351,9 @@ def _extract_last_message_preview(
         elif isinstance(model_msg, ModelRequest):
             for request_part in reversed(model_msg.parts):
                 if isinstance(request_part, UserPromptPart) and request_part.content:
-                    text = str(request_part.content)[:max_length]
-                    return text, "user"
+                    text = _extract_visible_user_prompt(request_part.content)
+                    if text:
+                        return text[:max_length], "user"
 
     return None, None
 
@@ -384,6 +414,9 @@ def _extract_messages_for_display(
                         if user_text_emitted:
                             break
                         if isinstance(request_part, UserPromptPart) and request_part.content:
+                            user_text = _extract_visible_user_prompt(request_part.content)
+                            if not user_text:
+                                continue
                             user_text_emitted = True
                             display_id += 1
                             messages.append(
@@ -393,7 +426,7 @@ def _extract_messages_for_display(
                                     session_id=session_id_override or session_id,
                                     role=ChatMessageRole.USER,
                                     timestamp=message_timestamp,
-                                    content=str(request_part.content),
+                                    content=user_text,
                                     status=status,
                                     error=db_msg.error,
                                 )
@@ -806,6 +839,11 @@ async def update_session(
 
     # Update provider if specified
     if request.llm_provider is not None:
+        if is_deep_research_provider(request.llm_provider):
+            raise HTTPException(
+                status_code=400,
+                detail="Deep research must be started as a dedicated deep research session",
+            )
         provider, model_spec = resolve_model(request.llm_provider, request.llm_model_hint)
         session.llm_provider = provider
         session.llm_model = model_spec

@@ -3,21 +3,31 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from pydantic_ai.messages import ModelResponse, TextPart
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    UserPromptPart,
+)
 
 from app.core.settings import get_settings
 from app.models.metadata import ContentType
 from app.models.schema import ChatSession, Content
+from app.routers.api.chat import _extract_messages_for_display
 from app.services import chat_agent
 from app.services.chat_agent import (
     ChatDeps,
+    ChatRunResult,
     _build_chat_deps,
     _build_context_prompt_parts,
     _build_run_user_prompt,
     _dump_messages_json,
     build_article_context,
     create_processing_message,
+    generate_initial_suggestions,
     load_message_history,
+    save_messages,
 )
 
 
@@ -218,7 +228,7 @@ def test_dump_messages_json_restores_user_visible_prompt(db_session) -> None:
             "Session Context:\n- Bullet A"
         ),
     )
-    messages = load_message_history(db_session, session.id)
+    messages = load_message_history(db_session, session.id, completed_only=False)
 
     stored_json = _dump_messages_json(
         messages,
@@ -228,6 +238,122 @@ def test_dump_messages_json_restores_user_visible_prompt(db_session) -> None:
 
     assert payload[0]["parts"][0]["content"] == "Dig deeper into these digest bullets."
     assert "Session Context" not in payload[0]["parts"][0]["content"]
+
+
+def test_dump_messages_json_rewrites_first_user_prompt_not_system_part() -> None:
+    stored_json = _dump_messages_json(
+        [
+            ModelRequest(
+                parts=[
+                    SystemPromptPart(content="internal system prompt"),
+                    UserPromptPart(content="Use the provided session context below..."),
+                ]
+            )
+        ],
+        display_user_prompt="What changed?",
+    )
+    payload = json.loads(stored_json)
+
+    assert payload[0]["parts"][0]["content"] == "internal system prompt"
+    assert payload[0]["parts"][1]["content"] == "What changed?"
+
+
+def test_load_message_history_defaults_to_completed_and_can_exclude_active_row(
+    db_session,
+) -> None:
+    session = ChatSession(
+        user_id=123,
+        title="History chat",
+        session_type="knowledge_chat",
+        llm_provider="openai",
+        llm_model="openai:gpt-5.4",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    assert session.id is not None
+    completed = save_messages(
+        db_session,
+        session.id,
+        [
+            ModelRequest(parts=[UserPromptPart(content="Prior question")]),
+            ModelResponse(parts=[TextPart(content="Prior answer")]),
+        ],
+    )
+    active = create_processing_message(db_session, session.id, "Current question")
+
+    history = load_message_history(
+        db_session,
+        session.id,
+        exclude_message_id=active.id,
+    )
+    serialized = json.loads(_dump_messages_json(history))
+
+    assert completed.id is not None
+    assert len(serialized) == 2
+    assert serialized[0]["parts"][0]["content"] == "Prior question"
+    assert "Current question" not in json.dumps(serialized)
+
+
+def test_generate_initial_suggestions_persists_assistant_only_transcript(
+    db_session,
+    test_user,
+    monkeypatch,
+) -> None:
+    content = Content(
+        content_type=ContentType.ARTICLE.value,
+        url="https://example.com/article",
+        title="Article title",
+    )
+    db_session.add(content)
+    db_session.commit()
+    db_session.refresh(content)
+
+    session = ChatSession(
+        user_id=test_user.id,
+        content_id=content.id,
+        title="Article chat",
+        session_type="knowledge_chat",
+        llm_provider="openai",
+        llm_model="openai:gpt-5.4",
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    async def _fake_run_in_threadpool(*_args, **_kwargs):
+        return ChatRunResult(
+            output_text="Here are a few useful directions.",
+            new_messages=[
+                ModelRequest(parts=[UserPromptPart(content=chat_agent.INITIAL_QUESTIONS_PROMPT)]),
+                ModelResponse(parts=[TextPart(content="Here are a few useful directions.")]),
+            ],
+            all_messages=[],
+            tool_calls=[],
+        )
+
+    monkeypatch.setattr(
+        chat_agent,
+        "_build_chat_deps",
+        lambda _db, current_session, **_kwargs: ChatDeps(
+            session=current_session,
+            content=content,
+            article_context="Article context",
+        ),
+    )
+    monkeypatch.setattr(chat_agent, "resolve_effective_api_key", lambda **_kwargs: None)
+    monkeypatch.setattr(chat_agent, "_log_chat_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(chat_agent, "run_in_threadpool", _fake_run_in_threadpool)
+
+    assert session.id is not None
+    result = asyncio.run(generate_initial_suggestions(db_session, session))
+
+    assert result is not None
+    display_messages = _extract_messages_for_display(db_session, session.id)
+    assert [message.role.value for message in display_messages] == ["assistant"]
+    assert display_messages[0].content == "Here are a few useful directions."
+    assert "You are starting a new conversation" not in display_messages[0].content
 
 
 def test_build_chat_deps_prepares_personal_library_runtime(
