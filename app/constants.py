@@ -1,13 +1,19 @@
 """Application-wide constants and defaults."""
 
+from app.core.model_defaults import (
+    CHEAP_MODEL_SPEC,
+    SMART_ANTHROPIC_MODEL_SPEC,
+    SMART_MODEL_SPEC,
+)
+
 # Default LLM models
-TWEET_SUGGESTION_MODEL = "google-gla:gemini-3-pro-preview"
+TWEET_SUGGESTION_MODEL = CHEAP_MODEL_SPEC
 
 # LLM provider models for tweet suggestions
 TWEET_MODELS = {
-    "google": "google-gla:gemini-3-pro-preview",
-    "openai": "openai:gpt-4o",
-    "anthropic": "anthropic:claude-sonnet-4-5-20250929",
+    "google": CHEAP_MODEL_SPEC,
+    "openai": SMART_MODEL_SPEC,
+    "anthropic": SMART_ANTHROPIC_MODEL_SPEC,
 }
 
 # Worker type constants for checkout mechanism

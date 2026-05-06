@@ -190,7 +190,7 @@ def test_reconstruct_analyze_url_prompt_partial() -> None:
     assert "You classify web pages as article, podcast, or video" in snapshot.system_prompt
     assert snapshot.user_prompt is not None
     assert "URL: https://example.com/topic" in snapshot.user_prompt
-    assert snapshot.model == "gpt-5.4"
+    assert snapshot.model == "gpt-5.5"
 
 
 def test_render_markdown_report_contains_failure_sections() -> None:

@@ -75,7 +75,7 @@ class TestToggleKnowledgeSave:
             content_id=content_id,
             title="Existing Knowledge Chat",
             session_type="knowledge_chat",
-            llm_model="openai:gpt-5.4",
+            llm_model="openai:gpt-5.5",
             llm_provider="openai",
         )
         db_session.add(session)

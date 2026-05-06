@@ -95,6 +95,8 @@ MODEL_PRICING: dict[str, ModelPricing] = {
 
 # Older snapshots and repo-specific aliases that should inherit canonical pricing.
 MODEL_ALIASES: dict[str, str] = {
+    "gpt-5.5": "gpt-5.4",
+    "claude-opus-4-6": "claude-opus-4-5-20251101",
     "claude-opus-4-5": "claude-opus-4-5-20251101",
     "claude-sonnet-4-5": "claude-sonnet-4-5-20250929",
     "gemini-3-pro-preview": "gemini-3.1-pro-preview",

@@ -51,6 +51,7 @@ from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_models import (
     DEFAULT_MODEL,
     DEFAULT_PROVIDER,
+    PROVIDER_DEFAULTS,
     build_pydantic_model,
     resolve_effective_api_key,
 )
@@ -889,7 +890,7 @@ def _get_or_create_agent(
                 session_type="deep_research",
                 topic=question[:500],
                 llm_provider="deep_research",
-                llm_model="openai:o4-mini-deep-research-2025-06-26",
+                llm_model=PROVIDER_DEFAULTS["deep_research"],
                 created_at=datetime.now(UTC),
                 updated_at=datetime.now(UTC),
             )

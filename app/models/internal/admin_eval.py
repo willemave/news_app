@@ -4,6 +4,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.model_defaults import (
+    CHEAP_MODEL_SPEC,
+    FAST_MODEL_SPEC,
+    SMART_ANTHROPIC_MODEL_SPEC,
+    SMART_MODEL_SPEC,
+)
+
 EvalContentType = Literal["article", "podcast", "news"]
 LongformTemplate = Literal[
     "long_bullets_v1",
@@ -13,20 +20,16 @@ LongformTemplate = Literal[
 ]
 
 EVAL_MODEL_SPECS: dict[str, str] = {
-    "flash_lite": "google:gemini-3.1-flash-lite-preview",
-    "opus": "anthropic:claude-opus-4-5-20251101",
-    "gemini_3_pro": "google-gla:gemini-3-pro-preview",
-    "flash_2": "google-gla:gemini-3-flash-preview",
-    "gpt_5_4": "openai:gpt-5.4",
-    "cerebras_glm_4_7": "cerebras:zai-glm-4.7",
+    "cheap": CHEAP_MODEL_SPEC,
+    "fast": FAST_MODEL_SPEC,
+    "smart_openai": SMART_MODEL_SPEC,
+    "smart_claude": SMART_ANTHROPIC_MODEL_SPEC,
 }
 EVAL_MODEL_LABELS: dict[str, str] = {
-    "flash_lite": "Gemini 3.1 Flash Lite",
-    "opus": "Opus",
-    "gemini_3_pro": "Gemini 3 Pro",
-    "flash_2": "Flash 2",
-    "gpt_5_4": "GPT 5.4",
-    "cerebras_glm_4_7": "Cerebras GLM-4.7",
+    "cheap": "Cheap",
+    "fast": "Fast",
+    "smart_openai": "Smart OpenAI",
+    "smart_claude": "Smart Claude",
 }
 LONGFORM_TEMPLATE_LABELS: dict[str, str] = {
     "long_bullets_v1": "Long Bullets v1",

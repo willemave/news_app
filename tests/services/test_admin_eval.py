@@ -175,13 +175,11 @@ def test_run_admin_eval_uses_news_title_focus_and_cost(db_session, monkeypatch):
 
     request = AdminEvalRunRequest(
         content_types=["article", "news"],
-        models=["flash_lite"],
+        models=["cheap"],
         sample_size=2,
         recent_pool_size=10,
         seed=1,
-        pricing={
-            "flash_lite": ModelPricing(input_per_million_usd=1.0, output_per_million_usd=2.0)
-        },
+        pricing={"cheap": ModelPricing(input_per_million_usd=1.0, output_per_million_usd=2.0)},
     )
 
     result = run_admin_eval(db_session, request)
@@ -224,7 +222,7 @@ def test_run_admin_eval_skips_unavailable_models(db_session, monkeypatch):
 
     request = AdminEvalRunRequest(
         content_types=["article"],
-        models=["gpt_5_4", "flash_lite", "gemini_3_pro", "cerebras_glm_4_7"],
+        models=["smart_openai", "cheap", "smart_claude", "fast"],
         sample_size=1,
         recent_pool_size=10,
     )
@@ -287,7 +285,7 @@ def test_run_admin_eval_disables_model_after_first_hard_error(db_session, monkey
 
     request = AdminEvalRunRequest(
         content_types=["article"],
-        models=["cerebras_glm_4_7", "flash_lite"],
+        models=["fast", "cheap"],
         sample_size=2,
         recent_pool_size=10,
         seed=1,
@@ -299,6 +297,6 @@ def test_run_admin_eval_disables_model_after_first_hard_error(db_session, monkey
     assert call_count["bad"] == 1
     assert call_count["good"] == 2
     assert any(
-        item["alias"] == "cerebras_glm_4_7" and "disabled_after_error" in item["reason"]
+        item["alias"] == "fast" and "disabled_after_error" in item["reason"]
         for item in result["skipped_models"]
     )

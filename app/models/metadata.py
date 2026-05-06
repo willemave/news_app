@@ -1400,7 +1400,7 @@ class InsightReportMetadata(BaseContentMetadata):
                 "referenced_knowledge_ids": [29320, 29308, 29227],
                 "user_id": 1,
                 "generated_at": "2026-04-21T04:21:27Z",
-                "generated_by_model": "anthropic:claude-sonnet-4-6",
+                "generated_by_model": "anthropic:claude-opus-4-6",
                 "effort": "high",
                 "image_url": "/static/images/content/insight_reports/...jpg",
                 "thumbnail_url": "/static/images/content/insight_reports/...jpg",
@@ -1427,7 +1427,7 @@ class InsightReportMetadata(BaseContentMetadata):
     generated_by_model: str | None = Field(
         None,
         max_length=200,
-        description="Model spec used for synthesis (e.g. 'anthropic:claude-sonnet-4-6')",
+        description="Model spec used for synthesis (e.g. 'anthropic:claude-opus-4-6')",
     )
     effort: str | None = Field(
         None,

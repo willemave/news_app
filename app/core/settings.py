@@ -18,6 +18,13 @@ from pydantic import (
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
+from app.core.model_defaults import (
+    CHEAP_GOOGLE_MODEL_NAME,
+    CHEAP_MODEL_SPEC,
+    IMAGE_GENERATION_MODEL_NAME,
+    SMART_MODEL_SPEC,
+)
+
 DATA_ROOT = Path("/data")
 
 
@@ -266,8 +273,8 @@ class Settings(BaseSettings):
     news_list_reranker_batch_size: int = Field(default=4, ge=1, le=16)
     news_list_reranker_max_length: int = Field(default=2048, ge=256, le=8192)
     news_list_reranker_similarity_threshold: float = Field(default=0.45, ge=0.0, le=1.0)
-    news_group_model: str = "google:gemini-3.1-flash-lite-preview"
-    news_header_model: str = "google:gemini-3.1-flash-lite-preview"
+    news_group_model: str = CHEAP_MODEL_SPEC
+    news_header_model: str = CHEAP_MODEL_SPEC
     news_list_warm_embeddings: bool = True
     news_list_related_lookback_days: int = Field(default=7, ge=1, le=30)
     news_list_max_related_candidates: int = Field(default=150, ge=1)
@@ -280,7 +287,7 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     google_cloud_project: str | None = None
     google_cloud_location: str = "global"
-    image_generation_model: str = "gemini-3.1-flash-image-preview"
+    image_generation_model: str = IMAGE_GENERATION_MODEL_NAME
     image_generation_fallback_model: str | None = None
     infographic_generation_provider: Literal["google", "runware"] = "google"
     infographic_generation_model: str | None = None
@@ -317,11 +324,11 @@ class Settings(BaseSettings):
 
     # Feed discovery
     discovery_model: str = Field(
-        default="anthropic:claude-opus-4-5-20251101",
+        default=SMART_MODEL_SPEC,
         description="LLM model spec for feed discovery planning",
     )
     discovery_candidate_model: str = Field(
-        default="google:gemini-3.1-flash-lite-preview",
+        default=CHEAP_MODEL_SPEC,
         description="LLM model spec for discovery candidate extraction",
     )
     discovery_itunes_country: str | None = Field(
@@ -370,7 +377,7 @@ class Settings(BaseSettings):
 
     # PDF extraction (Gemini)
     pdf_gemini_model: str = Field(
-        default="gemini-3.1-flash-lite-preview",
+        default=CHEAP_GOOGLE_MODEL_NAME,
         description="Gemini model name for PDF extraction",
     )
 

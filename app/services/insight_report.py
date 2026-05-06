@@ -26,6 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.model_defaults import SMART_ANTHROPIC_MODEL_SPEC, SMART_MODEL_SPEC
 from app.models.contracts import ContentClassification, ContentStatus, ContentType
 from app.models.schema import Content, ContentKnowledgeSave, ContentStatusEntry
 from app.services.exa_client import ExaSearchResult, exa_search, get_exa_client
@@ -33,9 +34,9 @@ from app.services.llm_models import build_pydantic_model
 
 logger = get_logger(__name__)
 
-SYNTHESIS_MODEL = "anthropic:claude-sonnet-4-6"
+SYNTHESIS_MODEL = SMART_ANTHROPIC_MODEL_SPEC
 SYNTHESIS_EFFORT = "high"
-THEME_MODEL = "openai:gpt-5.4-mini"
+THEME_MODEL = SMART_MODEL_SPEC
 
 MAX_KNOWLEDGE_ITEMS = 12
 MAX_SUMMARY_CHARS_PER_ITEM = 1200

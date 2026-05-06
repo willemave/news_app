@@ -296,7 +296,7 @@ def chat_session_factory(db_session: Session):
             content_id=content_id or (content.id if content is not None else None),
             title=overrides.pop("title", f"Chat Session {index}"),
             session_type=overrides.pop("session_type", "knowledge_chat"),
-            llm_model=overrides.pop("llm_model", "openai:gpt-5.4"),
+            llm_model=overrides.pop("llm_model", "openai:gpt-5.5"),
             llm_provider=overrides.pop("llm_provider", "openai"),
             topic=overrides.pop("topic", None),
             context_snapshot=overrides.pop("context_snapshot", None),

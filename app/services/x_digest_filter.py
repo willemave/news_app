@@ -7,13 +7,14 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
+from app.core.model_defaults import CHEAP_MODEL_SPEC
 from app.core.settings import get_settings
 from app.services.llm_agents import get_basic_agent
 from app.services.x_api import XTweet
 
 logger = get_logger(__name__)
 
-X_DIGEST_FILTER_MODEL = "google:gemini-3.1-flash-lite-preview"
+X_DIGEST_FILTER_MODEL = CHEAP_MODEL_SPEC
 X_DIGEST_FILTER_THRESHOLD = 0.65
 X_DIGEST_FILTER_REASON_MAX_CHARS = 240
 

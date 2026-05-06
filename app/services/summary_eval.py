@@ -10,6 +10,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_ai import Agent
 
+from app.core.model_defaults import SMART_ANTHROPIC_MODEL_SPEC
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import build_pydantic_model
 from app.services.llm_prompts import generate_summary_prompt
@@ -41,7 +42,7 @@ class SummaryEvalDefaults(BaseModel):
 
     model_spec: str | None = Field(default=None, min_length=1)
     judge_model_spec: str = Field(
-        default="anthropic:claude-opus-4-1-20250805",
+        default=SMART_ANTHROPIC_MODEL_SPEC,
         min_length=1,
     )
     longform_template: LongformTemplate = "editorial_narrative_v1"

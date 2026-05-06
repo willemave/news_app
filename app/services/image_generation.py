@@ -21,6 +21,7 @@ from google.genai.types import GenerateContentConfig, ImageConfig
 from PIL import Image
 
 from app.core.logging import get_logger
+from app.core.model_defaults import IMAGE_GENERATION_MODEL_NAME, RUNWARE_INFOGRAPHIC_MODEL_SPEC
 from app.core.settings import get_settings
 from app.models.metadata import ContentData, ContentType
 from app.services.langfuse_tracing import (
@@ -36,8 +37,8 @@ from app.utils.image_paths import (
 
 logger = get_logger(__name__)
 
-DEFAULT_IMAGE_GENERATION_MODEL = "gemini-3.1-flash-image-preview"
-DEFAULT_RUNWARE_INFOGRAPHIC_MODEL = "runware:101@1"
+DEFAULT_IMAGE_GENERATION_MODEL = IMAGE_GENERATION_MODEL_NAME
+DEFAULT_RUNWARE_INFOGRAPHIC_MODEL = RUNWARE_INFOGRAPHIC_MODEL_SPEC
 RUNWARE_API_URL = "https://api.runware.ai/v1"
 RUNWARE_INFOGRAPHIC_WIDTH = 1024
 RUNWARE_INFOGRAPHIC_HEIGHT = 576

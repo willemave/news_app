@@ -8,6 +8,7 @@ from google import genai
 from google.genai.types import Part
 
 from app.core.logging import get_logger
+from app.core.model_defaults import CHEAP_GOOGLE_MODEL_NAME
 from app.core.settings import get_settings
 from app.http_client.robust_http_client import RobustHttpClient
 from app.processing_strategies.base_strategy import UrlProcessorStrategy
@@ -132,7 +133,7 @@ class ArxivProcessorStrategy(UrlProcessorStrategy):
             }
 
         google_api_key = getattr(settings, "google_api_key", None)
-        model_name = getattr(settings, "pdf_gemini_model", "gemini-3.1-flash-lite-preview")
+        model_name = getattr(settings, "pdf_gemini_model", CHEAP_GOOGLE_MODEL_NAME)
         if google_api_key:
             try:
                 client = genai.Client(api_key=google_api_key)

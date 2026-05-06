@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import SELF_SUBMISSION_SOURCE
 from app.core.logging import get_logger
+from app.core.model_defaults import SMART_MODEL_SPEC
 from app.models.metadata import ContentType
 from app.services.exa_client import ExaClientError, exa_search
 from app.services.http import HttpService, fetch_quiet_compat, head_quiet_compat
@@ -24,7 +25,7 @@ from app.services.vendor_usage import record_model_usage
 logger = get_logger(__name__)
 
 # Configuration
-FEED_CLASSIFICATION_MODEL = "openai:gpt-5.4"
+FEED_CLASSIFICATION_MODEL = SMART_MODEL_SPEC
 FEED_CLASSIFICATION_TIMEOUT = 10.0
 FEED_CLASSIFICATION_SYSTEM_PROMPT = (
     "You classify RSS/Atom feeds by inspecting the feed URL and page metadata. "

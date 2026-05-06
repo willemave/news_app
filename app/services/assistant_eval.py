@@ -22,6 +22,7 @@ from pydantic_ai.messages import (
 )
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.model_defaults import SMART_MODEL_SPEC
 from app.core.settings import get_settings
 from app.models.chat_message_metadata import AssistantFeedOption
 from app.models.contracts import NewsItemVisibilityScope, TaskStatus, TaskType
@@ -54,7 +55,7 @@ from app.services.llm_models import (
 from app.services.queue import QueueService
 from app.testing.postgres_harness import TemporaryPostgresHarness, create_temporary_postgres_harness
 
-DEFAULT_JUDGE_MODEL_SPEC = "openai:gpt-5.4"
+DEFAULT_JUDGE_MODEL_SPEC = SMART_MODEL_SPEC
 DEFAULT_SCREEN_CONTEXT = AssistantScreenContext(
     screen_type="assistant_quick",
     screen_title="Quick Assistant",

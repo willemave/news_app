@@ -1,6 +1,6 @@
 suite: summary_generation_v1
 defaults:
-  judge_model_spec: anthropic:claude-opus-4-1-20250805
+  judge_model_spec: anthropic:claude-opus-4-6
   longform_template: editorial_narrative_v1
 
 cases:

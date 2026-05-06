@@ -9,6 +9,11 @@ from typing import Any, Literal, cast
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.model_defaults import (
+    ARTICLE_PODCAST_SUMMARY_MODEL_SPEC,
+    CHEAP_MODEL_SPEC,
+    SMART_MODEL_SPEC,
+)
 from app.models.longform_artifacts import LongformArtifactEnvelope
 from app.models.metadata import (
     BulletedSummary,
@@ -30,7 +35,7 @@ from app.services.vendor_usage import record_model_usage
 logger = get_logger(__name__)
 
 MAX_SUMMARIZATION_PAYLOAD_CHARS = 220_000
-DEFAULT_ARTICLE_MODEL_SPEC = "openai:gpt-5.4-mini"
+DEFAULT_ARTICLE_MODEL_SPEC = ARTICLE_PODCAST_SUMMARY_MODEL_SPEC
 MIN_SUMMARY_QUOTE_CHARS = 20
 
 SummarizationPromptType = Literal[
@@ -208,13 +213,13 @@ def _clip_payload(payload: str, max_chars: int) -> tuple[str, bool]:
 
 
 DEFAULT_SUMMARIZATION_MODELS: dict[str, str] = {
-    "news": "google:gemini-3.1-flash-lite-preview",
-    "article": "openai:gpt-5.4-mini",
-    "podcast": "openai:gpt-5.4-mini",
-    "interleaved": "openai:gpt-5.4",
-    "long_bullets": "openai:gpt-5.4",
-    "editorial_narrative": "openai:gpt-5.4",
-    "longform_artifact": "openai:gpt-5.4",
+    "news": CHEAP_MODEL_SPEC,
+    "article": ARTICLE_PODCAST_SUMMARY_MODEL_SPEC,
+    "podcast": ARTICLE_PODCAST_SUMMARY_MODEL_SPEC,
+    "interleaved": SMART_MODEL_SPEC,
+    "long_bullets": SMART_MODEL_SPEC,
+    "editorial_narrative": SMART_MODEL_SPEC,
+    "longform_artifact": SMART_MODEL_SPEC,
 }
 
 

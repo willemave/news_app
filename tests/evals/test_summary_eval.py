@@ -15,7 +15,7 @@ def test_load_summary_eval_suite_parses_yaml(tmp_path: Path) -> None:
             [
                 "suite: summary_generation_v1",
                 "defaults:",
-                "  judge_model_spec: anthropic:claude-opus-4-1-20250805",
+                "  judge_model_spec: anthropic:claude-opus-4-6",
                 "  longform_template: editorial_narrative_v1",
                 "cases:",
                 "  - id: case-1",
@@ -38,7 +38,7 @@ def test_load_summary_eval_suite_parses_yaml(tmp_path: Path) -> None:
 
     assert suite.suite == "summary_generation_v1"
     assert suite.defaults.model_spec is None
-    assert suite.defaults.judge_model_spec == "anthropic:claude-opus-4-1-20250805"
+    assert suite.defaults.judge_model_spec == "anthropic:claude-opus-4-6"
     assert suite.cases[0].id == "case-1"
     assert suite.cases[0].bad_titles == ["wow"]
 
@@ -105,7 +105,7 @@ def test_run_summary_eval_case_uses_judge_verdict(monkeypatch) -> None:
     result = summary_eval.run_summary_eval_case(
         suite_name="summary_generation_v1",
         defaults=summary_eval.SummaryEvalDefaults(
-            judge_model_spec="anthropic:claude-opus-4-1-20250805",
+            judge_model_spec="anthropic:claude-opus-4-6",
         ),
         case=summary_eval.SummaryEvalCase(
             id="perplexity",
@@ -139,7 +139,7 @@ def test_run_summary_eval_suite_supports_case_selection(monkeypatch) -> None:
             case_id=case.id,
             content_type=case.content_type,
             model_spec="google:gemini-3.1-flash-lite-preview",
-            judge_model_spec="anthropic:claude-opus-4-1-20250805",
+            judge_model_spec="anthropic:claude-opus-4-6",
             prompt_type="news",
             passed=True,
             generated_title="Synthetic title",

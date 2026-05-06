@@ -145,7 +145,7 @@ def test_build_chat_deps_prefers_session_context_snapshot(db_session) -> None:
         session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
     db_session.add(session)
     db_session.commit()
@@ -167,7 +167,7 @@ def test_build_context_prompt_parts_marks_snapshot_as_reference_material() -> No
         session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
 
     parts = _build_context_prompt_parts(
@@ -190,7 +190,7 @@ def test_build_run_user_prompt_includes_snapshot_context() -> None:
         session_type="article_brain",
         context_snapshot="Digest bullets:\n- Bullet A\n- Bullet B",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
 
     deps = ChatDeps(
@@ -213,7 +213,7 @@ def test_dump_messages_json_restores_user_visible_prompt(db_session) -> None:
         title="Digest chat",
         session_type="article_brain",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
     db_session.add(session)
     db_session.commit()
@@ -387,7 +387,7 @@ def test_build_chat_deps_prepares_personal_library_runtime(
         title="Library Chat",
         session_type="knowledge_chat",
         llm_provider="openai",
-        llm_model="openai:gpt-5.4",
+        llm_model="openai:gpt-5.5",
     )
     db_session.add(session)
     db_session.commit()
@@ -424,7 +424,7 @@ def test_build_chat_deps_skips_personal_library_sync_when_sandbox_disabled(
         title="No Sandbox Chat",
         session_type="knowledge_chat",
         llm_provider="openai",
-        llm_model="openai:gpt-5.4",
+        llm_model="openai:gpt-5.5",
     )
     db_session.add(session)
     db_session.commit()
@@ -447,7 +447,7 @@ def test_run_chat_turn_builds_deps_with_library_tools_enabled(
         title="Council-capable Chat",
         session_type="knowledge_chat",
         llm_provider="openai",
-        llm_model="openai:gpt-5.4",
+        llm_model="openai:gpt-5.5",
     )
     db_session.add(session)
     db_session.commit()

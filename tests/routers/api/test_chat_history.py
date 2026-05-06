@@ -58,7 +58,7 @@ def _multi_step_message_list() -> str:
                 },
             ],
             "usage": usage,
-            "model_name": "claude-opus-4-5-20251101",
+            "model_name": "claude-opus-4-6",
             "timestamp": "2026-03-08T17:05:07.394654Z",
             "kind": "response",
             "provider_name": "anthropic",
@@ -96,7 +96,7 @@ def _multi_step_message_list() -> str:
                 }
             ],
             "usage": usage,
-            "model_name": "claude-opus-4-5-20251101",
+            "model_name": "claude-opus-4-6",
             "timestamp": "2026-03-08T17:06:38.689805Z",
             "kind": "response",
             "provider_name": "anthropic",
@@ -116,7 +116,7 @@ def test_extract_messages_for_display_hides_intermediate_agent_scaffolding(db_se
         title="Digest chat",
         session_type="article_brain",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
     db_session.add(session)
     db_session.commit()
@@ -162,7 +162,7 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
         title="Digest chat",
         session_type="article_brain",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
     db_session.add(session)
     db_session.commit()
@@ -195,7 +195,7 @@ def test_extract_messages_for_display_omits_process_summary_for_simple_turn(db_s
                     }
                 ],
                 "usage": {},
-                "model_name": "claude-opus-4-5-20251101",
+                "model_name": "claude-opus-4-6",
                 "timestamp": "2026-03-08T17:06:38.689805Z",
                 "kind": "response",
                 "provider_name": "anthropic",
@@ -300,7 +300,7 @@ def test_extract_last_message_preview_prefers_final_assistant_text(db_session) -
         title="Digest chat",
         session_type="article_brain",
         llm_provider="anthropic",
-        llm_model="anthropic:claude-opus-4-5-20251101",
+        llm_model="anthropic:claude-opus-4-6",
     )
     db_session.add(session)
     db_session.commit()

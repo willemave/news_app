@@ -18,7 +18,7 @@ def test_admin_eval_run_requires_admin_session(client):
         "/admin/evals/summaries/run",
         json={
             "content_types": ["article"],
-            "models": ["flash_lite"],
+            "models": ["cheap"],
             "sample_size": 1,
             "recent_pool_size": 20,
         },
@@ -39,7 +39,7 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
         return {
             "run_started_at": "2026-02-07T00:00:00+00:00",
             "available_models": [
-                {"alias": "flash_lite", "model_spec": "google:gemini-3.1-flash-lite-preview"}
+                {"alias": "cheap", "model_spec": "google:gemini-3.1-flash-lite-preview"}
             ],
             "skipped_models": [],
             "samples_by_type": {"article": []},
@@ -59,7 +59,7 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
         "/admin/evals/summaries/run",
         json={
             "content_types": ["article"],
-            "models": ["flash_lite"],
+            "models": ["cheap"],
             "sample_size": 1,
             "recent_pool_size": 20,
         },
@@ -67,7 +67,7 @@ def test_admin_eval_run_returns_payload(client, test_user, monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["available_models"][0]["alias"] == "flash_lite"
+    assert payload["available_models"][0]["alias"] == "cheap"
 
 
 def test_admin_eval_run_rejects_unknown_model(client, test_user):

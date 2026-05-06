@@ -21,6 +21,14 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 from sqlalchemy.orm import Session
 
+from app.core.model_defaults import (
+    CHEAP_MODEL_SPEC,
+    DEEP_RESEARCH_MODEL_NAME,
+    DEEP_RESEARCH_MODEL_SPEC,
+    FAST_MODEL_SPEC,
+    SMART_ANTHROPIC_MODEL_SPEC,
+    SMART_MODEL_SPEC,
+)
 from app.core.settings import get_settings
 from app.repositories.user_integration_repository import get_user_llm_api_key
 
@@ -39,21 +47,21 @@ class LLMProvider(StrEnum):
 PROVIDER_PREFIXES: dict[str, str] = {
     LLMProvider.OPENAI.value: "openai",
     LLMProvider.ANTHROPIC.value: "anthropic",
-    LLMProvider.GOOGLE.value: "google-gla",
+    LLMProvider.GOOGLE.value: "google",
     LLMProvider.CEREBRAS.value: "cerebras",
     LLMProvider.DEEP_RESEARCH.value: "deep_research",
 }
 
 PROVIDER_DEFAULTS: dict[str, str] = {
-    LLMProvider.OPENAI.value: "openai:gpt-5.5",
-    LLMProvider.ANTHROPIC.value: "anthropic:claude-opus-4-5-20251101",
-    LLMProvider.GOOGLE.value: "google-gla:gemini-3-pro-preview",
-    LLMProvider.CEREBRAS.value: "cerebras:zai-glm-4.7",
-    LLMProvider.DEEP_RESEARCH.value: "deep_research:o4-mini-deep-research-2025-06-26",
+    LLMProvider.OPENAI.value: SMART_MODEL_SPEC,
+    LLMProvider.ANTHROPIC.value: SMART_ANTHROPIC_MODEL_SPEC,
+    LLMProvider.GOOGLE.value: CHEAP_MODEL_SPEC,
+    LLMProvider.CEREBRAS.value: FAST_MODEL_SPEC,
+    LLMProvider.DEEP_RESEARCH.value: DEEP_RESEARCH_MODEL_SPEC,
 }
 
 # Deep research model constant for easy reference
-DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
+DEEP_RESEARCH_MODEL = DEEP_RESEARCH_MODEL_NAME
 
 DEFAULT_PROVIDER = LLMProvider.OPENAI.value
 DEFAULT_MODEL = PROVIDER_DEFAULTS[DEFAULT_PROVIDER]
@@ -170,7 +178,7 @@ def build_pydantic_model(
     """Construct a pydantic-ai Model with explicit providers where required.
 
     Args:
-        model_spec: Full model spec string (e.g., ``google-gla:gemini-3-pro-preview``).
+        model_spec: Full model spec string (e.g., ``google:gemini-3.1-flash-lite-preview``).
 
     Returns:
         Tuple of (model, model_settings). ``model`` is either a configured ``Model`` instance

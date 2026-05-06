@@ -58,11 +58,11 @@ enum ChatModelProvider: String, Codable, CaseIterable {
     var defaultModel: String {
         switch self {
         case .openai:
-            return "gpt-5.4"
+            return "gpt-5.5"
         case .anthropic:
-            return "claude-opus-4-5-20251101"
+            return "claude-opus-4-6"
         case .google:
-            return "gemini-3-pro-preview"
+            return "gemini-3.1-flash-lite-preview"
         case .deep_research:
             return "o4-mini-deep-research-2025-06-26"
         }
@@ -71,7 +71,7 @@ enum ChatModelProvider: String, Codable, CaseIterable {
     var chatDisplayName: String {
         switch self {
         case .openai:
-            return "GPT-5.4"
+            return "GPT-5.5"
         default:
             return displayName
         }

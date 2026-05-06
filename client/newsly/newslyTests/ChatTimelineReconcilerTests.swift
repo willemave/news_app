@@ -317,7 +317,7 @@ final class ChatTimelineReconcilerTests: XCTestCase {
             sessionType: "knowledge_chat",
             topic: nil,
             llmProvider: "openai",
-            llmModel: "openai:gpt-5.4",
+            llmModel: "openai:gpt-5.5",
             createdAt: "2026-04-01T10:00:00Z",
             updatedAt: nil,
             lastMessageAt: nil,

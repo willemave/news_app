@@ -28,7 +28,7 @@ def _valid_metadata() -> dict:
         ],
         "referenced_knowledge_ids": [29320, 29308],
         "generated_at": "2026-04-21T04:21:27Z",
-        "generated_by_model": "anthropic:claude-sonnet-4-6",
+        "generated_by_model": "anthropic:claude-opus-4-6",
         "effort": "high",
         "image_url": "/static/images/content/insight_reports/abc.jpg",
         "thumbnail_url": "/static/images/content/insight_reports/abc_thumb.jpg",

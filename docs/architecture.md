@@ -807,10 +807,10 @@ Current defaults:
   - `google:gemini-3.1-flash-lite-preview`
 - articles
   - `openai:gpt-5.4-mini`
-- podcasts, editorial/interleaved/long-bullets
-  - `openai:gpt-5.4`
-- fallback model
-  - `google:gemini-2.5-flash`
+- podcasts
+  - `openai:gpt-5.4-mini`
+- editorial/interleaved/long-bullets/longform artifacts
+  - `openai:gpt-5.5`
 
 Key behaviors:
 

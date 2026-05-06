@@ -186,8 +186,8 @@ def test_content_summarizer_uses_editorial_model_for_specialized_prompt_types(
     summarizer = llm_summarization.ContentSummarizer(_model_resolver=fake_resolve)
     summarizer.summarize("body", content_type="editorial_research")
 
-    assert captured_resolves == [("openai", "gpt-5.4")]
-    assert captured_model_specs == ["openai:gpt-5.4"]
+    assert captured_resolves == [("openai", "gpt-5.5")]
+    assert captured_model_specs == ["openai:gpt-5.5"]
 
 
 def test_content_summarizer_respects_overrides(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,6 +12,7 @@ from typing import BinaryIO
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.core.logging import get_logger
+from app.core.model_defaults import ARTICLE_PODCAST_SUMMARY_MODEL_NAME
 from app.core.settings import get_settings
 from app.services.langfuse_tracing import langfuse_trace_context
 from app.services.llm_summarization import ContentSummarizer, get_content_summarizer
@@ -26,7 +27,7 @@ logger = get_logger(__name__)
 settings = get_settings()
 
 # Summarization defaults
-SUMMARY_MODEL_SPEC = "gpt-5.4-mini"
+SUMMARY_MODEL_SPEC = ARTICLE_PODCAST_SUMMARY_MODEL_NAME
 
 # Transcription constants
 MAX_FILE_SIZE_MB = 25

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_INITIAL_FEED_ARTICLE_DOWNLOAD_COUNT, DEFAULT_NEW_FEED_LIMIT
 from app.core.logging import get_logger
+from app.core.model_defaults import FAST_MODEL_SPEC
 from app.models.api.common import (
     OnboardingAudioDiscoverRequest,
     OnboardingAudioDiscoverResponse,
@@ -71,7 +72,7 @@ logger = get_logger(__name__)
 SuggestionType = Literal["substack", "atom", "podcast_rss", "reddit"]
 SelectedSuggestionType = Literal["substack", "atom", "podcast_rss"]
 
-ONBOARDING_PRIMARY_MODEL = "cerebras:zai-glm-4.7"
+ONBOARDING_PRIMARY_MODEL = FAST_MODEL_SPEC
 PROFILE_MODEL = ONBOARDING_PRIMARY_MODEL
 FAST_DISCOVER_MODEL = ONBOARDING_PRIMARY_MODEL
 VOICE_PARSE_MODEL = ONBOARDING_PRIMARY_MODEL

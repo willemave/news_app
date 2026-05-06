@@ -83,7 +83,7 @@ def test_build_pydantic_model_anthropic(monkeypatch: pytest.MonkeyPatch) -> None
         lambda: _settings(anthropic_api_key="test-key"),
     )
 
-    model, model_settings = llm_models.build_pydantic_model("claude-opus-4-5-20251101")
+    model, model_settings = llm_models.build_pydantic_model("claude-opus-4-6")
 
     assert isinstance(model, AnthropicModel)
     assert model_settings is None
@@ -106,7 +106,7 @@ def test_build_pydantic_model_google(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_build_pydantic_model_google_gemini3(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(llm_models, "get_settings", lambda: _settings(google_api_key="test-key"))
 
-    model, model_settings = llm_models.build_pydantic_model("gemini-3-pro-preview")
+    model, model_settings = llm_models.build_pydantic_model("gemini-3.1-flash-lite-preview")
 
     assert isinstance(model, GoogleModel)
     assert model._provider.name == "google-vertex"
@@ -172,7 +172,7 @@ def test_resolve_effective_api_key_falls_back_to_platform(monkeypatch: pytest.Mo
     resolved = llm_models.resolve_effective_api_key(
         db=cast(Session, object()),
         user_id=123,
-        model_spec="anthropic:claude-opus-4-5-20251101",
+        model_spec="anthropic:claude-opus-4-6",
     )
 
     assert resolved == "platform-key"

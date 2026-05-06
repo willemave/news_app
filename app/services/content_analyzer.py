@@ -19,6 +19,7 @@ from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 from sqlalchemy.orm import Session
 
 from app.core.logging import get_logger
+from app.core.model_defaults import SMART_MODEL_SPEC, SMART_OPENAI_MODEL_NAME
 from app.core.settings import get_settings
 from app.models.internal.content_analyzer import (
     ContentAnalysisOutput,
@@ -45,7 +46,8 @@ __all__ = [
 ]
 
 # Configuration - use Responses API with web search
-CONTENT_ANALYSIS_MODEL = "gpt-5.4"
+CONTENT_ANALYSIS_MODEL = SMART_OPENAI_MODEL_NAME
+CONTENT_ANALYSIS_MODEL_SPEC = SMART_MODEL_SPEC
 MAX_ANALYSIS_TEXT_CHARS = 8000
 
 # Patterns to detect podcast/video platform links in HTML
@@ -267,7 +269,7 @@ class ContentAnalyzer:
             settings = get_settings()
             if not settings.openai_api_key:
                 raise ValueError("OPENAI_API_KEY not configured in settings")
-            model, model_settings = build_pydantic_model(f"openai:{CONTENT_ANALYSIS_MODEL}")
+            model, model_settings = build_pydantic_model(CONTENT_ANALYSIS_MODEL_SPEC)
             self._agent = Agent(
                 model,
                 output_type=ContentAnalysisOutput,
@@ -301,7 +303,7 @@ class ContentAnalyzer:
                 extra={
                     "component": "content_analyzer",
                     "operation": "analyze_url",
-                    "context_data": {"url": url, "model": CONTENT_ANALYSIS_MODEL},
+                    "context_data": {"url": url, "model": CONTENT_ANALYSIS_MODEL_SPEC},
                 },
             )
 
@@ -365,7 +367,7 @@ PAGE CONTENT (truncated):
                     metadata={
                         "source": "queue",
                         "url": url,
-                        "model_spec": f"openai:{CONTENT_ANALYSIS_MODEL}",
+                        "model_spec": CONTENT_ANALYSIS_MODEL_SPEC,
                     },
                     tags=["queue", "content_analyzer"],
                 ):
@@ -373,7 +375,7 @@ PAGE CONTENT (truncated):
                 record_model_usage(
                     "analyze_url",
                     result,
-                    model_spec=f"openai:{CONTENT_ANALYSIS_MODEL}",
+                    model_spec=CONTENT_ANALYSIS_MODEL_SPEC,
                     persist=usage_persist,
                 )
             except ModelHTTPError as exc:

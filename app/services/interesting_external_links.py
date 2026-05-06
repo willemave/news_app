@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from pydantic import BaseModel, Field
 
 from app.core.logging import get_logger
+from app.core.model_defaults import CHEAP_MODEL_SPEC
 from app.models.metadata import InterestingExternalLink
 from app.services.llm_agents import get_basic_agent
 from app.services.llm_models import resolve_model
@@ -22,7 +23,7 @@ logger = get_logger(__name__)
 MAX_CANDIDATE_LINKS = 30
 MAX_SELECTED_LINKS = 6
 MAX_CONTEXT_CHARS = 240
-LINK_SELECTION_MODEL = "openai:gpt-5.4-mini"
+LINK_SELECTION_MODEL = CHEAP_MODEL_SPEC
 
 MARKDOWN_LINK_RE = re.compile(r"(?<!!)\[([^\]\n]{1,300})\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 PLAIN_URL_RE = re.compile(r"https?://[^\s<>\]\"')]+")

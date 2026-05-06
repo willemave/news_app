@@ -113,11 +113,11 @@ def test_get_or_create_agent_uses_shared_model_builder(monkeypatch) -> None:
     monkeypatch.setattr(assistant_router, "build_pydantic_model", _fake_build)
 
     agent = assistant_router._get_or_create_agent(
-        "openai:gpt-5.4",
+        "openai:gpt-5.5",
         api_key_override="user-key",
     )
 
-    assert calls == [("openai:gpt-5.4", "user-key", "low")]
+    assert calls == [("openai:gpt-5.5", "user-key", "low")]
     assert agent.model is sentinel_model
 
     assistant_router._agents.clear()
